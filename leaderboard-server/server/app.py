@@ -12,7 +12,7 @@ from server.db import DB
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize DB on startup, close on shutdown."""
-    db = DB(DATABASE_URL)  # pragma: no cover (lifespan)
+    db = DB(DATABASE_URL)  # pragma: no cover
     db.init_schema()
     app.state.db = db
 
