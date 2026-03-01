@@ -140,11 +140,10 @@ class TestTradingCommands:
 
         # Mock the API client that gets created in Engine.__init__
         mock_instance = MockClient.return_value
-        mock_instance.get_trade_context.return_value = (
-            SAMPLE_MARKET, SAMPLE_BOOK, 0
-        )
-        mock_instance.get_midpoint.return_value = 0.65
         mock_instance.get_market.return_value = SAMPLE_MARKET
+        mock_instance.get_order_book.return_value = SAMPLE_BOOK
+        mock_instance.get_fee_rate.return_value = 0
+        mock_instance.get_midpoint.return_value = 0.65
 
         result = _invoke(runner, ["buy", "will-bitcoin-hit-100k", "yes", "100"], data_dir)
         data = _parse(result)
@@ -165,8 +164,11 @@ class TestTradingCommands:
         assert data["ok"] is False
         assert data["code"] == "NO_POSITION"
 
-    def test_buy_invalid_outcome(self, runner, data_dir):
+    @patch("pm_sim.engine.PolymarketClient")
+    def test_buy_invalid_outcome(self, MockClient, runner, data_dir):
         _invoke(runner, ["init"], data_dir)
+        mock_instance = MockClient.return_value
+        mock_instance.get_market.return_value = SAMPLE_MARKET
         result = _invoke(runner, ["buy", "btc", "maybe", "100"], data_dir)
         data = _parse(result)
         assert data["ok"] is False

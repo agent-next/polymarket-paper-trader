@@ -86,14 +86,18 @@ class Engine:
 
     @staticmethod
     def _validate_outcome(outcome: str, market=None) -> str:
-        """Validate and normalize outcome. If market given, check it exists."""
+        """Validate and normalize outcome against the market's actual outcomes.
+
+        When market is provided, verifies the outcome exists in that market.
+        Without market, only normalizes (caller is responsible for validation).
+        """
         outcome = outcome.lower().strip()
+        if not outcome:
+            raise InvalidOutcomeError(outcome)
         if market is not None:
             valid = [o.lower() for o in market.outcomes]
             if outcome not in valid:
                 raise InvalidOutcomeError(outcome, valid)
-        elif outcome not in ("yes", "no"):
-            raise InvalidOutcomeError(outcome)
         return outcome
 
     # ------------------------------------------------------------------
@@ -112,17 +116,20 @@ class Engine:
         Walks the real order book ASK side level-by-level.
         """
         account = self._require_account()
-        outcome = self._validate_outcome(outcome)
 
         if amount_usd < MIN_ORDER_USD:
             raise OrderRejectedError(
                 f"Minimum order size is ${MIN_ORDER_USD:.2f}"
             )
 
-        # Fetch market, live order book, and fee rate
-        market, book, fee_rate_bps = self.api.get_trade_context(
-            slug_or_id, outcome
-        )
+        # Fetch market and validate outcome against actual market outcomes
+        market = self.api.get_market(slug_or_id)
+        outcome = self._validate_outcome(outcome, market)
+
+        # Fetch live order book and fee rate
+        token_id = market.get_token_id(outcome)
+        book = self.api.get_order_book(token_id)
+        fee_rate_bps = self.api.get_fee_rate(token_id)
 
         if market.closed:
             raise MarketClosedError(market.slug)
@@ -223,10 +230,10 @@ class Engine:
         Walks the real order book BID side level-by-level.
         """
         account = self._require_account()
-        outcome = self._validate_outcome(outcome)
 
-        # Must have a position to sell
+        # Fetch market and validate outcome against actual market outcomes
         market = self.api.get_market(slug_or_id)
+        outcome = self._validate_outcome(outcome, market)
         position = self.db.get_position(market.condition_id, outcome)
         if position is None or position.shares <= 0:
             raise NoPositionError(market.slug, outcome)
@@ -399,17 +406,19 @@ class Engine:
     ) -> dict:
         """Place a GTC or GTD limit order."""
         self._require_account()
-        outcome = self._validate_outcome(outcome)
         if side not in ("buy", "sell"):
             raise OrderRejectedError(f"Invalid side: {side!r}")
         if not (0 < limit_price < 1):
             raise OrderRejectedError(f"Limit price must be between 0 and 1, got {limit_price}")
+        if order_type not in ("gtc", "gtd"):
+            raise OrderRejectedError(f"Invalid order_type: {order_type!r}. Must be 'gtc' or 'gtd'.")
         if order_type == "gtd" and not expires_at:
             raise OrderRejectedError("GTD orders require expires_at timestamp")
         if side == "buy" and amount < MIN_ORDER_USD:
             raise OrderRejectedError(f"Minimum buy order size is ${MIN_ORDER_USD:.2f}, got ${amount:.2f}")
 
         market = self.api.get_market(slug_or_id)
+        outcome = self._validate_outcome(outcome, market)
         order = create_order(
             self.db.conn,
             market_slug=market.slug,

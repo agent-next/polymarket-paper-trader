@@ -157,10 +157,7 @@ def get_order_book(slug_or_id: str, outcome: str = "yes") -> str:
     try:
         engine = _get_engine()
         market = engine.api.get_market(slug_or_id)
-        token_id = (
-            market.yes_token_id if outcome.lower() == "yes"
-            else market.no_token_id
-        )
+        token_id = market.get_token_id(outcome)
         book = engine.api.get_order_book(token_id)
         return _ok({
             "market_slug": market.slug,

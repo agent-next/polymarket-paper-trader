@@ -164,10 +164,12 @@ class TestBuy:
             initialized_engine.buy("btc", "yes", 50_000.0)
 
     def test_buy_invalid_outcome(self, initialized_engine: Engine):
+        _mock_api(initialized_engine)
         with pytest.raises(InvalidOutcomeError):
             initialized_engine.buy("btc", "maybe", 100.0)
 
     def test_buy_below_minimum(self, initialized_engine: Engine):
+        _mock_api(initialized_engine)
         with pytest.raises(OrderRejectedError, match="Minimum"):
             initialized_engine.buy("btc", "yes", 0.5)
 
