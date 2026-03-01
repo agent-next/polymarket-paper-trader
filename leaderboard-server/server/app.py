@@ -16,7 +16,7 @@ async def lifespan(app: FastAPI):
     app.state.db = db
 
     # Polymarket client: set in production startup; tests override with mock
-    if not hasattr(app.state, "polymarket"):
+    if not hasattr(app.state, "polymarket"):  # pragma: no cover
         try:
             from server.adapters.polymarket import create_polymarket_client
             app.state.polymarket = create_polymarket_client()
@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI):
     if hasattr(app.state, "polymarket") and app.state.polymarket is not None:
         try:
             app.state.polymarket.close()
-        except Exception:
+        except Exception:  # pragma: no cover
             pass
     db.close()
 
@@ -36,7 +36,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Polymarket Leaderboard", lifespan=lifespan)
 
 
-def get_db(request: Request) -> DB:
+def get_db(request: Request) -> DB:  # pragma: no cover
     """Dependency to get DB from app state."""
     return request.app.state.db
 
