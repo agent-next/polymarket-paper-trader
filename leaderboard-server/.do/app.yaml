@@ -4,11 +4,10 @@ spec:
 
   services:
     - name: web
-      dockerfile_path: Dockerfile
-      github:
-        repo: agent-next/polymarket-leaderboard
-        branch: main
-        deploy_on_push: true
+      image:
+        registry_type: DOCR
+        repository: polymarket-leaderboard
+        tag: latest
 
       instance_size_slug: basic-xxs
       instance_count: 1
@@ -16,7 +15,7 @@ spec:
       http_port: 8000
       health_check:
         http_path: /health
-        initial_delay_seconds: 10
+        initial_delay_seconds: 30
         period_seconds: 30
 
       envs:
@@ -26,8 +25,3 @@ spec:
           value: /data/backups
         - key: LEADERBOARD_URL
           value: https://polymarket-leaderboard.com
-
-      disk:
-        name: leaderboard-data
-        size_gi_b: 1
-        mount_path: /data
