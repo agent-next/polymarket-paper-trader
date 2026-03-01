@@ -2,28 +2,13 @@
 from __future__ import annotations
 
 import pytest
-from fastapi.testclient import TestClient
-from server.app import app
 
-
-@pytest.fixture
-def client():
-    with TestClient(app) as c:
-        yield c
-
-
-def _register_and_create_account(client):
-    resp = client.post("/auth/register", json={"agent_name": "order-bot"})
-    user = resp.json()["data"]
-    headers = {"Authorization": f"Bearer {user['api_key']}"}
-    resp = client.post("/accounts", json={"name": "default"}, headers=headers)
-    account = resp.json()["data"]
-    return user, account, headers
+from tests.conftest import _register_and_create_account, _headers
 
 
 class TestPlaceOrder:
     def test_place_gtc_order(self, client):
-        user, account, headers = _register_and_create_account(client)
+        user, account, headers = _register_and_create_account(client, "order-bot")
         resp = client.post(f"/accounts/{account['id']}/orders", json={
             "market_slug": "test-market",
             "market_condition_id": "0xabc",
@@ -39,7 +24,7 @@ class TestPlaceOrder:
         assert data["data"]["limit_price"] == 0.45
 
     def test_place_gtd_order(self, client):
-        user, account, headers = _register_and_create_account(client)
+        user, account, headers = _register_and_create_account(client, "order-bot")
         resp = client.post(f"/accounts/{account['id']}/orders", json={
             "market_slug": "test-market",
             "market_condition_id": "0xabc",
@@ -54,7 +39,7 @@ class TestPlaceOrder:
         assert resp.json()["data"]["order_type"] == "gtd"
 
     def test_gtd_without_expires_at(self, client):
-        user, account, headers = _register_and_create_account(client)
+        user, account, headers = _register_and_create_account(client, "order-bot")
         resp = client.post(f"/accounts/{account['id']}/orders", json={
             "market_slug": "test-market",
             "market_condition_id": "0xabc",
@@ -67,7 +52,7 @@ class TestPlaceOrder:
         assert resp.status_code == 400
 
     def test_invalid_price(self, client):
-        user, account, headers = _register_and_create_account(client)
+        user, account, headers = _register_and_create_account(client, "order-bot")
         resp = client.post(f"/accounts/{account['id']}/orders", json={
             "market_slug": "test-market",
             "market_condition_id": "0xabc",
@@ -79,7 +64,7 @@ class TestPlaceOrder:
         assert resp.status_code == 422
 
     def test_invalid_side(self, client):
-        user, account, headers = _register_and_create_account(client)
+        user, account, headers = _register_and_create_account(client, "order-bot")
         resp = client.post(f"/accounts/{account['id']}/orders", json={
             "market_slug": "test-market",
             "market_condition_id": "0xabc",
@@ -91,7 +76,7 @@ class TestPlaceOrder:
         assert resp.status_code == 422
 
     def test_not_your_account(self, client):
-        user1, account1, headers1 = _register_and_create_account(client)
+        user1, account1, headers1 = _register_and_create_account(client, "order-bot")
         resp = client.post("/auth/register", json={"agent_name": "other-bot"})
         user2 = resp.json()["data"]
         headers2 = {"Authorization": f"Bearer {user2['api_key']}"}
@@ -108,13 +93,13 @@ class TestPlaceOrder:
 
 class TestListOrders:
     def test_list_empty(self, client):
-        user, account, headers = _register_and_create_account(client)
+        user, account, headers = _register_and_create_account(client, "order-bot")
         resp = client.get(f"/accounts/{account['id']}/orders", headers=headers)
         assert resp.status_code == 200
         assert resp.json()["data"] == []
 
     def test_list_pending(self, client):
-        user, account, headers = _register_and_create_account(client)
+        user, account, headers = _register_and_create_account(client, "order-bot")
         client.post(f"/accounts/{account['id']}/orders", json={
             "market_slug": "test",
             "market_condition_id": "0xabc",
@@ -129,7 +114,7 @@ class TestListOrders:
 
 class TestCancelOrder:
     def test_cancel_success(self, client):
-        user, account, headers = _register_and_create_account(client)
+        user, account, headers = _register_and_create_account(client, "order-bot")
         resp = client.post(f"/accounts/{account['id']}/orders", json={
             "market_slug": "test",
             "market_condition_id": "0xabc",
@@ -144,12 +129,12 @@ class TestCancelOrder:
         assert resp.json()["data"]["status"] == "cancelled"
 
     def test_cancel_nonexistent(self, client):
-        user, account, headers = _register_and_create_account(client)
+        user, account, headers = _register_and_create_account(client, "order-bot")
         resp = client.delete(f"/accounts/{account['id']}/orders/999", headers=headers)
         assert resp.status_code == 404
 
     def test_cancel_already_cancelled(self, client):
-        user, account, headers = _register_and_create_account(client)
+        user, account, headers = _register_and_create_account(client, "order-bot")
         resp = client.post(f"/accounts/{account['id']}/orders", json={
             "market_slug": "test",
             "market_condition_id": "0xabc",

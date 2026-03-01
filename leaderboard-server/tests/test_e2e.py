@@ -2,68 +2,11 @@
 from __future__ import annotations
 
 import pytest
-from fastapi.testclient import TestClient
-from server.app import app
-from server.adapters.polymarket import (
-    Market, OrderBook, OrderBookLevel,
-)
 
 
-class MockPolymarketClient:
-    def __init__(self):
-        self._market = Market(
-            condition_id="0xe2e",
-            slug="e2e-test-market",
-            question="Will this E2E test pass?",
-            description="",
-            outcomes=["Yes", "No"],
-            outcome_prices=[0.70, 0.30],
-            tokens=[
-                {"token_id": "tok_yes_e2e", "outcome": "Yes"},
-                {"token_id": "tok_no_e2e", "outcome": "No"},
-            ],
-            active=True, closed=False,
-            volume=1000000, liquidity=100000,
-            end_date="2026-12-31", fee_rate_bps=200, tick_size=0.01,
-        )
-        self._book = OrderBook(
-            bids=[
-                OrderBookLevel(price=0.69, size=5000),
-                OrderBookLevel(price=0.68, size=5000),
-                OrderBookLevel(price=0.67, size=5000),
-            ],
-            asks=[
-                OrderBookLevel(price=0.71, size=5000),
-                OrderBookLevel(price=0.72, size=5000),
-                OrderBookLevel(price=0.73, size=5000),
-            ],
-        )
-
-    def get_market(self, slug):
-        return self._market
-
-    def get_order_book(self, token_id):
-        return self._book
-
-    def get_fee_rate(self, token_id):
-        return 200
-
-    def get_midpoint(self, token_id):
-        return 0.70
-
-    def close(self):
-        pass
-
-
-@pytest.fixture
-def client():
-    app.state.polymarket = MockPolymarketClient()
-    with TestClient(app) as c:
-        yield c
-
-
-def test_full_agent_flow(client):
+def test_full_agent_flow(client_e2e):
     """Complete agent lifecycle: register -> account -> buy -> sell -> stats -> leaderboard."""
+    client = client_e2e
 
     # 1. Register
     resp = client.post("/auth/register", json={"agent_name": "e2e-bot"})
@@ -191,8 +134,9 @@ def test_full_agent_flow(client):
     assert resp.status_code == 200
 
 
-def test_multi_user_leaderboard(client):
+def test_multi_user_leaderboard(client_e2e):
     """Multiple agents compete, leaderboard ranks them."""
+    client = client_e2e
 
     agents = []
     for i in range(3):

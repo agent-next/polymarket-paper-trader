@@ -12,24 +12,7 @@ from server.adapters.polymarket import (
     OrderBookLevel,
 )
 
-
-class MockPolymarketClient:
-    def __init__(self, market, book, fee_rate=0):
-        self._market = market
-        self._book = book
-        self._fee_rate = fee_rate
-
-    def get_market(self, slug):
-        return self._market
-
-    def get_order_book(self, token_id):
-        return self._book
-
-    def get_fee_rate(self, token_id):
-        return self._fee_rate
-
-    def close(self):
-        pass
+from tests.conftest import MockPolymarketClient
 
 
 @pytest.fixture
@@ -79,8 +62,8 @@ def sample_book():
 
 class TestCheckOrders:
     def test_no_pending_orders(self, db, sample_market, sample_book):
-        client = MockPolymarketClient(sample_market, sample_book)
-        count = check_orders_job(db, client)
+        pm = MockPolymarketClient(sample_market, sample_book)
+        count = check_orders_job(db, pm)
         assert count == 0
 
     def test_buy_order_fills(self, db, sample_market, sample_book):
@@ -95,8 +78,8 @@ class TestCheckOrders:
             amount=100,
             limit_price=0.50,
         )
-        client = MockPolymarketClient(sample_market, sample_book)
-        count = check_orders_job(db, client)
+        pm = MockPolymarketClient(sample_market, sample_book)
+        count = check_orders_job(db, pm)
         assert count == 1
         # Check order was filled
         pending = db.get_pending_orders(account["id"])
@@ -126,8 +109,8 @@ class TestCheckOrders:
             bids=[OrderBookLevel(price=0.64, size=150)],
             asks=[OrderBookLevel(price=0.66, size=80)],  # All above 0.30
         )
-        client = MockPolymarketClient(sample_market, book)
-        count = check_orders_job(db, client)
+        pm = MockPolymarketClient(sample_market, book)
+        count = check_orders_job(db, pm)
         assert count == 0
         pending = db.get_pending_orders(account["id"])
         assert len(pending) == 1  # Still pending
@@ -135,8 +118,8 @@ class TestCheckOrders:
 
 class TestAutoResolve:
     def test_no_open_positions(self, db, sample_market):
-        client = MockPolymarketClient(sample_market, OrderBook(bids=[], asks=[]))
-        count = auto_resolve_job(db, client)
+        pm = MockPolymarketClient(sample_market, OrderBook(bids=[], asks=[]))
+        count = auto_resolve_job(db, pm)
         assert count == 0
 
     def test_resolve_winning_position(self, db):
@@ -174,8 +157,8 @@ class TestAutoResolve:
             fee_rate_bps=0,
             tick_size=0.01,
         )
-        client = MockPolymarketClient(resolved_market, OrderBook(bids=[], asks=[]))
-        count = auto_resolve_job(db, client)
+        pm = MockPolymarketClient(resolved_market, OrderBook(bids=[], asks=[]))
+        count = auto_resolve_job(db, pm)
         assert count == 1
         # Check cash: $10000 + 100 shares * $1 = $10100
         updated = db.get_account(account["id"])
@@ -217,8 +200,8 @@ class TestAutoResolve:
             fee_rate_bps=0,
             tick_size=0.01,
         )
-        client = MockPolymarketClient(resolved_market, OrderBook(bids=[], asks=[]))
-        count = auto_resolve_job(db, client)
+        pm = MockPolymarketClient(resolved_market, OrderBook(bids=[], asks=[]))
+        count = auto_resolve_job(db, pm)
         assert count == 1
         # Cash unchanged (no payout for losers)
         updated = db.get_account(account["id"])
@@ -239,8 +222,8 @@ class TestAutoResolve:
             total_cost=65,
             realized_pnl=0,
         )
-        client = MockPolymarketClient(sample_market, sample_book)
-        count = auto_resolve_job(db, client)
+        pm = MockPolymarketClient(sample_market, sample_book)
+        count = auto_resolve_job(db, pm)
         assert count == 0
         positions = db.get_open_positions(account["id"])
         assert len(positions) == 1

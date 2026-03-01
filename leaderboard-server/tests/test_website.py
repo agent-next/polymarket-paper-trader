@@ -2,14 +2,8 @@
 from __future__ import annotations
 
 import pytest
-from fastapi.testclient import TestClient
-from server.app import app
 
-
-@pytest.fixture
-def client():
-    with TestClient(app) as c:
-        yield c
+from tests.conftest import _register, _headers
 
 
 class TestHomepage:
@@ -25,7 +19,7 @@ class TestHomepage:
 
 class TestUserPage:
     def test_user_page(self, client):
-        client.post("/auth/register", json={"agent_name": "web-bot"})
+        _register(client, "web-bot")
         resp = client.get("/u/web-bot")
         assert resp.status_code == 200
         assert "web-bot" in resp.text

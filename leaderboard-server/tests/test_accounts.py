@@ -2,23 +2,8 @@
 from __future__ import annotations
 
 import pytest
-from fastapi.testclient import TestClient
-from server.app import app
 
-
-@pytest.fixture
-def client():
-    with TestClient(app) as c:
-        yield c
-
-
-def _register(client, name="test-bot"):
-    resp = client.post("/auth/register", json={"agent_name": name})
-    return resp.json()["data"]
-
-
-def _headers(api_key):
-    return {"Authorization": f"Bearer {api_key}"}
+from tests.conftest import _register, _headers
 
 
 class TestCreateAccount:

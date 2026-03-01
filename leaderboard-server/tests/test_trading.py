@@ -4,168 +4,17 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from server.adapters.polymarket import (
-    Market,
-    OrderBook,
-    OrderBookLevel,
-)
+from server.adapters.polymarket import OrderBook, OrderBookLevel
 from server.app import app
 
-
-# -- Fixtures --
-
-SAMPLE_MARKET = Market(
-    condition_id="0xabc123",
-    slug="will-bitcoin-hit-100k",
-    question="Will Bitcoin hit $100k by end of 2026?",
-    description="Test market",
-    outcomes=["Yes", "No"],
-    outcome_prices=[0.65, 0.35],
-    tokens=[
-        {"token_id": "tok_yes_btc", "outcome": "Yes"},
-        {"token_id": "tok_no_btc", "outcome": "No"},
-    ],
-    active=True,
-    closed=False,
-    volume=5_000_000.0,
-    liquidity=250_000.0,
-    end_date="2026-12-31T23:59:59Z",
-    fee_rate_bps=0,
-    tick_size=0.01,
+from tests.conftest import (
+    MockPolymarketClient,
+    _register,
+    _headers,
+    _create_account,
+    _buy,
+    _sell,
 )
-
-CLOSED_MARKET = Market(
-    condition_id="0xclosed",
-    slug="closed-market",
-    question="Already resolved?",
-    description="A closed market",
-    outcomes=["Yes", "No"],
-    outcome_prices=[1.0, 0.0],
-    tokens=[
-        {"token_id": "tok_yes_closed", "outcome": "Yes"},
-        {"token_id": "tok_no_closed", "outcome": "No"},
-    ],
-    active=False,
-    closed=True,
-    volume=1_000_000.0,
-    liquidity=0.0,
-    end_date="2025-01-01T00:00:00Z",
-    fee_rate_bps=0,
-    tick_size=0.01,
-)
-
-SAMPLE_BOOK = OrderBook(
-    bids=[
-        OrderBookLevel(price=0.64, size=150.0),
-        OrderBookLevel(price=0.63, size=200.0),
-    ],
-    asks=[
-        OrderBookLevel(price=0.66, size=80.0),
-        OrderBookLevel(price=0.67, size=120.0),
-        OrderBookLevel(price=0.68, size=200.0),
-    ],
-)
-
-EMPTY_BOOK = OrderBook(bids=[], asks=[])
-
-
-class MockPolymarketClient:
-    """Test double for PolymarketClient with configurable responses."""
-
-    def __init__(
-        self,
-        market: Market = SAMPLE_MARKET,
-        book: OrderBook = SAMPLE_BOOK,
-        fee_rate: int = 0,
-    ):
-        self._market = market
-        self._book = book
-        self._fee_rate = fee_rate
-
-    def get_market(self, slug: str) -> Market:
-        return self._market
-
-    def get_order_book(self, token_id: str) -> OrderBook:
-        return self._book
-
-    def get_fee_rate(self, token_id: str) -> int:
-        return self._fee_rate
-
-    def close(self) -> None:
-        pass
-
-
-@pytest.fixture
-def client():
-    # Set mock polymarket client BEFORE lifespan creates the real one
-    app.state.polymarket = MockPolymarketClient()
-    with TestClient(app) as c:
-        yield c
-
-
-@pytest.fixture
-def client_with_fees():
-    app.state.polymarket = MockPolymarketClient(fee_rate=200)
-    with TestClient(app) as c:
-        yield c
-
-
-@pytest.fixture
-def client_closed_market():
-    app.state.polymarket = MockPolymarketClient(market=CLOSED_MARKET)
-    with TestClient(app) as c:
-        yield c
-
-
-@pytest.fixture
-def client_empty_book():
-    app.state.polymarket = MockPolymarketClient(book=EMPTY_BOOK)
-    with TestClient(app) as c:
-        yield c
-
-
-# -- Helpers --
-
-def _register(client, name="test-bot"):
-    resp = client.post("/auth/register", json={"agent_name": name})
-    return resp.json()["data"]
-
-
-def _headers(api_key):
-    return {"Authorization": f"Bearer {api_key}"}
-
-
-def _create_account(client, api_key):
-    resp = client.post(
-        "/accounts", json={"name": "default"}, headers=_headers(api_key)
-    )
-    return resp.json()["data"]
-
-
-def _buy(client, api_key, account_id, amount=10.0, outcome="yes", slug="will-bitcoin-hit-100k"):
-    return client.post(
-        "/trade/buy",
-        json={
-            "account_id": account_id,
-            "market_slug": slug,
-            "outcome": outcome,
-            "amount_usd": amount,
-        },
-        headers=_headers(api_key),
-    )
-
-
-def _sell(client, api_key, account_id, shares, outcome="yes", slug="will-bitcoin-hit-100k"):
-    return client.post(
-        "/trade/sell",
-        json={
-            "account_id": account_id,
-            "market_slug": slug,
-            "outcome": outcome,
-            "shares": shares,
-        },
-        headers=_headers(api_key),
-    )
 
 
 # -- Buy tests --
@@ -252,8 +101,6 @@ class TestBuyWithFees:
 class TestBuyInsufficientBalance:
     def test_buy_insufficient_balance(self):
         """Use a tiny-balance account so even a small fill exceeds cash."""
-        # Book asks: 80@0.66 = $52.80 cost.  A $10 buy fits in the book but
-        # exceeds an account with only $5 cash.
         tiny_book = OrderBook(
             bids=[OrderBookLevel(price=0.64, size=150.0)],
             asks=[OrderBookLevel(price=0.66, size=80.0)],
@@ -262,14 +109,6 @@ class TestBuyInsufficientBalance:
         with TestClient(app) as client:
             user = _register(client)
             account = _create_account(client, user["api_key"])
-            # Drain almost all cash: buy $9995 worth (book has plenty at 0.66)
-            # Instead, update cash directly via a second smaller approach:
-            # We'll just buy with amount > starting balance.
-            # Actually: starting balance is 10000, book ask is 80 shares @ 0.66 = $52.80 max.
-            # A $10 buy fills fine. We need cash < fill cost.
-            # So reduce cash first: buy $52 with FAK (fills the whole book),
-            # then try again with a new book.
-            # Simplest: set cash via DB directly.
             db = app.state.db
             db.update_cash(account["id"], 5.0)  # only $5 cash
 
