@@ -18,7 +18,7 @@ class DB:
         self._conn: sqlite3.Connection | None = None
 
     def init_schema(self) -> None:
-        self._conn = sqlite3.connect(self._url)
+        self._conn = sqlite3.connect(self._url, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
