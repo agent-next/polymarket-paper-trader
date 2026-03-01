@@ -24,8 +24,34 @@ async def lifespan(app: FastAPI):
         except Exception:
             app.state.polymarket = None
 
+    # Background scheduler: tests pre-set scheduler=None to skip
+    if not hasattr(app.state, "scheduler"):  # pragma: no cover
+        from apscheduler.schedulers.background import BackgroundScheduler
+        from server.config import CHECK_ORDERS_INTERVAL, AUTO_RESOLVE_INTERVAL
+        from server.jobs.check_orders import check_orders_job
+        from server.jobs.auto_resolve import auto_resolve_job
+
+        if app.state.polymarket is not None:
+            scheduler = BackgroundScheduler()
+            scheduler.add_job(
+                check_orders_job, "interval",
+                seconds=CHECK_ORDERS_INTERVAL,
+                args=[db, app.state.polymarket],
+            )
+            scheduler.add_job(
+                auto_resolve_job, "interval",
+                seconds=AUTO_RESOLVE_INTERVAL,
+                args=[db, app.state.polymarket],
+            )
+            scheduler.start()
+            app.state.scheduler = scheduler
+        else:
+            app.state.scheduler = None
+
     yield
 
+    if hasattr(app.state, "scheduler") and app.state.scheduler is not None:  # pragma: no cover
+        app.state.scheduler.shutdown(wait=False)
     if hasattr(app.state, "polymarket") and app.state.polymarket is not None:
         try:
             app.state.polymarket.close()

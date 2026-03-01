@@ -11,3 +11,5 @@ LEADERBOARD_URL = os.environ.get(
 API_CACHE_DIR = os.environ.get(
     "API_CACHE_DIR", "/tmp/pm-leaderboard-cache"
 )
+CHECK_ORDERS_INTERVAL = int(os.environ.get("CHECK_ORDERS_INTERVAL", "60"))
+AUTO_RESOLVE_INTERVAL = int(os.environ.get("AUTO_RESOLVE_INTERVAL", "300"))

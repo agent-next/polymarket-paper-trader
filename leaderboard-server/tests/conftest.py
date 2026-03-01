@@ -157,6 +157,7 @@ def mock_polymarket():
 def client():
     """TestClient with default mock (no fees, open market, standard book)."""
     app.state.polymarket = MockPolymarketClient()
+    app.state.scheduler = None  # Skip scheduler in tests
     with TestClient(app) as c:
         yield c
 
@@ -164,6 +165,7 @@ def client():
 @pytest.fixture
 def client_with_fees():
     app.state.polymarket = MockPolymarketClient(fee_rate=200)
+    app.state.scheduler = None
     with TestClient(app) as c:
         yield c
 
@@ -171,6 +173,7 @@ def client_with_fees():
 @pytest.fixture
 def client_closed_market():
     app.state.polymarket = MockPolymarketClient(market=CLOSED_MARKET)
+    app.state.scheduler = None
     with TestClient(app) as c:
         yield c
 
@@ -178,6 +181,7 @@ def client_closed_market():
 @pytest.fixture
 def client_empty_book():
     app.state.polymarket = MockPolymarketClient(book=EMPTY_BOOK)
+    app.state.scheduler = None
     with TestClient(app) as c:
         yield c
 
@@ -188,6 +192,7 @@ def client_e2e():
     app.state.polymarket = MockPolymarketClient(
         market=E2E_MARKET, book=E2E_BOOK, fee_rate=200, midpoint=0.70,
     )
+    app.state.scheduler = None
     with TestClient(app) as c:
         yield c
 
