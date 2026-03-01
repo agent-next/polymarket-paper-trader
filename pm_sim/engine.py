@@ -484,18 +484,21 @@ class Engine:
         for slug in slugs_or_ids:
             try:
                 market = self.api.get_market(slug)
-                for outcome in outcomes:
-                    outcome = outcome.lower()
-                    token_id = market.get_token_id(outcome)
-                    mid = self.api.get_midpoint(token_id)
-                    results.append({
-                        "market_slug": market.slug,
-                        "outcome": outcome,
-                        "midpoint": mid,
-                        "condition_id": market.condition_id,
-                    })
             except Exception:
-                continue
+                continue  # Market not found or API error
+            for outcome in outcomes:
+                outcome = outcome.lower()
+                token_id = market.get_token_id(outcome)  # raises ValueError for invalid
+                try:
+                    mid = self.api.get_midpoint(token_id)
+                except Exception:
+                    continue  # API error fetching price
+                results.append({
+                    "market_slug": market.slug,
+                    "outcome": outcome,
+                    "midpoint": mid,
+                    "condition_id": market.condition_id,
+                })
         return results
 
     # ------------------------------------------------------------------

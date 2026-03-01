@@ -517,6 +517,13 @@ class TestValidation:
         assert result.trade.outcome == "yes"
 
 
+class TestWatchPrices:
+    def test_invalid_outcome_raises(self, initialized_engine: Engine):
+        _mock_api(initialized_engine)
+        with pytest.raises(ValueError, match="maybe"):
+            initialized_engine.watch_prices(["btc"], ["maybe"])
+
+
 class TestLimitOrderValidation:
     def test_gtd_without_expiry_rejected(self, initialized_engine: Engine):
         _mock_api(initialized_engine)
