@@ -19,18 +19,35 @@ from pm_trader.models import (
 from pm_trader.api import PolymarketClient
 from pm_trader.db import Database
 
+import sqlite3
+
 from server.config import API_CACHE_DIR
 
 
-def create_polymarket_client() -> PolymarketClient:
-    """Create a PolymarketClient with a temp SQLite for API caching only.
+class _ThreadSafeDatabase(Database):
+    """Database subclass with check_same_thread=False for uvicorn workers."""
 
-    Trade data goes to PostgreSQL. This SQLite is only for the 5-minute
-    market metadata cache that PolymarketClient requires.
+    @property
+    def conn(self) -> sqlite3.Connection:
+        if self._conn is None:
+            self._conn = sqlite3.connect(
+                str(self.db_path), check_same_thread=False,
+            )
+            self._conn.row_factory = sqlite3.Row
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA foreign_keys=ON")
+        return self._conn
+
+
+def create_polymarket_client() -> PolymarketClient:
+    """Create a PolymarketClient with a thread-safe SQLite cache.
+
+    Trade data goes to the leaderboard DB. This SQLite is only for
+    the 5-minute market metadata cache that PolymarketClient requires.
     """
     cache_dir = Path(API_CACHE_DIR)
     cache_dir.mkdir(parents=True, exist_ok=True)
-    db = Database(cache_dir)
+    db = _ThreadSafeDatabase(cache_dir)
     db.init_schema()
     return PolymarketClient(db)
 
