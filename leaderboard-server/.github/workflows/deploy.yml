@@ -32,4 +32,4 @@ jobs:
           docker push registry.digitalocean.com/<your-registry>/polymarket-leaderboard:latest
 
       - name: Deploy to App Platform
-        run: doctl apps create --spec .do/app.yaml --upsert --wait
+        run: doctl apps create --spec .do/app.yaml --upsert --update-sources --wait
