@@ -1,0 +1,33 @@
+spec:
+  name: polymarket-leaderboard
+  region: nyc
+
+  services:
+    - name: web
+      dockerfile_path: Dockerfile
+      github:
+        repo: agent-next/polymarket-leaderboard
+        branch: main
+        deploy_on_push: true
+
+      instance_size_slug: basic-xxs
+      instance_count: 1
+
+      http_port: 8000
+      health_check:
+        http_path: /health
+        initial_delay_seconds: 10
+        period_seconds: 30
+
+      envs:
+        - key: DATABASE_URL
+          value: /data/leaderboard.db
+        - key: BACKUP_DIR
+          value: /data/backups
+        - key: LEADERBOARD_URL
+          value: https://polymarket-leaderboard.com
+
+      disk:
+        name: leaderboard-data
+        size_gi_b: 1
+        mount_path: /data
