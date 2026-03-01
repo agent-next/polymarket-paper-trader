@@ -20,17 +20,65 @@ from server.adapters.polymarket import (
 
 from tests.conftest import (
     MockPolymarketClient,
-    SAMPLE_MARKET,
-    SAMPLE_BOOK,
-    CLOSED_MARKET,
     EMPTY_BOOK,
     _register,
     _headers,
     _create_account,
-    _buy,
     _sell,
     _register_and_create_account,
     _insert_trades,
+)
+
+
+# ---------------------------------------------------------------------------
+# Shared fixtures and helpers for jobs tests
+# ---------------------------------------------------------------------------
+
+class _FailingClient(MockPolymarketClient):
+    """Mock client that raises on get_market (simulates API failure)."""
+
+    def get_market(self, slug):
+        raise ConnectionError("API down")
+
+
+@pytest.fixture
+def jobs_db():
+    """Standalone in-memory DB for jobs tests (not tied to FastAPI app)."""
+    _db = DB(":memory:")
+    _db.init_schema()
+    yield _db
+    _db.close()
+
+
+JOBS_MARKET = Market(
+    condition_id="0xabc123",
+    slug="test-market",
+    question="Test?",
+    description="",
+    outcomes=["Yes", "No"],
+    outcome_prices=[0.65, 0.35],
+    tokens=[
+        {"token_id": "tok_yes", "outcome": "Yes"},
+        {"token_id": "tok_no", "outcome": "No"},
+    ],
+    active=True,
+    closed=False,
+    volume=1000000,
+    liquidity=100000,
+    end_date="2026-12-31",
+    fee_rate_bps=0,
+    tick_size=0.01,
+)
+
+JOBS_BOOK = OrderBook(
+    bids=[
+        OrderBookLevel(price=0.64, size=150),
+        OrderBookLevel(price=0.63, size=200),
+    ],
+    asks=[
+        OrderBookLevel(price=0.45, size=500),
+        OrderBookLevel(price=0.48, size=300),
+    ],
 )
 
 
@@ -61,56 +109,56 @@ class TestDBGaps:
 
 
 # ---------------------------------------------------------------------------
-# Trading validation
+# Trading validation (422s — schema rejects before route handler)
 # ---------------------------------------------------------------------------
 
 class TestTradingValidation:
     def test_buy_invalid_order_type(self, client):
         """Buy with order_type not in (fok, fak) → 422."""
-        user, account, headers = _register_and_create_account(client)
+        user = _register(client)
         resp = client.post("/trade/buy", json={
-            "account_id": account["id"],
+            "account_id": 1,
             "market_slug": "will-bitcoin-hit-100k",
             "outcome": "yes",
             "amount_usd": 10,
             "order_type": "ioc",
-        }, headers=headers)
+        }, headers=_headers(user["api_key"]))
         assert resp.status_code == 422
 
     def test_sell_invalid_order_type(self, client):
         """Sell with order_type not in (fok, fak) → 422."""
-        user, account, headers = _register_and_create_account(client)
+        user = _register(client)
         resp = client.post("/trade/sell", json={
-            "account_id": account["id"],
+            "account_id": 1,
             "market_slug": "will-bitcoin-hit-100k",
             "outcome": "yes",
             "shares": 10,
             "order_type": "ioc",
-        }, headers=headers)
+        }, headers=_headers(user["api_key"]))
         assert resp.status_code == 422
 
     def test_sell_zero_shares(self, client):
         """Sell with zero shares → 422."""
-        user, account, headers = _register_and_create_account(client)
+        user = _register(client)
         resp = client.post("/trade/sell", json={
-            "account_id": account["id"],
+            "account_id": 1,
             "market_slug": "will-bitcoin-hit-100k",
             "outcome": "yes",
             "shares": 0,
             "order_type": "fok",
-        }, headers=headers)
+        }, headers=_headers(user["api_key"]))
         assert resp.status_code == 422
 
     def test_sell_negative_shares(self, client):
         """Sell with negative shares → 422."""
-        user, account, headers = _register_and_create_account(client)
+        user = _register(client)
         resp = client.post("/trade/sell", json={
-            "account_id": account["id"],
+            "account_id": 1,
             "market_slug": "will-bitcoin-hit-100k",
             "outcome": "yes",
             "shares": -5,
             "order_type": "fok",
-        }, headers=headers)
+        }, headers=_headers(user["api_key"]))
         assert resp.status_code == 422
 
 
@@ -145,7 +193,7 @@ class TestTradingAuth:
 
     def test_buy_invalid_outcome(self, client):
         """Buy with invalid outcome → 400 INVALID_OUTCOME."""
-        user, account, headers = _register_and_create_account(client)
+        _, account, headers = _register_and_create_account(client)
         resp = client.post("/trade/buy", json={
             "account_id": account["id"],
             "market_slug": "will-bitcoin-hit-100k",
@@ -181,9 +229,7 @@ class TestTradingAuth:
 
     def test_sell_invalid_outcome(self, client):
         """Sell with invalid outcome → 400 INVALID_OUTCOME."""
-        user, account, headers = _register_and_create_account(client)
-        # Need a position first so we get past NO_POSITION check...
-        # Actually, InvalidOutcomeError is raised before position check.
+        _, account, headers = _register_and_create_account(client)
         resp = client.post("/trade/sell", json={
             "account_id": account["id"],
             "market_slug": "will-bitcoin-hit-100k",
@@ -202,8 +248,7 @@ class TestTradingErrors:
     def test_sell_on_closed_market(self, client_closed_market):
         """Sell on a closed market → 400 MARKET_CLOSED."""
         client = client_closed_market
-        user, account, headers = _register_and_create_account(client)
-        # Insert a position directly so we pass the position check
+        user, account, _ = _register_and_create_account(client)
         db = client.app.state.db
         db.upsert_position(
             account_id=account["id"],
@@ -224,7 +269,7 @@ class TestTradingErrors:
     def test_sell_fok_empty_book(self, client_empty_book):
         """Sell FOK with no bids → 400 ORDER_REJECTED."""
         client = client_empty_book
-        user, account, headers = _register_and_create_account(client)
+        user, account, _ = _register_and_create_account(client)
         db = client.app.state.db
         db.upsert_position(
             account_id=account["id"],
@@ -244,27 +289,27 @@ class TestTradingErrors:
 
 
 # ---------------------------------------------------------------------------
-# Orders validation
+# Orders validation (422s — schema rejects before route handler)
 # ---------------------------------------------------------------------------
 
 class TestOrdersValidation:
     def test_place_order_zero_amount(self, client):
         """Place order with zero amount → 422."""
-        user, account, headers = _register_and_create_account(client)
-        resp = client.post(f"/accounts/{account['id']}/orders", json={
+        user = _register(client)
+        resp = client.post("/accounts/1/orders", json={
             "market_slug": "test",
             "market_condition_id": "0xabc",
             "outcome": "yes",
             "side": "buy",
             "amount": 0,
             "limit_price": 0.5,
-        }, headers=headers)
+        }, headers=_headers(user["api_key"]))
         assert resp.status_code == 422
 
     def test_place_order_invalid_order_type(self, client):
         """Place order with invalid order_type → 422."""
-        user, account, headers = _register_and_create_account(client)
-        resp = client.post(f"/accounts/{account['id']}/orders", json={
+        user = _register(client)
+        resp = client.post("/accounts/1/orders", json={
             "market_slug": "test",
             "market_condition_id": "0xabc",
             "outcome": "yes",
@@ -272,7 +317,7 @@ class TestOrdersValidation:
             "amount": 100,
             "limit_price": 0.5,
             "order_type": "ioc",
-        }, headers=headers)
+        }, headers=_headers(user["api_key"]))
         assert resp.status_code == 422
 
     def test_place_order_nonexistent_account(self, client):
@@ -290,7 +335,7 @@ class TestOrdersValidation:
 
     def test_gtd_without_expires_at(self, client):
         """GTD order without expires_at → 400."""
-        user, account, headers = _register_and_create_account(client)
+        _, account, headers = _register_and_create_account(client)
         resp = client.post(f"/accounts/{account['id']}/orders", json={
             "market_slug": "test",
             "market_condition_id": "0xabc",
@@ -401,13 +446,10 @@ class TestLeaderboardGaps:
         user = _register(client, "broken-bot")
         account = _create_account(client, user["api_key"], "default")
         _insert_trades(client, account["id"], count=10)
-        # Patch compute_stats to raise for this test
         with patch("server.routes.leaderboard.compute_stats", side_effect=Exception("boom")):
             resp = client.get("/leaderboard")
         assert resp.status_code == 200
-        # The broken account should be skipped
-        data = resp.json()["data"]
-        assert len(data) == 0
+        assert len(resp.json()["data"]) == 0
 
     def test_head_to_head_no_trades(self, client):
         """head_to_head with accounts that have no trades → stats is None fallback."""
@@ -443,74 +485,36 @@ class TestLeaderboardGaps:
 # Website gaps
 # ---------------------------------------------------------------------------
 
+TIER_CASES = [
+    ("diamond", 10, {"total_trades": 55, "roi_pct": 25.0, "sharpe_ratio": 2.0,
+                      "pnl": 2500.0, "total_value": 12500.0, "win_rate": 0.7,
+                      "max_drawdown": 0.05}),
+    ("gold",    10, {"total_trades": 35, "roi_pct": 15.0, "sharpe_ratio": 1.2,
+                      "pnl": 1500.0, "total_value": 11500.0, "win_rate": 0.6,
+                      "max_drawdown": 0.08}),
+    ("silver",  10, {"total_trades": 22, "roi_pct": 8.0,  "sharpe_ratio": 0.5,
+                      "pnl": 800.0,  "total_value": 10800.0, "win_rate": 0.55,
+                      "max_drawdown": 0.1}),
+]
+
+
 class TestWebsiteGaps:
-    def test_homepage_with_tiers(self, client):
-        """Homepage renders accounts at silver/gold/diamond tiers."""
-        user = _register(client, "tier-bot")
+    @pytest.mark.parametrize("tier,trade_count,stats", TIER_CASES)
+    def test_homepage_tier_rendering(self, client, tier, trade_count, stats):
+        """Homepage renders accounts at the correct tier."""
+        user = _register(client, f"{tier}-bot")
         account = _create_account(client, user["api_key"], "default")
-        _insert_trades(client, account["id"], count=50)
-
-        # Mock compute_stats to return diamond-tier stats
-        diamond_stats = {
-            "total_trades": 55,
-            "roi_pct": 25.0,
-            "sharpe_ratio": 2.0,
-            "pnl": 2500.0,
-            "total_value": 12500.0,
-            "win_rate": 0.7,
-            "max_drawdown": 0.05,
-        }
-        with patch("server.routes.website.compute_stats", return_value=diamond_stats):
+        _insert_trades(client, account["id"], count=trade_count)
+        with patch("server.routes.website.compute_stats", return_value=stats):
             resp = client.get("/")
         assert resp.status_code == 200
-        assert "DIAMOND" in resp.text
-
-    def test_homepage_gold_tier(self, client):
-        """Homepage renders gold tier correctly."""
-        user = _register(client, "gold-bot")
-        account = _create_account(client, user["api_key"], "default")
-        _insert_trades(client, account["id"], count=30)
-
-        gold_stats = {
-            "total_trades": 35,
-            "roi_pct": 15.0,
-            "sharpe_ratio": 1.2,
-            "pnl": 1500.0,
-            "total_value": 11500.0,
-            "win_rate": 0.6,
-            "max_drawdown": 0.08,
-        }
-        with patch("server.routes.website.compute_stats", return_value=gold_stats):
-            resp = client.get("/")
-        assert resp.status_code == 200
-        assert "GOLD" in resp.text
-
-    def test_homepage_silver_tier(self, client):
-        """Homepage renders silver tier correctly."""
-        user = _register(client, "silver-bot")
-        account = _create_account(client, user["api_key"], "default")
-        _insert_trades(client, account["id"], count=20)
-
-        silver_stats = {
-            "total_trades": 22,
-            "roi_pct": 8.0,
-            "sharpe_ratio": 0.5,
-            "pnl": 800.0,
-            "total_value": 10800.0,
-            "win_rate": 0.55,
-            "max_drawdown": 0.1,
-        }
-        with patch("server.routes.website.compute_stats", return_value=silver_stats):
-            resp = client.get("/")
-        assert resp.status_code == 200
-        assert "SILVER" in resp.text
+        assert tier.upper() in resp.text
 
     def test_homepage_stats_exception_skips_account(self, client):
         """Homepage skips accounts where compute_stats raises."""
         user = _register(client, "crash-bot")
         account = _create_account(client, user["api_key"], "default")
         _insert_trades(client, account["id"], count=10)
-
         with patch("server.routes.website.compute_stats", side_effect=Exception("boom")):
             resp = client.get("/")
         assert resp.status_code == 200
@@ -522,17 +526,14 @@ class TestWebsiteGaps:
         _create_account(client, user["api_key"], "empty-acct")
         resp = client.get("/u/notrade-bot")
         assert resp.status_code == 200
-        # Account exists but has no trades, so roi_pct defaults to 0.0
 
     def test_account_page_missing_user(self, client):
         """Account page with missing user → shows 'unknown'."""
         user = _register(client, "ghost-bot")
         account = _create_account(client, user["api_key"], "default")
-        account_id = account["id"]
-        # Patch get_user_by_id to return None (simulating missing user)
         db = client.app.state.db
         with patch.object(db, "get_user_by_id", return_value=None):
-            resp = client.get(f"/a/{account_id}")
+            resp = client.get(f"/a/{account['id']}")
         assert resp.status_code == 200
         assert "unknown" in resp.text
 
@@ -542,53 +543,11 @@ class TestWebsiteGaps:
 # ---------------------------------------------------------------------------
 
 class TestCheckOrdersGaps:
-    @pytest.fixture
-    def db(self):
-        _db = DB(":memory:")
-        _db.init_schema()
-        yield _db
-        _db.close()
-
-    @pytest.fixture
-    def sample_market(self):
-        return Market(
-            condition_id="0xabc123",
-            slug="test-market",
-            question="Test?",
-            description="",
-            outcomes=["Yes", "No"],
-            outcome_prices=[0.65, 0.35],
-            tokens=[
-                {"token_id": "tok_yes", "outcome": "Yes"},
-                {"token_id": "tok_no", "outcome": "No"},
-            ],
-            active=True,
-            closed=False,
-            volume=1000000,
-            liquidity=100000,
-            end_date="2026-12-31",
-            fee_rate_bps=0,
-            tick_size=0.01,
-        )
-
-    @pytest.fixture
-    def sample_book(self):
-        return OrderBook(
-            bids=[
-                OrderBookLevel(price=0.64, size=150),
-                OrderBookLevel(price=0.63, size=200),
-            ],
-            asks=[
-                OrderBookLevel(price=0.45, size=500),
-                OrderBookLevel(price=0.48, size=300),
-            ],
-        )
-
-    def test_api_failure_skips_group(self, db, sample_market, sample_book):
+    def test_api_failure_skips_group(self, jobs_db):
         """When get_market raises, that group is skipped."""
-        user = db.create_user("api-fail-bot")
-        account = db.create_account(user["id"], "default")
-        db.create_limit_order(
+        user = jobs_db.create_user("api-fail-bot")
+        account = jobs_db.create_account(user["id"], "default")
+        jobs_db.create_limit_order(
             account_id=account["id"],
             market_slug="test-market",
             market_condition_id="0xabc123",
@@ -597,25 +556,16 @@ class TestCheckOrdersGaps:
             amount=100,
             limit_price=0.50,
         )
-
-        class FailingClient(MockPolymarketClient):
-            def get_market(self, slug):
-                raise ConnectionError("API down")
-
-        pm = FailingClient(sample_market, sample_book)
-        count = check_orders_job(db, pm)
+        pm = _FailingClient(JOBS_MARKET, JOBS_BOOK)
+        count = check_orders_job(jobs_db, pm)
         assert count == 0
-        # Order still pending
-        pending = db.get_pending_orders(account["id"])
-        assert len(pending) == 1
+        assert len(jobs_db.get_pending_orders(account["id"])) == 1
 
-    def test_buy_fills_into_existing_position(self, db, sample_market, sample_book):
+    def test_buy_fills_into_existing_position(self, jobs_db):
         """Buy limit order fills into existing position → cost averaging."""
-        user = db.create_user("avg-bot")
-        account = db.create_account(user["id"], "default")
-
-        # Create existing position first
-        db.upsert_position(
+        user = jobs_db.create_user("avg-bot")
+        account = jobs_db.create_account(user["id"], "default")
+        jobs_db.upsert_position(
             account_id=account["id"],
             market_condition_id="0xabc123",
             market_slug="test-market",
@@ -626,8 +576,7 @@ class TestCheckOrdersGaps:
             total_cost=20,
             realized_pnl=0,
         )
-
-        db.create_limit_order(
+        jobs_db.create_limit_order(
             account_id=account["id"],
             market_slug="test-market",
             market_condition_id="0xabc123",
@@ -636,57 +585,39 @@ class TestCheckOrdersGaps:
             amount=100,
             limit_price=0.50,
         )
-
-        pm = MockPolymarketClient(sample_market, sample_book)
-        count = check_orders_job(db, pm)
+        pm = MockPolymarketClient(JOBS_MARKET, JOBS_BOOK)
+        count = check_orders_job(jobs_db, pm)
         assert count == 1
-
-        # Position should show combined shares
-        pos = db.get_position(account["id"], "0xabc123", "yes")
+        pos = jobs_db.get_position(account["id"], "0xabc123", "yes")
         assert pos["shares"] > 50  # Original + new fill
 
-    def test_per_order_exception_continues(self, db, sample_market, sample_book):
+    def test_per_order_exception_continues(self, jobs_db):
         """If one order raises during processing, next order still checked."""
-        user = db.create_user("multi-bot")
-        account = db.create_account(user["id"], "default")
-
-        # Create two orders for same market
-        db.create_limit_order(
-            account_id=account["id"],
-            market_slug="test-market",
-            market_condition_id="0xabc123",
-            outcome="yes",
-            side="buy",
-            amount=100,
-            limit_price=0.50,
-        )
-        db.create_limit_order(
-            account_id=account["id"],
-            market_slug="test-market",
-            market_condition_id="0xabc123",
-            outcome="yes",
-            side="buy",
-            amount=100,
-            limit_price=0.50,
-        )
+        user = jobs_db.create_user("multi-bot")
+        account = jobs_db.create_account(user["id"], "default")
+        for _ in range(2):
+            jobs_db.create_limit_order(
+                account_id=account["id"],
+                market_slug="test-market",
+                market_condition_id="0xabc123",
+                outcome="yes",
+                side="buy",
+                amount=100,
+                limit_price=0.50,
+            )
 
         call_count = 0
-        original_get_account = db.get_account
+        original_get_account = jobs_db.get_account
 
         def fail_first_get_account(account_id):
             nonlocal call_count
             call_count += 1
-            # The first call is from order processing setup. Let that work.
-            # Fail on the first order's account lookup (call 1 in inner loop),
-            # then succeed for the second order.
             if call_count == 1:
                 raise RuntimeError("Simulated failure")
             return original_get_account(account_id)
 
-        with patch.object(db, "get_account", side_effect=fail_first_get_account):
-            count = check_orders_job(db, MockPolymarketClient(sample_market, sample_book))
-
-        # First order should fail (exception), second should succeed
+        with patch.object(jobs_db, "get_account", side_effect=fail_first_get_account):
+            count = check_orders_job(jobs_db, MockPolymarketClient(JOBS_MARKET, JOBS_BOOK))
         assert count == 1
 
 
@@ -695,18 +626,11 @@ class TestCheckOrdersGaps:
 # ---------------------------------------------------------------------------
 
 class TestAutoResolveGaps:
-    @pytest.fixture
-    def db(self):
-        _db = DB(":memory:")
-        _db.init_schema()
-        yield _db
-        _db.close()
-
-    def test_market_fetch_fails_skips(self, db):
+    def test_market_fetch_fails_skips(self, jobs_db):
         """When get_market raises, that slug is skipped."""
-        user = db.create_user("resolve-fail")
-        account = db.create_account(user["id"], "default")
-        db.upsert_position(
+        user = jobs_db.create_user("resolve-fail")
+        account = jobs_db.create_account(user["id"], "default")
+        jobs_db.upsert_position(
             account_id=account["id"],
             market_condition_id="0xfail",
             market_slug="failing-market",
@@ -717,23 +641,16 @@ class TestAutoResolveGaps:
             total_cost=50,
             realized_pnl=0,
         )
-
-        class FailingClient(MockPolymarketClient):
-            def get_market(self, slug):
-                raise ConnectionError("API down")
-
-        pm = FailingClient()
-        count = auto_resolve_job(db, pm)
+        pm = _FailingClient()
+        count = auto_resolve_job(jobs_db, pm)
         assert count == 0
-        # Position still open
-        positions = db.get_open_positions(account["id"])
-        assert len(positions) == 1
+        assert len(jobs_db.get_open_positions(account["id"])) == 1
 
-    def test_no_winning_outcome_skips(self, db):
+    def test_no_winning_outcome_skips(self, jobs_db):
         """Closed market with no outcome >= 0.99 → skip."""
-        user = db.create_user("ambig-bot")
-        account = db.create_account(user["id"], "default")
-        db.upsert_position(
+        user = jobs_db.create_user("ambig-bot")
+        account = jobs_db.create_account(user["id"], "default")
+        jobs_db.upsert_position(
             account_id=account["id"],
             market_condition_id="0xambig",
             market_slug="ambiguous-market",
@@ -744,7 +661,6 @@ class TestAutoResolveGaps:
             total_cost=50,
             realized_pnl=0,
         )
-
         ambiguous_market = Market(
             condition_id="0xambig",
             slug="ambiguous-market",
@@ -765,15 +681,14 @@ class TestAutoResolveGaps:
             tick_size=0.01,
         )
         pm = MockPolymarketClient(ambiguous_market, EMPTY_BOOK)
-        count = auto_resolve_job(db, pm)
+        count = auto_resolve_job(jobs_db, pm)
         assert count == 0
 
-    def test_already_resolved_position_skipped(self, db):
+    def test_already_resolved_position_skipped(self, jobs_db):
         """Position marked is_resolved=1 → skipped."""
-        user = db.create_user("resolved-bot")
-        account = db.create_account(user["id"], "default")
-        # Create and immediately resolve a position
-        db.upsert_position(
+        user = jobs_db.create_user("resolved-bot")
+        account = jobs_db.create_account(user["id"], "default")
+        jobs_db.upsert_position(
             account_id=account["id"],
             market_condition_id="0xresolved",
             market_slug="resolved-market",
@@ -784,8 +699,7 @@ class TestAutoResolveGaps:
             total_cost=50,
             realized_pnl=0,
         )
-        # Also create an unresolved position for the same market
-        db.upsert_position(
+        jobs_db.upsert_position(
             account_id=account["id"],
             market_condition_id="0xresolved",
             market_slug="resolved-market",
@@ -796,10 +710,10 @@ class TestAutoResolveGaps:
             total_cost=25,
             realized_pnl=0,
         )
-        # Resolve the YES position manually
-        positions = db.get_all_open_positions()
+        # Resolve YES position manually
+        positions = jobs_db.get_all_open_positions()
         yes_pos = [p for p in positions if p["outcome"] == "yes"][0]
-        db.resolve_position(yes_pos["id"], 50.0)
+        jobs_db.resolve_position(yes_pos["id"], 50.0)
 
         resolved_market = Market(
             condition_id="0xresolved",
@@ -821,31 +735,21 @@ class TestAutoResolveGaps:
             tick_size=0.01,
         )
         pm = MockPolymarketClient(resolved_market, EMPTY_BOOK)
-        # get_all_open_positions filters is_resolved=0, so the yes position
-        # won't appear. We need to make it appear by querying all positions.
-        # Actually, lines 40 and 42 are checked WITHIN the inner loop.
-        # Line 40: if pos["is_resolved"]: continue
-        # Line 42: if pos["market_slug"] != slug: continue
-        # But get_all_open_positions already filters is_resolved=0!
-        # So to hit line 40, we need to manipulate the data.
-        # Let's use a different approach: patch get_all_open_positions to include
-        # the already-resolved position.
-        all_positions = db._conn.execute("SELECT * FROM positions").fetchall()
+        # Patch to include the already-resolved YES position so the
+        # is_resolved guard in auto_resolve_job's inner loop is exercised.
+        all_positions = jobs_db._conn.execute("SELECT * FROM positions").fetchall()
         all_positions_dicts = [dict(r) for r in all_positions]
 
-        with patch.object(db, "get_all_open_positions", return_value=all_positions_dicts):
-            count = auto_resolve_job(db, pm)
-
-        # Only the NO position should be resolved (payout=0), YES already resolved
+        with patch.object(jobs_db, "get_all_open_positions", return_value=all_positions_dicts):
+            count = auto_resolve_job(jobs_db, pm)
+        # Only the NO position should be resolved; YES already resolved
         assert count == 1
 
-    def test_cross_market_positions_filtered(self, db):
+    def test_cross_market_positions_filtered(self, jobs_db):
         """Positions for different market slugs are filtered correctly."""
-        user = db.create_user("cross-bot")
-        account = db.create_account(user["id"], "default")
-
-        # Position for market A
-        db.upsert_position(
+        user = jobs_db.create_user("cross-bot")
+        account = jobs_db.create_account(user["id"], "default")
+        jobs_db.upsert_position(
             account_id=account["id"],
             market_condition_id="0xmktA",
             market_slug="market-a",
@@ -856,8 +760,7 @@ class TestAutoResolveGaps:
             total_cost=50,
             realized_pnl=0,
         )
-        # Position for market B
-        db.upsert_position(
+        jobs_db.upsert_position(
             account_id=account["id"],
             market_condition_id="0xmktB",
             market_slug="market-b",
@@ -868,8 +771,6 @@ class TestAutoResolveGaps:
             total_cost=50,
             realized_pnl=0,
         )
-
-        # Only market A is closed/resolved
         resolved_a = Market(
             condition_id="0xmktA",
             slug="market-a",
@@ -916,10 +817,8 @@ class TestAutoResolveGaps:
                 return active_b
 
         pm = MultiMarketClient()
-        count = auto_resolve_job(db, pm)
-        # Only market-a position should resolve
+        count = auto_resolve_job(jobs_db, pm)
         assert count == 1
-        # Market B position still open
-        open_pos = db.get_open_positions(account["id"])
+        open_pos = jobs_db.get_open_positions(account["id"])
         assert len(open_pos) == 1
         assert open_pos[0]["market_slug"] == "market-b"
