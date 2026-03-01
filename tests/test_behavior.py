@@ -631,3 +631,121 @@ class TestCheckOrdersEdgeCases:
         # Should be rejected due to insufficient balance
         rejected = [r for r in results if r["action"] == "rejected"]
         assert len(rejected) == 1
+
+
+# ---------------------------------------------------------------------------
+# Scenario 15: End-to-end agent workflow
+# ---------------------------------------------------------------------------
+
+
+class TestEndToEndAgentWorkflow:
+    """Full workflow: search → buy → monitor → sell → resolve → check P&L."""
+
+    def test_full_trading_cycle(self, acct):
+        """Simulate a complete agent session."""
+        # 1. Agent searches markets
+        _mock(acct, book=_book(asks=[(0.65, 5000)], bids=[(0.64, 5000)]))
+
+        # 2. Agent checks balance
+        bal = acct.get_balance()
+        assert bal["cash"] == 10_000.0
+
+        # 3. Agent buys YES shares
+        buy_result = acct.buy("test-market", "yes", 500.0)
+        shares_bought = buy_result.trade.shares
+        assert shares_bought > 0
+
+        # 4. Agent checks portfolio
+        portfolio = acct.get_portfolio()
+        assert len(portfolio) == 1
+        assert portfolio[0]["shares"] == shares_bought
+
+        # 5. Agent checks trade history
+        history = acct.get_history()
+        assert len(history) == 1
+
+        # 6. Agent sells half
+        half = shares_bought / 2
+        sell_result = acct.sell("test-market", "yes", half)
+        assert sell_result.trade.shares > 0
+
+        # 7. Check P&L stats
+        from pm_sim.analytics import compute_stats
+        stats = compute_stats(
+            acct.db.get_trades(limit=1000),
+            acct.get_account(),
+            sum(p["current_value"] for p in acct.get_portfolio()),
+        )
+        assert stats["total_trades"] == 2
+        assert stats["buy_count"] == 1
+        assert stats["sell_count"] == 1
+
+        # 8. Market resolves — YES wins
+        resolved = _market(closed=True, outcome_prices=[1.0, 0.0])
+        acct.api.get_market = MagicMock(return_value=resolved)
+        resolve_results = acct.resolve_market("test-market")
+
+        # 9. Final balance check
+        final = acct.get_balance()
+        assert final["cash"] > 0
+
+    def test_multiple_markets_portfolio(self, acct):
+        """Agent trades two different markets simultaneously."""
+        market1 = _market()
+        market2 = Market(
+            condition_id="0xother",
+            slug="other-market",
+            question="Other?",
+            description="",
+            outcomes=["Yes", "No"],
+            outcome_prices=[0.40, 0.60],
+            tokens=[
+                {"token_id": "tok_yes2", "outcome": "Yes"},
+                {"token_id": "tok_no2", "outcome": "No"},
+            ],
+            active=True, closed=False,
+        )
+
+        # Buy in market 1
+        _mock(acct, market=market1, book=_book(asks=[(0.65, 5000)], bids=[(0.64, 5000)]))
+        acct.buy("test-market", "yes", 200.0)
+
+        # Buy in market 2
+        _mock(acct, market=market2, book=_book(asks=[(0.40, 5000)], bids=[(0.39, 5000)]))
+        acct.buy("other-market", "yes", 200.0)
+
+        portfolio = acct.get_portfolio()
+        assert len(portfolio) == 2
+
+        # History has 2 trades
+        assert len(acct.get_history()) == 2
+
+    def test_limit_order_lifecycle(self, acct):
+        """Agent places limit, checks it, waits, then it fills."""
+        _mock(acct, book=_book(asks=[(0.66, 5000)], bids=[(0.64, 5000)]))
+
+        # 1. Place limit buy at 0.55
+        order = acct.place_limit_order("test-market", "yes", "buy", 100.0, 0.55)
+        assert order["status"] == "pending"
+        order_id = order["id"]
+
+        # 2. Check — not filled yet
+        assert len(acct.get_pending_orders()) == 1
+        results = acct.check_orders()
+        filled = [r for r in results if r["action"] == "filled"]
+        assert len(filled) == 0
+
+        # 3. Price drops
+        acct.api.get_order_book = MagicMock(
+            return_value=_book(asks=[(0.50, 5000)], bids=[(0.49, 5000)])
+        )
+        results = acct.check_orders()
+        filled = [r for r in results if r["action"] == "filled"]
+        assert len(filled) == 1
+
+        # 4. Order no longer pending
+        assert len(acct.get_pending_orders()) == 0
+
+        # 5. Position exists
+        portfolio = acct.get_portfolio()
+        assert len(portfolio) == 1
