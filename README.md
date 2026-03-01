@@ -1,7 +1,7 @@
 # polymarket-paper-trader
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-527%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-597%20passed-brightgreen.svg)]()
 [![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)]()
 [![ClawHub](https://img.shields.io/badge/ClawHub-polymarket--paper--trader-orange.svg)](https://clawhub.com/robotlearning123/polymarket-paper-trader)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -84,6 +84,7 @@ pm-trader stats
 | `export positions [--format csv\|json]` | Export positions |
 | `benchmark run MODULE.FUNC` | Run a trading strategy |
 | `benchmark compare ACCT1 ACCT2` | Compare account performance |
+| `benchmark pk STRAT_A STRAT_B` | Run two strategies head-to-head |
 | `accounts list` | List named accounts |
 | `accounts create NAME` | Create account for A/B testing |
 | `mcp` | Start MCP server (stdio transport) |
@@ -92,7 +93,7 @@ Global flags: `--data-dir PATH`, `--account NAME` (or env vars `PM_TRADER_DATA_D
 
 ## MCP server
 
-Exposes 23 tools via the [Model Context Protocol](https://modelcontextprotocol.io) for direct AI agent integration:
+Exposes 26 tools via the [Model Context Protocol](https://modelcontextprotocol.io) for direct AI agent integration:
 
 ```bash
 pm-trader-mcp  # starts on stdio
@@ -134,6 +135,12 @@ Add to your Claude Code config:
 | `resolve` | Resolve a closed market (winners get $1/share) |
 | `resolve_all` | Resolve all closed markets |
 | `backtest` | Backtest a strategy against historical snapshots |
+| `stats_card` | Shareable stats card (tweet/markdown/plain) |
+| `share_content` | Platform-specific content (twitter/telegram/discord) |
+| `leaderboard_entry` | Generate verifiable leaderboard submission |
+| `leaderboard_card` | Top 10 ranking card from all local accounts |
+| `pk_card` | Head-to-head comparison between two accounts |
+| `pk_battle` | Run two strategies head-to-head, auto-compare |
 
 ## Strategy examples
 
@@ -228,7 +235,7 @@ Returns: Sharpe ratio (sample variance), win rate (cost-averaged), max drawdown,
 ```
 pm_trader/
   cli.py          # Click CLI (30+ commands)
-  mcp_server.py   # FastMCP server (23 tools)
+  mcp_server.py   # FastMCP server (26 tools)
   engine.py       # Core orchestration
   api.py          # Polymarket HTTP client (Gamma + CLOB APIs)
   orderbook.py    # Order book simulation engine
@@ -275,7 +282,7 @@ AI agents can use the `stats_card` MCP tool to generate and share cards automati
 ## Tests
 
 ```bash
-pytest                           # 527 tests, 100% coverage
+pytest                           # 597 tests, 100% coverage
 pytest tests/test_e2e_live.py    # live API integration tests
 ```
 
