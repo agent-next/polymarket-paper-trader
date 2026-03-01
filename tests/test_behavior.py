@@ -22,6 +22,7 @@ from pm_sim.models import (
     OrderBook,
     OrderBookLevel,
     OrderRejectedError,
+    SimError,
 )
 from pm_sim.orderbook import simulate_buy_fill, simulate_sell_fill
 from pm_sim.orders import create_order, get_order, get_pending_orders
@@ -617,18 +618,34 @@ class TestResolveEdgeCases:
         # Both positions resolved in a single market pass
         assert len(results) == 2
 
-    def test_determine_winner_no_clear_winner(self, acct):
-        """When no outcome has price >= 0.99, winner is empty string."""
+    def test_determine_winner_no_clear_winner_raises(self, acct):
+        """When no outcome has price >= 0.99, resolve raises SimError."""
         _mock(acct)
         acct.buy("test-market", "yes", 50.0)
 
         # Market closed but no clear winner (both at 0.50)
         ambiguous = _market(closed=True, outcome_prices=[0.50, 0.50])
         acct.api.get_market = MagicMock(return_value=ambiguous)
+        with pytest.raises(SimError, match="No clear winner"):
+            acct.resolve_market("test-market")
+
+    def test_determine_winner_borderline_prices(self, acct):
+        """Prices just below 0.99 should raise; at 0.99 should resolve."""
+        _mock(acct)
+        acct.buy("test-market", "yes", 50.0)
+
+        # 0.98 is below threshold — should raise
+        borderline = _market(closed=True, outcome_prices=[0.98, 0.02])
+        acct.api.get_market = MagicMock(return_value=borderline)
+        with pytest.raises(SimError, match="No clear winner"):
+            acct.resolve_market("test-market")
+
+        # 0.99 is at threshold — should resolve successfully
+        clear = _market(closed=True, outcome_prices=[0.99, 0.01])
+        acct.api.get_market = MagicMock(return_value=clear)
         results = acct.resolve_market("test-market")
-        # All positions get $0 payout since no winner
-        for r in results:
-            assert r.payout == 0.0
+        assert len(results) == 1
+        assert results[0].payout > 0
 
 
 # ---------------------------------------------------------------------------
@@ -662,6 +679,24 @@ class TestCheckOrdersEdgeCases:
         filled = [r for r in results if r["action"] == "filled"]
         assert len(filled) == 0
         assert len(acct.get_pending_orders()) == 1
+
+    def test_limit_sell_exceeds_position(self, acct):
+        """Limit sell for more shares than held should be rejected."""
+        _mock(acct, book=_book(asks=[(0.50, 5000)], bids=[(0.64, 5000)]))
+        acct.buy("test-market", "yes", 10.0)  # Buy a small amount
+        position_shares = acct.get_portfolio()[0]["shares"]
+
+        # Place limit sell for far more shares than we hold
+        acct.place_limit_order(
+            "test-market", "yes", "sell", position_shares + 100, 0.60,
+        )
+
+        # Book bids are high enough to trigger → but shares exceed position
+        high_book = _book(asks=[(0.70, 5000)], bids=[(0.64, 5000)])
+        acct.api.get_order_book = MagicMock(return_value=high_book)
+        results = acct.check_orders()
+        rejected = [r for r in results if r["action"] == "rejected"]
+        assert len(rejected) == 1
 
     def test_limit_buy_insufficient_balance(self, acct):
         """Limit buy that fills but exceeds cash should be rejected."""
@@ -867,3 +902,117 @@ class TestDefensiveGuards:
                 assert len(acct.get_pending_orders()) == 1
             finally:
                 engine_mod.simulate_buy_fill = original_sim
+
+
+# ---------------------------------------------------------------------------
+# Scenario 18: Round-trip P&L (B1)
+# ---------------------------------------------------------------------------
+
+
+class TestRoundTripPnL:
+    """Buy shares then sell them all — verify end-to-end money math."""
+
+    def test_round_trip_profitable(self, acct):
+        """Buy low, sell high: cash gain equals profit minus spread."""
+        buy_book = _book(asks=[(0.50, 1000)], bids=[(0.49, 500)])
+        _mock(acct, book=buy_book, fee=0)
+        cash_before = acct.get_account().cash
+
+        result = acct.buy("test-market", "yes", 100.0)
+        shares = result.trade.shares
+        cost = cash_before - acct.get_account().cash
+
+        # Sell at higher price
+        sell_book = _book(asks=[(0.80, 500)], bids=[(0.70, 1000)])
+        acct.api.get_order_book = MagicMock(return_value=sell_book)
+        acct.sell("test-market", "yes", shares)
+
+        cash_after = acct.get_account().cash
+        profit = cash_after - cash_before
+        # Bought at 0.50, sold at 0.70 → profit per share ≈ 0.20
+        assert profit > 0
+        assert profit == pytest.approx(shares * 0.70 - cost, abs=0.01)
+
+    def test_round_trip_loss(self, acct):
+        """Buy high, sell low: cash decreases by the loss amount."""
+        buy_book = _book(asks=[(0.70, 1000)], bids=[(0.69, 500)])
+        _mock(acct, book=buy_book, fee=0)
+        cash_before = acct.get_account().cash
+
+        result = acct.buy("test-market", "yes", 100.0)
+        shares = result.trade.shares
+
+        # Sell at lower price
+        sell_book = _book(asks=[(0.50, 500)], bids=[(0.40, 1000)])
+        acct.api.get_order_book = MagicMock(return_value=sell_book)
+        acct.sell("test-market", "yes", shares)
+
+        cash_after = acct.get_account().cash
+        assert cash_after < cash_before  # Lost money
+
+
+# ---------------------------------------------------------------------------
+# Scenario 19: Sell exact shares → position at 0.0 (B2)
+# ---------------------------------------------------------------------------
+
+
+class TestSellExactShares:
+    """Selling all shares should leave position at 0.0 shares."""
+
+    def test_sell_all_position_zeroed(self, acct):
+        """After selling all shares, position.shares == 0.0."""
+        _mock(acct, book=_book(asks=[(0.50, 1000)], bids=[(0.49, 1000)]), fee=0)
+        result = acct.buy("test-market", "yes", 100.0)
+        shares = result.trade.shares
+        assert shares > 0
+
+        acct.sell("test-market", "yes", shares)
+        position = acct.db.get_position("0xtest", "yes")
+        assert position.shares == 0.0
+        assert position.total_cost == pytest.approx(0.0, abs=0.01)
+
+        # Portfolio should be empty (no open positions with shares > 0)
+        portfolio = acct.get_portfolio()
+        assert len(portfolio) == 0 or portfolio[0]["shares"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Scenario 20: GTD expiry between place and check (B3)
+# ---------------------------------------------------------------------------
+
+
+class TestGTDExpiryTiming:
+    """GTD orders placed with past expiry should expire on next check_orders."""
+
+    def test_gtd_expires_between_place_and_check(self, acct):
+        """Order placed with future expiry that passes before check → expired."""
+        _mock(acct, book=_book(asks=[(0.66, 5000)], bids=[(0.64, 5000)]))
+
+        # Place GTD order with already-past expiry (simulates time passing)
+        acct.place_limit_order(
+            "test-market", "yes", "buy", 100.0, 0.55,
+            order_type="gtd", expires_at="2024-06-01T00:00:00Z",
+        )
+        assert len(acct.get_pending_orders()) == 1
+
+        # On check, order should expire (not fill, not stay pending)
+        results = acct.check_orders()
+        expired = [r for r in results if r["action"] == "expired"]
+        assert len(expired) == 1
+        assert len(acct.get_pending_orders()) == 0
+
+        # Cash should be unchanged — no fill happened
+        assert acct.get_account().cash == 10_000.0
+
+    def test_gtd_not_expired_stays_pending(self, acct):
+        """GTD order with far-future expiry stays pending."""
+        _mock(acct, book=_book(asks=[(0.66, 5000)], bids=[(0.64, 5000)]))
+        acct.place_limit_order(
+            "test-market", "yes", "buy", 100.0, 0.55,
+            order_type="gtd", expires_at="2099-12-31T23:59:59Z",
+        )
+
+        results = acct.check_orders()
+        expired = [r for r in results if r["action"] == "expired"]
+        assert len(expired) == 0
+        assert len(acct.get_pending_orders()) == 1

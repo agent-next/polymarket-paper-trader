@@ -20,6 +20,7 @@ from pm_sim.models import (
     OrderRejectedError,
     Position,
     ResolveResult,
+    SimError,
     Trade,
     TradeResult,
 )
@@ -556,6 +557,11 @@ class Engine:
         position = self.db.get_position(market.condition_id, order.outcome)
         if position is None or position.shares <= 0:
             raise NoPositionError(market.slug, order.outcome)
+        if fill.total_shares > position.shares:
+            raise OrderRejectedError(
+                f"Cannot sell {fill.total_shares:.4f} shares, "
+                f"only hold {position.shares:.4f}"
+            )
         net_proceeds = fill.total_cost - fill.fee
         self.db.update_cash(account.cash + net_proceeds)
         self.db.insert_trade(
@@ -686,12 +692,20 @@ class Engine:
 # ---------------------------------------------------------------------------
 
 def _determine_winner(market) -> str:
-    """Determine the winning outcome from a resolved market's prices."""
+    """Determine the winning outcome from a resolved market's prices.
+
+    Raises SimError if no outcome has price >= 0.99, preventing silent
+    zero-payout on ambiguous or partially-resolved markets.
+    """
     for i, outcome in enumerate(market.outcomes):
         price = market.outcome_prices[i] if i < len(market.outcome_prices) else 0.0
         if price >= 0.99:
             return outcome.lower()
-    return ""
+    prices = dict(zip(market.outcomes, market.outcome_prices))
+    raise SimError(
+        f"No clear winner for {market.slug}: outcome prices {prices} "
+        f"(none >= 0.99)"
+    )
 
 
 def _order_to_dict(order) -> dict:
