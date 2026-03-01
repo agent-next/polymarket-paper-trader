@@ -14,7 +14,22 @@ async def lifespan(app: FastAPI):
     db = DB(":memory:")  # Will be configured via env in production
     db.init_schema()
     app.state.db = db
+
+    # Polymarket client: set in production startup; tests override with mock
+    if not hasattr(app.state, "polymarket"):
+        try:
+            from server.adapters.polymarket import create_polymarket_client
+            app.state.polymarket = create_polymarket_client()
+        except Exception:
+            app.state.polymarket = None
+
     yield
+
+    if hasattr(app.state, "polymarket") and app.state.polymarket is not None:
+        try:
+            app.state.polymarket.close()
+        except Exception:
+            pass
     db.close()
 
 
@@ -29,6 +44,8 @@ def get_db(request: Request) -> DB:
 # Import and include routers after app is created
 from server.routes.auth import router as auth_router  # noqa: E402
 from server.routes.accounts import router as accounts_router  # noqa: E402
+from server.routes.trading import router as trading_router  # noqa: E402
 
 app.include_router(auth_router)
 app.include_router(accounts_router)
+app.include_router(trading_router)
