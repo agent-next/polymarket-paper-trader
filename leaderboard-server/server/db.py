@@ -58,6 +58,11 @@ class DB:
         row = cur.fetchone()
         return dict(row) if row else None
 
+    def get_user_by_id(self, user_id: int) -> dict | None:
+        cur = self._conn.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
     # -- Accounts --
 
     def create_account(self, user_id: int, name: str) -> dict:
