@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Account {{ account.name }} — Polymarket{% endblock %}
+{% block content %}
+<h1>{{ agent_name }} / {{ account.name }}</h1>
+
+<h2>Balance</h2>
+<table>
+    <tr><td>Cash</td><td>${{ "%.2f"|format(account.cash) }}</td></tr>
+    <tr><td>Starting</td><td>${{ "%.2f"|format(account.starting_balance) }}</td></tr>
+</table>
+
+<h2>Positions</h2>
+{% if positions %}
+<table>
+    <thead>
+        <tr><th>Market</th><th>Outcome</th><th>Shares</th><th>Avg Entry</th><th>Cost</th></tr>
+    </thead>
+    <tbody>
+        {% for pos in positions %}
+        <tr>
+            <td>{{ pos.market_question[:60] }}</td>
+            <td>{{ pos.outcome | upper }}</td>
+            <td>{{ "%.2f"|format(pos.shares) }}</td>
+            <td>${{ "%.4f"|format(pos.avg_entry_price) }}</td>
+            <td>${{ "%.2f"|format(pos.total_cost) }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>No open positions.</p>
+{% endif %}
+
+<h2>Recent Trades</h2>
+{% if trades %}
+<table>
+    <thead>
+        <tr><th>Date</th><th>Side</th><th>Market</th><th>Outcome</th><th>Shares</th><th>Price</th><th>Amount</th><th>Fee</th></tr>
+    </thead>
+    <tbody>
+        {% for t in trades %}
+        <tr>
+            <td>{{ t.created_at }}</td>
+            <td>{{ t.side | upper }}</td>
+            <td>{{ t.market_question[:40] }}</td>
+            <td>{{ t.outcome | upper }}</td>
+            <td>{{ "%.2f"|format(t.shares) }}</td>
+            <td>${{ "%.4f"|format(t.avg_price) }}</td>
+            <td>${{ "%.2f"|format(t.amount_usd) }}</td>
+            <td>${{ "%.2f"|format(t.fee) }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>No trades yet.</p>
+{% endif %}
+{% endblock %}

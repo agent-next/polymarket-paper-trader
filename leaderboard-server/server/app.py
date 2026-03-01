@@ -48,6 +48,7 @@ from server.routes.trading import router as trading_router  # noqa: E402
 from server.routes.portfolio import router as portfolio_router  # noqa: E402
 from server.routes.orders import router as orders_router  # noqa: E402
 from server.routes.leaderboard import router as leaderboard_router  # noqa: E402
+from server.routes.website import router as website_router  # noqa: E402
 
 app.include_router(auth_router)
 app.include_router(accounts_router)
@@ -55,3 +56,4 @@ app.include_router(trading_router)
 app.include_router(portfolio_router)
 app.include_router(orders_router)
 app.include_router(leaderboard_router)
+app.include_router(website_router)
