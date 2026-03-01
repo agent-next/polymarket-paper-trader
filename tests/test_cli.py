@@ -255,3 +255,295 @@ class TestJsonEnvelope:
         assert data["ok"] is False
         assert "error" in data
         assert "code" in data
+
+
+# ---------------------------------------------------------------------------
+# Market commands (with mocked API)
+# ---------------------------------------------------------------------------
+
+class TestMarketCommands:
+    @patch("pm_sim.engine.PolymarketClient")
+    def test_markets_list(self, MockClient, runner, data_dir):
+        _invoke(runner, ["init"], data_dir)
+        mock_instance = MockClient.return_value
+        mock_instance.list_markets.return_value = [SAMPLE_MARKET]
+        result = _invoke(runner, ["markets", "list"], data_dir)
+        data = _parse(result)
+        assert data["ok"] is True
+        assert len(data["data"]) == 1
+
+    @patch("pm_sim.engine.PolymarketClient")
+    def test_markets_list_by_liquidity(self, MockClient, runner, data_dir):
+        _invoke(runner, ["init"], data_dir)
+        mock_instance = MockClient.return_value
+        mock_instance.list_markets.return_value = [SAMPLE_MARKET]
+        result = _invoke(runner, ["markets", "list", "--sort", "liquidity"], data_dir)
+        data = _parse(result)
+        assert data["ok"] is True
+
+    @patch("pm_sim.engine.PolymarketClient")
+    def test_markets_search(self, MockClient, runner, data_dir):
+        _invoke(runner, ["init"], data_dir)
+        mock_instance = MockClient.return_value
+        mock_instance.search_markets.return_value = [SAMPLE_MARKET]
+        result = _invoke(runner, ["markets", "search", "bitcoin"], data_dir)
+        data = _parse(result)
+        assert data["ok"] is True
+        assert len(data["data"]) == 1
+
+    @patch("pm_sim.engine.PolymarketClient")
+    def test_markets_get(self, MockClient, runner, data_dir):
+        _invoke(runner, ["init"], data_dir)
+        mock_instance = MockClient.return_value
+        mock_instance.get_market.return_value = SAMPLE_MARKET
+        result = _invoke(runner, ["markets", "get", "will-bitcoin-hit-100k"], data_dir)
+        data = _parse(result)
+        assert data["ok"] is True
+        assert data["data"]["slug"] == "will-bitcoin-hit-100k"
+
+
+# ---------------------------------------------------------------------------
+# Price & book commands
+# ---------------------------------------------------------------------------
+
+class TestPriceCommands:
+    @patch("pm_sim.engine.PolymarketClient")
+    def test_price(self, MockClient, runner, data_dir):
+        _invoke(runner, ["init"], data_dir)
+        mock_instance = MockClient.return_value
+        mock_instance.get_market.return_value = SAMPLE_MARKET
+        mock_instance.get_midpoint.return_value = 0.65
+        result = _invoke(runner, ["price", "will-bitcoin-hit-100k"], data_dir)
+        data = _parse(result)
+        assert data["ok"] is True
+        assert data["data"]["yes_price"] == 0.65
+
+    @patch("pm_sim.engine.PolymarketClient")
+    def test_book(self, MockClient, runner, data_dir):
+        _invoke(runner, ["init"], data_dir)
+        mock_instance = MockClient.return_value
+        mock_instance.get_market.return_value = SAMPLE_MARKET
+        mock_instance.get_order_book.return_value = SAMPLE_BOOK
+        result = _invoke(runner, ["book", "will-bitcoin-hit-100k"], data_dir)
+        data = _parse(result)
+        assert data["ok"] is True
+        assert len(data["data"]["bids"]) == 2
+        assert len(data["data"]["asks"]) == 2
+
+
+# ---------------------------------------------------------------------------
+# Stats command
+# ---------------------------------------------------------------------------
+
+class TestStatsCommand:
+    @patch("pm_sim.engine.PolymarketClient")
+    def test_stats_empty(self, MockClient, runner, data_dir):
+        _invoke(runner, ["init"], data_dir)
+        result = _invoke(runner, ["stats"], data_dir)
+        data = _parse(result)
+        assert data["ok"] is True
+        assert data["data"]["total_trades"] == 0
+
+    def test_stats_not_initialized(self, runner, data_dir):
+        result = _invoke(runner, ["stats"], data_dir)
+        data = _parse(result)
+        assert data["ok"] is False
+
+
+# ---------------------------------------------------------------------------
+# Export commands
+# ---------------------------------------------------------------------------
+
+class TestExportCommands:
+    @patch("pm_sim.engine.PolymarketClient")
+    def test_export_trades_csv(self, MockClient, runner, data_dir):
+        _invoke(runner, ["init"], data_dir)
+        result = _invoke(runner, ["export", "trades"], data_dir)
+        # CSV output (empty — just headers)
+        assert result.exit_code == 0
+
+    @patch("pm_sim.engine.PolymarketClient")
+    def test_export_trades_json(self, MockClient, runner, data_dir):
+        _invoke(runner, ["init"], data_dir)
+        result = _invoke(runner, ["export", "trades", "--format", "json"], data_dir)
+        assert result.exit_code == 0
+
+    @patch("pm_sim.engine.PolymarketClient")
+    def test_export_trades_to_file(self, MockClient, runner, data_dir):
+        _invoke(runner, ["init"], data_dir)
+        out = data_dir / "trades.csv"
+        result = _invoke(runner, ["export", "trades", "--output", str(out)], data_dir)
+        data = _parse(result)
+        assert data["ok"] is True
+        assert out.exists()
+
+    @patch("pm_sim.engine.PolymarketClient")
+    def test_export_positions_csv(self, MockClient, runner, data_dir):
+        _invoke(runner, ["init"], data_dir)
+        mock_instance = MockClient.return_value
+        mock_instance.get_midpoint.return_value = 0.65
+        result = _invoke(runner, ["export", "positions"], data_dir)
+        assert result.exit_code == 0
+
+    @patch("pm_sim.engine.PolymarketClient")
+    def test_export_positions_json(self, MockClient, runner, data_dir):
+        _invoke(runner, ["init"], data_dir)
+        mock_instance = MockClient.return_value
+        mock_instance.get_midpoint.return_value = 0.65
+        result = _invoke(runner, ["export", "positions", "--format", "json"], data_dir)
+        assert result.exit_code == 0
+
+    @patch("pm_sim.engine.PolymarketClient")
+    def test_export_positions_to_file(self, MockClient, runner, data_dir):
+        _invoke(runner, ["init"], data_dir)
+        mock_instance = MockClient.return_value
+        mock_instance.get_midpoint.return_value = 0.65
+        out = data_dir / "positions.json"
+        result = _invoke(
+            runner,
+            ["export", "positions", "--format", "json", "--output", str(out)],
+            data_dir,
+        )
+        data = _parse(result)
+        assert data["ok"] is True
+        assert out.exists()
+
+
+# ---------------------------------------------------------------------------
+# Accounts commands
+# ---------------------------------------------------------------------------
+
+class TestAccountsCommands:
+    def test_accounts_list_empty(self, runner, data_dir):
+        result = _invoke(runner, ["accounts", "list"], data_dir)
+        data = _parse(result)
+        assert data["ok"] is True
+        assert data["data"] == []
+
+    def test_accounts_create(self, runner, data_dir):
+        result = _invoke(runner, ["accounts", "create", "alice"], data_dir)
+        data = _parse(result)
+        assert data["ok"] is True
+        assert data["data"]["name"] == "alice"
+
+    def test_accounts_create_duplicate(self, runner, data_dir):
+        _invoke(runner, ["accounts", "create", "alice"], data_dir)
+        result = _invoke(runner, ["accounts", "create", "alice"], data_dir)
+        data = _parse(result)
+        assert data["ok"] is False
+        assert data["code"] == "ACCOUNT_EXISTS"
+
+    def test_accounts_list_after_create(self, runner, data_dir):
+        _invoke(runner, ["accounts", "create", "alice", "--balance", "5000"], data_dir)
+        result = _invoke(runner, ["accounts", "list"], data_dir)
+        data = _parse(result)
+        assert data["ok"] is True
+        assert len(data["data"]) == 1
+        assert data["data"][0]["name"] == "alice"
+
+    def test_accounts_delete(self, runner, data_dir):
+        _invoke(runner, ["accounts", "create", "alice"], data_dir)
+        result = _invoke(runner, ["accounts", "delete", "alice", "--confirm"], data_dir)
+        data = _parse(result)
+        assert data["ok"] is True
+        assert data["data"]["deleted"] == "alice"
+
+    def test_accounts_delete_not_found(self, runner, data_dir):
+        result = _invoke(runner, ["accounts", "delete", "ghost", "--confirm"], data_dir)
+        data = _parse(result)
+        assert data["ok"] is False
+        assert data["code"] == "ACCOUNT_NOT_FOUND"
+
+
+# ---------------------------------------------------------------------------
+# Order commands
+# ---------------------------------------------------------------------------
+
+class TestOrderCommands:
+    @patch("pm_sim.engine.PolymarketClient")
+    def test_orders_place_gtc(self, MockClient, runner, data_dir):
+        _invoke(runner, ["init"], data_dir)
+        mock_instance = MockClient.return_value
+        mock_instance.get_market.return_value = SAMPLE_MARKET
+        result = _invoke(
+            runner,
+            ["orders", "place", "will-bitcoin-hit-100k", "yes", "buy", "100", "0.55"],
+            data_dir,
+        )
+        data = _parse(result)
+        assert data["ok"] is True
+        assert data["data"]["status"] == "pending"
+
+    @patch("pm_sim.engine.PolymarketClient")
+    def test_orders_list(self, MockClient, runner, data_dir):
+        _invoke(runner, ["init"], data_dir)
+        result = _invoke(runner, ["orders", "list"], data_dir)
+        data = _parse(result)
+        assert data["ok"] is True
+
+    @patch("pm_sim.engine.PolymarketClient")
+    def test_orders_cancel_not_found(self, MockClient, runner, data_dir):
+        _invoke(runner, ["init"], data_dir)
+        result = _invoke(runner, ["orders", "cancel", "999"], data_dir)
+        data = _parse(result)
+        assert data["ok"] is False
+
+    @patch("pm_sim.engine.PolymarketClient")
+    def test_orders_check(self, MockClient, runner, data_dir):
+        _invoke(runner, ["init"], data_dir)
+        result = _invoke(runner, ["orders", "check"], data_dir)
+        data = _parse(result)
+        assert data["ok"] is True
+
+
+# ---------------------------------------------------------------------------
+# Watch command
+# ---------------------------------------------------------------------------
+
+class TestWatchCommand:
+    @patch("pm_sim.engine.PolymarketClient")
+    def test_watch(self, MockClient, runner, data_dir):
+        _invoke(runner, ["init"], data_dir)
+        mock_instance = MockClient.return_value
+        mock_instance.get_market.return_value = SAMPLE_MARKET
+        mock_instance.get_midpoint.return_value = 0.65
+        result = _invoke(runner, ["watch", "will-bitcoin-hit-100k"], data_dir)
+        data = _parse(result)
+        assert data["ok"] is True
+        assert len(data["data"]) >= 1
+
+    def test_watch_not_initialized(self, runner, data_dir):
+        result = _invoke(runner, ["watch", "btc"], data_dir)
+        data = _parse(result)
+        assert data["ok"] is False
+
+    @patch("pm_sim.engine.PolymarketClient")
+    def test_watch_invalid_outcome(self, MockClient, runner, data_dir):
+        _invoke(runner, ["init"], data_dir)
+        mock_instance = MockClient.return_value
+        mock_instance.get_market.return_value = SAMPLE_MARKET
+        result = _invoke(
+            runner,
+            ["watch", "will-bitcoin-hit-100k", "--outcome", "invalid"],
+            data_dir,
+        )
+        data = _parse(result)
+        assert data["ok"] is False
+        assert data["code"] == "INVALID_OUTCOME"
+
+
+# ---------------------------------------------------------------------------
+# Account flag
+# ---------------------------------------------------------------------------
+
+class TestAccountFlag:
+    def test_account_flag(self, runner, data_dir):
+        """--account creates separate data directories."""
+        result = _invoke(
+            runner,
+            ["--account", "test-acct", "init", "--balance", "7777"],
+            data_dir,
+        )
+        data = _parse(result)
+        assert data["ok"] is True
+        assert data["data"]["cash"] == 7777.0
