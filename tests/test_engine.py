@@ -515,3 +515,20 @@ class TestValidation:
         _mock_api(initialized_engine)
         result = initialized_engine.buy("btc", " yes ", 50.0)
         assert result.trade.outcome == "yes"
+
+
+class TestLimitOrderValidation:
+    def test_gtd_without_expiry_rejected(self, initialized_engine: Engine):
+        _mock_api(initialized_engine)
+        with pytest.raises(OrderRejectedError, match="expires_at"):
+            initialized_engine.place_limit_order(
+                "btc", "yes", "buy", 100.0, 0.50,
+                order_type="gtd", expires_at=None,
+            )
+
+    def test_buy_amount_below_minimum_rejected(self, initialized_engine: Engine):
+        _mock_api(initialized_engine)
+        with pytest.raises(OrderRejectedError, match="Minimum"):
+            initialized_engine.place_limit_order(
+                "btc", "yes", "buy", 0.50, 0.55,
+            )

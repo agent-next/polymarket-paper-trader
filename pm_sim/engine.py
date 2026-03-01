@@ -399,6 +399,10 @@ class Engine:
             raise OrderRejectedError(f"Invalid side: {side!r}")
         if not (0 < limit_price < 1):
             raise OrderRejectedError(f"Limit price must be between 0 and 1, got {limit_price}")
+        if order_type == "gtd" and not expires_at:
+            raise OrderRejectedError("GTD orders require expires_at timestamp")
+        if amount < 1.0 and side == "buy":
+            raise OrderRejectedError(f"Minimum buy order size is $1.00, got ${amount:.2f}")
 
         market = self.api.get_market(slug_or_id)
         order = create_order(
