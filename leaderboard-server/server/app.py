@@ -45,7 +45,11 @@ def get_db(request: Request) -> DB:
 from server.routes.auth import router as auth_router  # noqa: E402
 from server.routes.accounts import router as accounts_router  # noqa: E402
 from server.routes.trading import router as trading_router  # noqa: E402
+from server.routes.portfolio import router as portfolio_router  # noqa: E402
+from server.routes.orders import router as orders_router  # noqa: E402
 
 app.include_router(auth_router)
 app.include_router(accounts_router)
 app.include_router(trading_router)
+app.include_router(portfolio_router)
+app.include_router(orders_router)
