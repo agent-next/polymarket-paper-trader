@@ -531,14 +531,15 @@ class TestCheckOrdersRejection:
         # Bypass engine validation by inserting directly into orders table
         from pm_sim.orders import create_order, get_pending_orders
 
+        # Sell order with no position — permanently unfillable (NoPositionError)
         order = create_order(
             initialized_engine.db.conn,
-            market_slug="btc",
-            market_condition_id="0x123",
+            market_slug="will-bitcoin-hit-100k",
+            market_condition_id="0xabc123",
             outcome="yes",
-            side="buy",
-            amount=0.10,  # Below $1 minimum — will always fail
-            limit_price=0.99,  # High limit so should_fill returns True
+            side="sell",
+            amount=10.0,
+            limit_price=0.50,  # Low limit so best_bid (0.64) >= limit
         )
         assert len(get_pending_orders(initialized_engine.db.conn)) == 1
 
@@ -549,7 +550,7 @@ class TestCheckOrdersRejection:
         rejected = [r for r in results if r["action"] == "rejected"]
         assert len(rejected) == 1
         assert rejected[0]["order"]["status"] == "rejected"
-        assert "Minimum" in rejected[0]["reason"]
+        assert "No position" in rejected[0]["reason"]
 
         # No pending orders left
         assert len(get_pending_orders(initialized_engine.db.conn)) == 0
@@ -570,3 +571,46 @@ class TestLimitOrderValidation:
             initialized_engine.place_limit_order(
                 "btc", "yes", "buy", 0.50, 0.55,
             )
+
+
+class TestLimitOrderPriceEnforcement:
+    """Bug #1: Limit orders must NOT fill at prices beyond the limit."""
+
+    def test_buy_limit_skips_asks_above_limit(self, initialized_engine: Engine):
+        """A buy limit at 0.55 must NOT fill when all asks are above 0.55."""
+        _mock_api(initialized_engine)
+        from pm_sim.orders import create_order, get_pending_orders
+
+        create_order(
+            initialized_engine.db.conn,
+            market_slug="will-bitcoin-hit-100k",
+            market_condition_id="0xabc123",
+            outcome="yes",
+            side="buy",
+            amount=100.0,
+            limit_price=0.55,  # Below best ask (0.66)
+        )
+        results = initialized_engine.check_orders()
+        # Should NOT fill — all asks are above 0.55
+        filled = [r for r in results if r["action"] == "filled"]
+        assert len(filled) == 0
+        assert len(get_pending_orders(initialized_engine.db.conn)) == 1
+
+    def test_buy_limit_fills_at_or_below_limit(self, initialized_engine: Engine):
+        """A buy limit at 0.70 fills at asks 0.66, 0.67, 0.68 (all <= 0.70)."""
+        _mock_api(initialized_engine)
+        from pm_sim.orders import create_order, get_pending_orders
+
+        create_order(
+            initialized_engine.db.conn,
+            market_slug="will-bitcoin-hit-100k",
+            market_condition_id="0xabc123",
+            outcome="yes",
+            side="buy",
+            amount=100.0,
+            limit_price=0.70,  # Above best ask (0.66)
+        )
+        results = initialized_engine.check_orders()
+        filled = [r for r in results if r["action"] == "filled"]
+        assert len(filled) == 1
+        assert len(get_pending_orders(initialized_engine.db.conn)) == 0

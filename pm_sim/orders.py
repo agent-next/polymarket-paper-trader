@@ -153,16 +153,16 @@ def expire_orders(conn: sqlite3.Connection) -> list[LimitOrder]:
     return [_row_to_order(r) for r in rows]
 
 
-def should_fill(order: LimitOrder, midpoint: float) -> bool:
-    """Check if a limit order should be filled at the given midpoint.
+def should_fill(order: LimitOrder, best_price: float) -> bool:
+    """Check if a limit order should be filled at the given best price.
 
-    Buy limit: fill when midpoint <= limit_price (buy at or below target)
-    Sell limit: fill when midpoint >= limit_price (sell at or above target)
+    Buy limit: fill when best_ask <= limit_price (can buy at or below target)
+    Sell limit: fill when best_bid >= limit_price (can sell at or above target)
     """
     if order.side == "buy":
-        return midpoint <= order.limit_price
+        return best_price <= order.limit_price
     else:  # sell
-        return midpoint >= order.limit_price
+        return best_price >= order.limit_price
 
 
 # ---------------------------------------------------------------------------

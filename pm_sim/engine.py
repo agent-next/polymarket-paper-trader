@@ -440,6 +440,10 @@ class Engine:
 
         This is the agent-callable trigger. Call it periodically.
         Returns list of filled/expired orders.
+
+        Limit price enforcement: buy orders only consume ask levels at or
+        below the limit price; sell orders only consume bid levels at or
+        above the limit price.  This guarantees no "price-through" fills.
         """
         self._require_account()
         results = []
@@ -449,28 +453,48 @@ class Engine:
         for o in expired:
             results.append({"order": _order_to_dict(o), "action": "expired"})
 
-        # Check pending orders against live midpoints
+        # Check pending orders against live order books
         pending = get_pending_orders(self.db.conn)
         for order in pending:
             try:
                 market = self.api.get_market(order.market_slug)
                 token_id = market.get_token_id(order.outcome)
-                mid = self.api.get_midpoint(token_id)
+                book = self.api.get_order_book(token_id)
+                fee_rate_bps = self.api.get_fee_rate(token_id)
 
-                if should_fill(order, mid):
-                    if order.side == "buy":
-                        self.buy(
-                            order.market_slug, order.outcome, order.amount
-                        )
-                    else:
-                        self.sell(
-                            order.market_slug, order.outcome, order.amount
-                        )
-                    updated = mark_filled(self.db.conn, order.id)
-                    results.append({
-                        "order": _order_to_dict(updated),
-                        "action": "filled",
-                    })
+                if order.side == "buy":
+                    # Only fill at ask levels <= limit_price
+                    best_ask = min((l.price for l in book.asks), default=None)
+                    if best_ask is None or best_ask > order.limit_price:
+                        continue
+                    fill = simulate_buy_fill(
+                        book, order.amount, fee_rate_bps, "fak",
+                        max_price=order.limit_price,
+                    )
+                else:
+                    # Only fill at bid levels >= limit_price
+                    best_bid = max((l.price for l in book.bids), default=None)
+                    if best_bid is None or best_bid < order.limit_price:
+                        continue
+                    fill = simulate_sell_fill(
+                        book, order.amount, fee_rate_bps, "fak",
+                        min_price=order.limit_price,
+                    )
+
+                if not fill.filled and not fill.is_partial:
+                    continue  # No fillable liquidity within limit
+
+                # Execute the fill through normal trade recording
+                if order.side == "buy":
+                    self._execute_limit_buy(market, order, fill, fee_rate_bps)
+                else:
+                    self._execute_limit_sell(market, order, fill, fee_rate_bps)
+
+                updated = mark_filled(self.db.conn, order.id)
+                results.append({
+                    "order": _order_to_dict(updated),
+                    "action": "filled",
+                })
             except _PERMANENT_ORDER_ERRORS as e:
                 # Permanent failure — mark rejected so it's not retried
                 updated = reject_order(self.db.conn, order.id)
@@ -483,6 +507,70 @@ class Engine:
                 continue  # Transient errors (network, API) — retry next check
 
         return results
+
+    def _execute_limit_buy(self, market, order, fill, fee_rate_bps: int) -> None:
+        """Record a limit buy fill using a pre-computed FillResult."""
+        account = self._require_account()
+        total_outflow = fill.total_cost + fill.fee
+        if total_outflow > account.cash:
+            raise InsufficientBalanceError(
+                required=total_outflow, available=account.cash,
+            )
+        self.db.update_cash(account.cash - total_outflow)
+        self.db.insert_trade(
+            market_condition_id=market.condition_id,
+            market_slug=market.slug,
+            market_question=market.question,
+            outcome=order.outcome,
+            side="buy",
+            order_type="fak",
+            avg_price=fill.avg_price,
+            amount_usd=fill.total_cost,
+            shares=fill.total_shares,
+            fee_rate_bps=fee_rate_bps,
+            fee=fill.fee,
+            slippage=fill.slippage_bps,
+            levels_filled=fill.levels_filled,
+            is_partial=fill.is_partial,
+        )
+        self._update_position_after_buy(
+            market=market,
+            outcome=order.outcome,
+            new_shares=fill.total_shares,
+            cost=fill.total_cost + fill.fee,
+            avg_fill_price=fill.avg_price,
+        )
+
+    def _execute_limit_sell(self, market, order, fill, fee_rate_bps: int) -> None:
+        """Record a limit sell fill using a pre-computed FillResult."""
+        account = self._require_account()
+        position = self.db.get_position(market.condition_id, order.outcome)
+        if position is None or position.shares <= 0:
+            raise NoPositionError(market.slug, order.outcome)
+        net_proceeds = fill.total_cost - fill.fee
+        self.db.update_cash(account.cash + net_proceeds)
+        self.db.insert_trade(
+            market_condition_id=market.condition_id,
+            market_slug=market.slug,
+            market_question=market.question,
+            outcome=order.outcome,
+            side="sell",
+            order_type="fak",
+            avg_price=fill.avg_price,
+            amount_usd=fill.total_cost,
+            shares=fill.total_shares,
+            fee_rate_bps=fee_rate_bps,
+            fee=fill.fee,
+            slippage=fill.slippage_bps,
+            levels_filled=fill.levels_filled,
+            is_partial=fill.is_partial,
+        )
+        self._update_position_after_sell(
+            market=market,
+            outcome=order.outcome,
+            sold_shares=fill.total_shares,
+            proceeds=net_proceeds,
+        )
 
     def watch_prices(
         self, slugs_or_ids: list[str], outcomes: list[str] | None = None,

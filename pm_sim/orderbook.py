@@ -74,6 +74,7 @@ def simulate_buy_fill(
     amount_usd: float,
     fee_rate_bps: int,
     order_type: str = "fok",
+    max_price: float | None = None,
 ) -> FillResult:
     """Simulate buying shares by spending *amount_usd*.
 
@@ -91,6 +92,8 @@ def simulate_buy_fill(
     order_type:
         ``"fok"`` (fill-or-kill: all or nothing) or
         ``"fak"`` (fill-and-kill: partial fills allowed).
+    max_price:
+        If set, skip ask levels priced above this limit.
 
     Returns
     -------
@@ -109,6 +112,10 @@ def simulate_buy_fill(
 
     for level_idx, level in enumerate(sorted_asks):
         if remaining_usd <= 0:
+            break
+
+        # Limit order: skip levels above max_price
+        if max_price is not None and level.price > max_price:
             break
 
         max_cost_at_level = level.size * level.price
@@ -176,6 +183,7 @@ def simulate_sell_fill(
     shares: float,
     fee_rate_bps: int,
     order_type: str = "fok",
+    min_price: float | None = None,
 ) -> FillResult:
     """Simulate selling *shares* into the order book.
 
@@ -192,6 +200,8 @@ def simulate_sell_fill(
         Market fee rate in basis points.
     order_type:
         ``"fok"`` (fill-or-kill) or ``"fak"`` (fill-and-kill).
+    min_price:
+        If set, skip bid levels priced below this limit.
 
     Returns
     -------
@@ -210,6 +220,10 @@ def simulate_sell_fill(
 
     for level_idx, level in enumerate(sorted_bids):
         if remaining_shares <= 0:
+            break
+
+        # Limit order: skip levels below min_price
+        if min_price is not None and level.price < min_price:
             break
 
         if level.size <= remaining_shares:
