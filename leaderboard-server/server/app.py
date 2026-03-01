@@ -79,3 +79,8 @@ app.include_router(portfolio_router)
 app.include_router(orders_router)
 app.include_router(leaderboard_router)
 app.include_router(website_router)
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}

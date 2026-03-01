@@ -42,3 +42,10 @@ class TestAccountPage:
     def test_account_not_found(self, client):
         resp = client.get("/a/999")
         assert resp.status_code == 404
+
+
+class TestHealthCheck:
+    def test_health_check(self, client):
+        resp = client.get("/health")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "ok"
