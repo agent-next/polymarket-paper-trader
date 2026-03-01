@@ -547,3 +547,101 @@ class TestAccountFlag:
         data = _parse(result)
         assert data["ok"] is True
         assert data["data"]["cash"] == 7777.0
+
+
+# ---------------------------------------------------------------------------
+# Benchmark commands
+# ---------------------------------------------------------------------------
+
+class TestBenchmarkCommands:
+    def test_benchmark_run_bad_strategy(self, runner, data_dir):
+        result = _invoke(runner, ["benchmark", "run", "nonexistent.strategy"], data_dir)
+        data = _parse(result)
+        assert data["ok"] is False
+        assert data["code"] == "BENCHMARK_ERROR"
+
+    def test_benchmark_compare_missing_account(self, runner, data_dir):
+        result = _invoke(runner, ["benchmark", "compare", "ghost"], data_dir)
+        data = _parse(result)
+        assert data["ok"] is False
+        assert data["code"] == "ACCOUNT_NOT_FOUND"
+
+    def test_benchmark_compare_success(self, runner, data_dir):
+        # Create two accounts
+        _invoke(runner, ["accounts", "create", "a1"], data_dir)
+        _invoke(runner, ["accounts", "create", "a2", "--balance", "5000"], data_dir)
+        result = _invoke(runner, ["benchmark", "compare", "a1", "a2"], data_dir)
+        data = _parse(result)
+        assert data["ok"] is True
+
+
+# ---------------------------------------------------------------------------
+# Error path coverage for trading commands
+# ---------------------------------------------------------------------------
+
+class TestTradingErrorPaths:
+    @patch("pm_sim.engine.PolymarketClient")
+    def test_sell_success(self, MockClient, runner, data_dir):
+        """Full sell cycle: buy then sell."""
+        _invoke(runner, ["init"], data_dir)
+        mock_instance = MockClient.return_value
+        mock_instance.get_market.return_value = SAMPLE_MARKET
+        mock_instance.get_order_book.return_value = SAMPLE_BOOK
+        mock_instance.get_fee_rate.return_value = 0
+        mock_instance.get_midpoint.return_value = 0.65
+
+        _invoke(runner, ["buy", "will-bitcoin-hit-100k", "yes", "100"], data_dir)
+        result = _invoke(runner, ["sell", "will-bitcoin-hit-100k", "yes", "10"], data_dir)
+        data = _parse(result)
+        assert data["ok"] is True
+        assert data["data"]["trade"]["side"] == "sell"
+
+
+# ---------------------------------------------------------------------------
+# Order command error paths
+# ---------------------------------------------------------------------------
+
+class TestOrderCommandErrors:
+    @patch("pm_sim.engine.PolymarketClient")
+    def test_orders_place_gtd(self, MockClient, runner, data_dir):
+        _invoke(runner, ["init"], data_dir)
+        mock_instance = MockClient.return_value
+        mock_instance.get_market.return_value = SAMPLE_MARKET
+        result = _invoke(
+            runner,
+            ["orders", "place", "will-bitcoin-hit-100k", "yes", "buy",
+             "100", "0.55", "--type", "gtd", "--expires", "2027-01-01T00:00:00Z"],
+            data_dir,
+        )
+        data = _parse(result)
+        assert data["ok"] is True
+        assert data["data"]["order_type"] == "gtd"
+
+    @patch("pm_sim.engine.PolymarketClient")
+    def test_orders_place_and_cancel(self, MockClient, runner, data_dir):
+        _invoke(runner, ["init"], data_dir)
+        mock_instance = MockClient.return_value
+        mock_instance.get_market.return_value = SAMPLE_MARKET
+        _invoke(
+            runner,
+            ["orders", "place", "will-bitcoin-hit-100k", "yes", "buy", "100", "0.55"],
+            data_dir,
+        )
+        result = _invoke(runner, ["orders", "cancel", "1"], data_dir)
+        data = _parse(result)
+        assert data["ok"] is True
+        assert data["data"]["status"] == "cancelled"
+
+    @patch("pm_sim.engine.PolymarketClient")
+    def test_orders_place_invalid_price(self, MockClient, runner, data_dir):
+        _invoke(runner, ["init"], data_dir)
+        mock_instance = MockClient.return_value
+        mock_instance.get_market.return_value = SAMPLE_MARKET
+        result = _invoke(
+            runner,
+            ["orders", "place", "will-bitcoin-hit-100k", "yes", "buy", "100", "1.5"],
+            data_dir,
+        )
+        data = _parse(result)
+        assert data["ok"] is False
+        assert data["code"] == "ORDER_REJECTED"
