@@ -3,9 +3,8 @@ from __future__ import annotations
 
 import os
 
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL", "postgresql://localhost:5432/leaderboard"
-)
+# SQLite path (or ":memory:" for ephemeral). PostgreSQL support planned.
+DATABASE_URL = os.environ.get("DATABASE_URL", ":memory:")
 LEADERBOARD_URL = os.environ.get(
     "LEADERBOARD_URL", "http://localhost:8000"
 )

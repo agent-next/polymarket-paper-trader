@@ -5,13 +5,14 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from server.config import DATABASE_URL
 from server.db import DB
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize DB on startup, close on shutdown."""
-    db = DB(":memory:")  # Will be configured via env in production
+    db = DB(DATABASE_URL)  # pragma: no cover (lifespan)
     db.init_schema()
     app.state.db = db
 
