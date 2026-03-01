@@ -64,7 +64,7 @@ def _serialize(obj):
 )
 @click.pass_context
 def main(ctx: click.Context, data_dir: Path, account: str) -> None:
-    """pm-trader — 1:1 faithful Polymarket paper trading simulator."""
+    """pm-trader — your AI agent trades Polymarket."""
     ctx.ensure_object(dict)
     ctx.obj["data_dir"] = data_dir
     ctx.obj["account"] = account
@@ -265,7 +265,7 @@ def book(ctx: click.Context, slug_or_id: str, depth: int) -> None:
 @click.option("--type", "order_type", type=click.Choice(["fok", "fak"]), default="fok")
 @click.pass_context
 def buy(ctx: click.Context, slug_or_id: str, outcome: str, amount_usd: float, order_type: str) -> None:
-    """Buy shares: spend USD, receive shares (walks ask side)."""
+    """Buy shares: spend USD, buy at market price."""
     engine = _get_engine(ctx)
     try:
         result = engine.buy(slug_or_id, outcome, amount_usd, order_type)
@@ -284,7 +284,7 @@ def buy(ctx: click.Context, slug_or_id: str, outcome: str, amount_usd: float, or
 @click.option("--type", "order_type", type=click.Choice(["fok", "fak"]), default="fok")
 @click.pass_context
 def sell(ctx: click.Context, slug_or_id: str, outcome: str, shares: float, order_type: str) -> None:
-    """Sell shares: sell shares, receive USD (walks bid side)."""
+    """Sell shares: sell shares, receive USD at market price."""
     engine = _get_engine(ctx)
     try:
         result = engine.sell(slug_or_id, outcome, shares, order_type)
@@ -373,7 +373,7 @@ def resolve(ctx: click.Context, slug_or_id: str | None, resolve_all: bool) -> No
 @click.option("--tweet", is_flag=True, default=False, help="X/Twitter optimized card.")
 @click.pass_context
 def stats(ctx: click.Context, card: bool, plain: bool, tweet: bool) -> None:
-    """Show performance analytics (Sharpe, win rate, drawdown, P&L)."""
+    """Show performance analytics (win rate, ROI, profit, risk score)."""
     from pm_trader.analytics import compute_stats
 
     engine = _get_engine(ctx)
@@ -447,7 +447,7 @@ def leaderboard(ctx: click.Context) -> None:
 @click.argument("account_b")
 @click.pass_context
 def pk(ctx: click.Context, account_a: str, account_b: str) -> None:
-    """Head-to-head PK comparison between two accounts."""
+    """Battle: who's the better trader? Compare two accounts head-to-head."""
     from pm_trader.analytics import compute_stats
     from pm_trader.card import generate_pk_card
 

@@ -102,26 +102,25 @@ def generate_tweet(
     s = _extract(stats)
 
     lines = [
-        f"{s['icon']} My AI agent's Polymarket results:",
+        f"{s['icon']} My AI agent made {s['pnl_sign']}${s['pnl']:,.0f} trading Polymarket",
         "",
-        f"ROI: {s['roi_sign']}{s['roi']:.1f}%",
-        f"P&L: {s['pnl_sign']}${s['pnl']:,.0f}",
-        f"Sharpe: {s['sharpe']:.2f} | Win: {s['win'] * 100:.0f}% | {s['trades']} trades",
+        f"{s['roi_sign']}{s['roi']:.1f}% ROI | {s['win'] * 100:.0f}% win rate | {s['trades']} trades",
+        "Zero risk. Real prices.",
     ]
 
     top = _format_top_positions(positions or [])
     if top:
         lines.append("")
-        lines.append("Top positions:")
+        lines.append("Top calls:")
         for t in top:
             lines.append(f"  {t}")
 
     lines.extend([
         "",
-        "Paper trading with real order books, zero risk",
+        "Can your agent beat mine?",
         "",
-        "#Polymarket #AITrading #PredictionMarkets",
-        "npx clawhub install polymarket-paper-trader",
+        "#Polymarket #AITrading #OpenClaw",
+        "Make your agent trade \u2192 npx clawhub install polymarket-paper-trader",
     ])
 
     return "\n".join(lines)
@@ -141,11 +140,8 @@ def generate_card(
     lines = [
         f"{s['icon']} *Polymarket Paper Trading*",
         "",
-        f"ROI: *{s['roi_sign']}{s['roi']:.1f}%* | Sharpe: *{s['sharpe']:.2f}*",
-        f"Win Rate: *{s['win'] * 100:.0f}%* | Trades: *{s['trades']}*",
-        f"Max DD: *{s['dd'] * 100:.1f}%* | Fees: *${s['fees']:.2f}*",
-        "",
-        f"P&L: *{s['pnl_sign']}${s['pnl']:,.2f}*",
+        f"ROI: *{s['roi_sign']}{s['roi']:.1f}%* | Win Rate: *{s['win'] * 100:.0f}%*",
+        f"Trades: *{s['trades']}* | P&L: *{s['pnl_sign']}${s['pnl']:,.2f}*",
         f"Portfolio: *${s['total']:,.2f}* (started ${s['starting']:,.0f})",
     ]
 
@@ -156,7 +152,12 @@ def generate_card(
         for t in top:
             lines.append(f"  {t}")
 
-    lines.extend(["", "`npx clawhub install polymarket-paper-trader`"])
+    lines.extend([
+        "",
+        "Can your agent beat mine?",
+        "",
+        "`Make your agent trade \u2192 npx clawhub install polymarket-paper-trader`",
+    ])
 
     return "\n".join(lines)
 
@@ -207,8 +208,10 @@ def generate_pk_card(
         "",
         f"Winner: {verdict} {a['icon'] if a['roi'] >= b['roi'] else b['icon']}",
         "",
-        "#Polymarket #AITrading #PK",
-        "npx clawhub install polymarket-paper-trader",
+        "Who's the better trader? \U0001f914",
+        "",
+        "#Polymarket #AITrading #OpenClaw",
+        "Make your agent trade \u2192 npx clawhub install polymarket-paper-trader",
     ]
 
     return "\n".join(lines)
@@ -226,12 +229,8 @@ def generate_card_plain(
         f"{s['icon']} Polymarket Paper Trading",
         "",
         f"  ROI:       {s['roi_sign']}{s['roi']:.1f}%",
-        f"  Sharpe:    {s['sharpe']:.2f}",
         f"  Win Rate:  {s['win'] * 100:.0f}%",
         f"  Trades:    {s['trades']}",
-        f"  Max DD:    {s['dd'] * 100:.1f}%",
-        f"  Fees:      ${s['fees']:.2f}",
-        "",
         f"  P&L:       {s['pnl_sign']}${s['pnl']:,.2f}",
         f"  Portfolio: ${s['total']:,.2f}",
     ]
@@ -243,7 +242,12 @@ def generate_card_plain(
         for t in top:
             lines.append(f"    {t}")
 
-    lines.extend(["", "npx clawhub install polymarket-paper-trader"])
+    lines.extend([
+        "",
+        "Can your agent beat mine?",
+        "",
+        "Make your agent trade \u2192 npx clawhub install polymarket-paper-trader",
+    ])
 
     return "\n".join(lines)
 
@@ -259,13 +263,15 @@ def generate_milestone_tweet(stats: dict, milestone: str | None = None) -> str:
     lines = [
         f"\U0001f3c6 {ms}",
         "",
-        f"ROI: {s['roi_sign']}{s['roi']:.1f}% | P&L: {s['pnl_sign']}${s['pnl']:,.0f}",
-        f"{s['trades']} trades | Sharpe: {s['sharpe']:.2f}",
+        f"{s['pnl_sign']}${s['pnl']:,.0f} profit | {s['roi_sign']}{s['roi']:.1f}% ROI | {s['win'] * 100:.0f}% win rate",
         "",
         f"Tier: {_tier(stats)}",
+        "Zero risk. Real Polymarket prices.",
         "",
-        "#Polymarket #AITrading #Milestone",
-        "npx clawhub install polymarket-paper-trader",
+        "Can your agent beat mine?",
+        "",
+        "#Polymarket #AITrading #OpenClaw",
+        "Make your agent trade \u2192 npx clawhub install polymarket-paper-trader",
     ]
 
     return "\n".join(lines)
@@ -299,8 +305,8 @@ def generate_leaderboard_card(entries: list[dict], title: str = "Top 10 AI Trade
         "",
         "Qualify: 10+ trades | Ranked by ROI%",
         "",
-        "#Polymarket #AITrading #Leaderboard",
-        "npx clawhub install polymarket-paper-trader",
+        "#Polymarket #AITrading #OpenClaw",
+        "Make your agent trade \u2192 npx clawhub install polymarket-paper-trader",
     ])
 
     return "\n".join(lines)
@@ -333,8 +339,8 @@ def generate_daily_report(
 
     lines.extend([
         "",
-        "#Polymarket #AITrading",
-        "npx clawhub install polymarket-paper-trader",
+        "#Polymarket #AITrading #OpenClaw",
+        "Make your agent trade \u2192 npx clawhub install polymarket-paper-trader",
     ])
 
     return "\n".join(lines)

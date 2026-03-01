@@ -176,18 +176,19 @@ class TestGenerateTweet:
     def test_basic_tweet(self):
         stats = {"roi_pct": 25.0, "pnl": 2500.0, "total_trades": 10}
         tweet = generate_tweet(stats)
-        assert "ROI: +25.0%" in tweet
-        assert "P&L: +$2,500" in tweet
+        assert "+$2,500 trading Polymarket" in tweet
+        assert "+25.0% ROI" in tweet
         assert "10 trades" in tweet
         assert "#Polymarket" in tweet
         assert "#AITrading" in tweet
         assert "clawhub install" in tweet
+        assert "Can your agent beat mine?" in tweet
 
     def test_negative_roi(self):
         stats = {"roi_pct": -8.0, "pnl": -800.0}
         tweet = generate_tweet(stats)
-        assert "ROI: -8.0%" in tweet
-        assert "P&L: $-800" in tweet
+        assert "$-800 trading Polymarket" in tweet
+        assert "-8.0% ROI" in tweet
 
     def test_under_280_chars(self):
         stats = {
@@ -207,12 +208,12 @@ class TestGenerateTweet:
     def test_with_positions(self):
         stats = {"roi_pct": 10.0, "pnl": 1000.0, "total_trades": 5}
         tweet = generate_tweet(stats, positions=SAMPLE_POSITIONS)
-        assert "Top positions:" in tweet
+        assert "Top calls:" in tweet
         assert "fed-rate-cut-march" in tweet
 
     def test_no_positions(self):
         tweet = generate_tweet({}, positions=[])
-        assert "Top positions:" not in tweet
+        assert "Top calls:" not in tweet
 
 
 # ---------------------------------------------------------------------------
@@ -236,12 +237,11 @@ class TestGenerateCard:
         card = generate_card(stats)
         assert "*Polymarket Paper Trading*" in card
         assert "ROI: *+15.0%*" in card
-        assert "Sharpe: *2.10*" in card
         assert "Win Rate: *70%*" in card
         assert "Trades: *30*" in card
-        assert "Max DD: *5.0%*" in card
         assert "P&L: *+$1,500.00*" in card
         assert "Portfolio: *$11,500.00*" in card
+        assert "Can your agent beat mine?" in card
         assert "clawhub" in card
 
     def test_zero_stats(self):
@@ -280,10 +280,10 @@ class TestGenerateCardPlain:
         card = generate_card_plain(stats)
         assert "Polymarket Paper Trading" in card
         assert "ROI:       -3.0%" in card
-        assert "Sharpe:    -0.50" in card
         assert "Win Rate:  40%" in card
         assert "P&L:       $-300.00" in card
         assert "Portfolio: $9,700.00" in card
+        assert "Can your agent beat mine?" in card
         # No markdown formatting
         assert "*" not in card
 
@@ -341,7 +341,7 @@ class TestGeneratePkCard:
         assert "+15.0%" in card
         assert "+8.0%" in card
         assert "alice wins" in card
-        assert "#PK" in card
+        assert "Who's the better trader?" in card
         assert "clawhub" in card
 
     def test_b_wins(self):
@@ -368,7 +368,8 @@ class TestGenerateMilestoneTweet:
         tweet = generate_milestone_tweet(stats)
         assert "10 trades milestone" in tweet
         assert "Tier:" in tweet
-        assert "#Milestone" in tweet
+        assert "#OpenClaw" in tweet
+        assert "Can your agent beat mine?" in tweet
         assert "clawhub" in tweet
 
     def test_custom_milestone(self):
@@ -383,8 +384,8 @@ class TestGenerateMilestoneTweet:
     def test_has_stats(self):
         stats = {"roi_pct": 12.0, "pnl": 1200.0, "total_trades": 50, "sharpe_ratio": 1.5}
         tweet = generate_milestone_tweet(stats)
-        assert "+12.0%" in tweet
-        assert "+$1,200" in tweet
+        assert "+12.0% ROI" in tweet
+        assert "+$1,200 profit" in tweet
 
 
 # ---------------------------------------------------------------------------
@@ -408,6 +409,7 @@ class TestGenerateDailyReport:
         assert "$10,800.00" in report
         assert "+8.0%" in report
         assert "#AITrading" in report
+        assert "#OpenClaw" in report
         assert "clawhub" in report
 
     def test_with_positions(self):
@@ -446,7 +448,7 @@ class TestGenerateLeaderboardCard:
         assert "bravo" in card
         assert "charlie" in card
         assert "25.0%" in card
-        assert "#Leaderboard" in card
+        assert "#OpenClaw" in card
         assert "clawhub" in card
 
     def test_custom_title(self):

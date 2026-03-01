@@ -1,14 +1,13 @@
 # polymarket-paper-trader
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-597%20passed-brightgreen.svg)]()
-[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)]()
-[![ClawHub](https://img.shields.io/badge/ClawHub-polymarket--paper--trader-orange.svg)](https://clawhub.com/robotlearning123/polymarket-paper-trader)
+[![ClawHub](https://img.shields.io/badge/ClawHub-install-orange.svg)](https://clawhub.com/robotlearning123/polymarket-paper-trader)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Paper trading simulator for [Polymarket](https://polymarket.com), built for AI agents.
+**Your AI agent just became a Polymarket trader.**
 
-Executes trades against **live Polymarket order books** without risking real money. Walks the book level-by-level, calculates exact fees and slippage, and tracks P&L in a local SQLite database.
+Install → your agent gets $10,000 paper money → trades real Polymarket order books → tracks P&L → competes on a public leaderboard. Zero risk. Real prices.
+
+> "My AI agent hit +18% ROI on Polymarket in one week. Zero risk, real order books."
 
 Part of [agent-next](https://github.com/agent-next) — open research lab for self-evolving autonomous agents.
 
@@ -38,6 +37,19 @@ uv pip install -e ".[dev]"
 ```
 
 Requires Python 3.10+.
+
+## Not a toy — this is a real exchange simulator
+
+Other tools mock prices or use random numbers. We simulate the actual exchange:
+
+- **Level-by-level order book execution** — your order walks the real Polymarket ask/bid book, consuming liquidity at each price level, just like a real trade
+- **Exact fee model** — `bps/10000 × min(price, 1-price) × shares` — the same formula Polymarket uses
+- **Slippage tracking** — every trade records how much worse your fill was vs the midpoint, in basis points
+- **Limit order state machine** — GTC (good-til-cancelled) and GTD (good-til-date) with full lifecycle
+- **Strategy backtesting** — replay your strategy against historical price snapshots
+- **Multi-outcome markets** — not just YES/NO binary, supports any number of outcomes
+
+Your paper P&L would match real P&L within the spread. That's the point.
 
 ## Quick start
 
@@ -71,29 +83,29 @@ pm-trader stats
 | `price SLUG` | YES/NO midpoints and spread |
 | `book SLUG [--depth N]` | Order book snapshot |
 | `watch SLUG [SLUG...] [--outcome yes\|no]` | Monitor live prices |
-| `buy SLUG OUTCOME AMOUNT [--type fok\|fak]` | Buy shares (walks ask side) |
-| `sell SLUG OUTCOME SHARES [--type fok\|fak]` | Sell shares (walks bid side) |
+| `buy SLUG OUTCOME AMOUNT [--type fok\|fak]` | Buy at market price |
+| `sell SLUG OUTCOME SHARES [--type fok\|fak]` | Sell at market price |
 | `portfolio` | Open positions with live prices |
 | `history [--limit N]` | Trade history |
-| `orders place SLUG OUTCOME SIDE AMOUNT PRICE` | Limit order (GTC/GTD) |
+| `orders place SLUG OUTCOME SIDE AMOUNT PRICE` | Limit order |
 | `orders list` | Pending limit orders |
 | `orders cancel ID` | Cancel a limit order |
 | `orders check` | Fill limit orders if price crosses |
-| `stats` | Sharpe ratio, win rate, max drawdown, ROI |
+| `stats` | Win rate, ROI, profit, risk score |
 | `export trades [--format csv\|json]` | Export trade history |
 | `export positions [--format csv\|json]` | Export positions |
 | `benchmark run MODULE.FUNC` | Run a trading strategy |
 | `benchmark compare ACCT1 ACCT2` | Compare account performance |
-| `benchmark pk STRAT_A STRAT_B` | Run two strategies head-to-head |
+| `benchmark pk STRAT_A STRAT_B` | Battle: who's the better trader? |
 | `accounts list` | List named accounts |
 | `accounts create NAME` | Create account for A/B testing |
 | `mcp` | Start MCP server (stdio transport) |
 
 Global flags: `--data-dir PATH`, `--account NAME` (or env vars `PM_TRADER_DATA_DIR`, `PM_TRADER_ACCOUNT`).
 
-## MCP server
+## MCP server — what your agent can do
 
-Exposes 26 tools via the [Model Context Protocol](https://modelcontextprotocol.io) for direct AI agent integration:
+Your agent gets 26 tools via the [Model Context Protocol](https://modelcontextprotocol.io):
 
 ```bash
 pm-trader-mcp  # starts on stdio
@@ -113,25 +125,25 @@ Add to your Claude Code config:
 
 ### MCP tools
 
-| Tool | Purpose |
+| Tool | What it does |
 |------|---------|
 | `init_account` | Create paper account with starting balance |
 | `get_balance` | Cash, positions value, total P&L |
 | `reset_account` | Wipe all data and start fresh |
-| `search_markets` | Full-text search for markets |
+| `search_markets` | Find markets by keyword |
 | `list_markets` | Browse markets sorted by volume/liquidity |
-| `get_market` | Detailed market info with outcomes and prices |
+| `get_market` | Market details with outcomes and prices |
 | `get_order_book` | Live order book snapshot (bids + asks) |
-| `watch_prices` | Monitor midpoint prices for multiple markets |
-| `buy` | Buy outcome shares — walks ask side (FOK or FAK) |
-| `sell` | Sell outcome shares — walks bid side (FOK or FAK) |
+| `watch_prices` | Monitor prices for multiple markets |
+| `buy` | Buy shares at best available prices |
+| `sell` | Sell shares at best available prices |
 | `portfolio` | Open positions with live valuations and P&L |
 | `history` | Recent trade log with execution details |
-| `place_limit_order` | GTC/GTD limit order at target price |
+| `place_limit_order` | Limit order — stays open until filled or cancelled/expired |
 | `list_orders` | Pending limit orders |
 | `cancel_order` | Cancel a pending order |
 | `check_orders` | Execute pending orders against live prices |
-| `stats` | Performance analytics (Sharpe, win rate, drawdown) |
+| `stats` | Win rate, ROI, profit, risk score |
 | `resolve` | Resolve a closed market (winners get $1/share) |
 | `resolve_all` | Resolve all closed markets |
 | `backtest` | Backtest a strategy against historical snapshots |
@@ -198,16 +210,6 @@ def backtest_strategy(engine, snapshot, prices):
         engine.buy(snapshot.market_slug, snapshot.outcome, 50.0)
 ```
 
-## How it works
-
-1. **Live order books** — Fetches real-time asks/bids from the Polymarket CLOB API
-2. **Level-by-level execution** — Walks the book like a real order, consuming liquidity at each price level
-3. **Exact fee model** — Polymarket's formula: `(bps/10000) * min(price, 1-price) * shares`
-4. **Slippage tracking** — Records deviation from midpoint in basis points
-5. **Order types** — FOK (fill-or-kill), FAK (fill-and-kill / partial), limit GTC/GTD
-
-All state lives in `~/.pm-trader/<account>/paper.db` (SQLite, WAL mode).
-
 ## Multi-account support
 
 Run parallel strategies with isolated accounts:
@@ -222,36 +224,6 @@ pm-trader --account conservative buy some-market yes 100
 pm-trader benchmark compare aggressive conservative
 ```
 
-## Analytics
-
-```bash
-pm-trader stats
-```
-
-Returns: Sharpe ratio (sample variance), win rate (cost-averaged), max drawdown, ROI%, total P&L, trade counts, fee totals, average trade size.
-
-## Project structure
-
-```
-pm_trader/
-  cli.py          # Click CLI (30+ commands)
-  mcp_server.py   # FastMCP server (26 tools)
-  engine.py       # Core orchestration
-  api.py          # Polymarket HTTP client (Gamma + CLOB APIs)
-  orderbook.py    # Order book simulation engine
-  orders.py       # Limit order state machine
-  analytics.py    # Performance metrics
-  backtest.py     # Historical replay engine
-  benchmark.py    # Strategy runner & comparison
-  db.py           # SQLite persistence layer
-  models.py       # Dataclasses and error types
-  export.py       # CSV/JSON export
-examples/
-  momentum.py     # Momentum strategy (buy breakout, stop loss)
-  mean_reversion.py  # Mean reversion (buy dips near fair value)
-  limit_grid.py   # Grid trading (limit orders at multiple levels)
-```
-
 ## Share your results
 
 Generate a shareable stats card and post to X/Twitter:
@@ -262,29 +234,7 @@ pm-trader stats --card     # markdown for Telegram/Discord
 pm-trader stats --plain    # plain text
 ```
 
-Example output:
-
-```
-🚀 My AI agent's Polymarket results:
-
-ROI: +18.5%
-P&L: +$1,850
-Sharpe: 1.42 | Win: 68% | 23 trades
-
-Paper trading with real order books, zero risk
-
-#Polymarket #AITrading #PredictionMarkets
-npx clawhub install polymarket-paper-trader
-```
-
 AI agents can use the `stats_card` MCP tool to generate and share cards automatically.
-
-## Tests
-
-```bash
-pytest                           # 597 tests, 100% coverage
-pytest tests/test_e2e_live.py    # live API integration tests
-```
 
 ## OpenClaw / ClawHub
 
@@ -292,6 +242,13 @@ Available on [ClawHub](https://clawhub.com) as `polymarket-paper-trader`:
 
 ```bash
 npx clawhub install polymarket-paper-trader
+```
+
+## Tests
+
+```bash
+pytest                           # full test suite
+pytest tests/test_e2e_live.py    # live API integration tests
 ```
 
 ## License

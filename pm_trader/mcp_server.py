@@ -203,7 +203,7 @@ def buy(
 ) -> str:
     """Buy shares in a Polymarket outcome.
 
-    Spends amount_usd to buy shares at the best available ask prices.
+    Spends amount_usd to buy at best available prices.
     order_type: "fok" (fill-or-kill) or "fak" (fill-and-kill, allows partial).
     """
     try:
@@ -239,7 +239,7 @@ def sell(
 ) -> str:
     """Sell shares in a Polymarket outcome.
 
-    Sells shares at the best available bid prices.
+    Sells shares at best available prices.
     order_type: "fok" (fill-or-kill) or "fak" (fill-and-kill, allows partial).
     """
     try:
@@ -321,11 +321,11 @@ def place_limit_order(
     expires_at: str | None = None,
     account: str = "default",
 ) -> str:
-    """Place a GTC or GTD limit order.
+    """Place a limit order that stays open until filled or cancelled/expired.
 
     side: "buy" or "sell"
     limit_price: target price between 0 and 1
-    order_type: "gtc" (good-til-cancelled) or "gtd" (good-til-date)
+    order_type: "gtc" (stays open until cancelled) or "gtd" (expires at timestamp)
     expires_at: ISO timestamp for GTD orders (required if order_type="gtd")
     """
     try:
@@ -378,7 +378,7 @@ def check_orders(account: str = "default") -> str:
 
 @mcp.tool()
 def stats(account: str = "default") -> str:
-    """Get performance analytics: Sharpe ratio, win rate, max drawdown, ROI%."""
+    """Get performance analytics: win rate, ROI, profit, risk score."""
     try:
         engine = _get_engine(account)
         from pm_trader.analytics import compute_stats

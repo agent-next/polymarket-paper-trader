@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "polymarket-paper-trader"
 version = "0.1.3"
-description = "Paper trading on Polymarket — real order books, real fees, zero risk. Built for AI agents."
+description = "Your AI agent trades Polymarket — $10k paper money, real prices, zero risk. Compete on the leaderboard."
 requires-python = ">=3.10"
 dependencies = [
     "click>=8.0",

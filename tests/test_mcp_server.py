@@ -230,7 +230,7 @@ class TestPkCard:
         assert "card" in result["data"]
         assert "alice" in result["data"]["card"]
         assert "bob" in result["data"]["card"]
-        assert "#PK" in result["data"]["card"]
+        assert "Who's the better trader?" in result["data"]["card"]
 
     def test_pk_not_initialized(self):
         result = _parse(pk_card(account_a="nope", account_b="nada"))
@@ -268,7 +268,7 @@ class TestShareContent:
         init_account()
         result = _parse(share_content(template="milestone"))
         assert result["ok"] is True
-        assert "#Milestone" in result["data"]["card"]
+        assert "#OpenClaw" in result["data"]["card"]
 
     def test_daily_template(self):
         init_account()
