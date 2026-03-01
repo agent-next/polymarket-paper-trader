@@ -1,16 +1,40 @@
-# pm-sim
+# polymarket-paper-trader
+
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![Tests](https://img.shields.io/badge/tests-527%20passed-brightgreen.svg)]()
+[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)]()
+[![ClawHub](https://img.shields.io/badge/ClawHub-polymarket--paper--trader-orange.svg)](https://clawhub.com/robotlearning123/polymarket-paper-trader)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Paper trading simulator for [Polymarket](https://polymarket.com), built for AI agents.
 
 Executes trades against **live Polymarket order books** without risking real money. Walks the book level-by-level, calculates exact fees and slippage, and tracks P&L in a local SQLite database.
 
+Part of [agent-next](https://github.com/agent-next) — open research lab for self-evolving autonomous agents.
+
+## 60-second demo
+
+```bash
+npx clawhub install polymarket-paper-trader    # install via ClawHub
+pm-trader init --balance 10000                 # $10k paper money
+pm-trader markets search "bitcoin"             # find markets
+pm-trader buy will-bitcoin-hit-100k yes 500    # buy $500 of YES
+pm-trader stats --card                         # shareable stats card
+```
+
+That's it. Your AI agent is now trading Polymarket with zero risk.
+
 ## Install
 
 ```bash
-pip install -e .
+# via ClawHub (for OpenClaw agents)
+npx clawhub install polymarket-paper-trader
+
+# via pip (for direct use)
+uv pip install -e .
 
 # dev dependencies (tests)
-pip install -e ".[dev]"
+uv pip install -e ".[dev]"
 ```
 
 Requires Python 3.10+.
@@ -19,19 +43,19 @@ Requires Python 3.10+.
 
 ```bash
 # Initialize with $10k paper balance
-pm-sim init --balance 10000
+pm-trader init --balance 10000
 
 # Browse markets
-pm-sim markets list --sort liquidity
-pm-sim markets search "bitcoin"
+pm-trader markets list --sort liquidity
+pm-trader markets search "bitcoin"
 
 # Trade
-pm-sim buy will-bitcoin-hit-100k yes 100      # buy $100 of YES
-pm-sim sell will-bitcoin-hit-100k yes 50       # sell 50 shares
+pm-trader buy will-bitcoin-hit-100k yes 100      # buy $100 of YES
+pm-trader sell will-bitcoin-hit-100k yes 50       # sell 50 shares
 
 # Check portfolio and P&L
-pm-sim portfolio
-pm-sim stats
+pm-trader portfolio
+pm-trader stats
 ```
 
 ## CLI commands
@@ -64,14 +88,14 @@ pm-sim stats
 | `accounts create NAME` | Create account for A/B testing |
 | `mcp` | Start MCP server (stdio transport) |
 
-Global flags: `--data-dir PATH`, `--account NAME` (or env vars `PM_SIM_DATA_DIR`, `PM_SIM_ACCOUNT`).
+Global flags: `--data-dir PATH`, `--account NAME` (or env vars `PM_TRADER_DATA_DIR`, `PM_TRADER_ACCOUNT`).
 
 ## MCP server
 
-pm-sim exposes 23 tools via the [Model Context Protocol](https://modelcontextprotocol.io) for direct AI agent integration:
+Exposes 23 tools via the [Model Context Protocol](https://modelcontextprotocol.io) for direct AI agent integration:
 
 ```bash
-pm-sim-mcp  # starts on stdio
+pm-trader-mcp  # starts on stdio
 ```
 
 Add to your Claude Code config:
@@ -79,14 +103,93 @@ Add to your Claude Code config:
 ```json
 {
   "mcpServers": {
-    "pm-sim": {
-      "command": "pm-sim-mcp"
+    "polymarket-paper-trader": {
+      "command": "pm-trader-mcp"
     }
   }
 }
 ```
 
-Tools: `init_account`, `get_balance`, `buy`, `sell`, `portfolio`, `history`, `place_limit_order`, `list_orders`, `cancel_order`, `check_orders`, `stats`, `resolve`, `resolve_all`, `search_markets`, `list_markets`, `get_market`, `get_order_book`, `watch_prices`, `reset_account`, `backtest`.
+### MCP tools
+
+| Tool | Purpose |
+|------|---------|
+| `init_account` | Create paper account with starting balance |
+| `get_balance` | Cash, positions value, total P&L |
+| `reset_account` | Wipe all data and start fresh |
+| `search_markets` | Full-text search for markets |
+| `list_markets` | Browse markets sorted by volume/liquidity |
+| `get_market` | Detailed market info with outcomes and prices |
+| `get_order_book` | Live order book snapshot (bids + asks) |
+| `watch_prices` | Monitor midpoint prices for multiple markets |
+| `buy` | Buy outcome shares — walks ask side (FOK or FAK) |
+| `sell` | Sell outcome shares — walks bid side (FOK or FAK) |
+| `portfolio` | Open positions with live valuations and P&L |
+| `history` | Recent trade log with execution details |
+| `place_limit_order` | GTC/GTD limit order at target price |
+| `list_orders` | Pending limit orders |
+| `cancel_order` | Cancel a pending order |
+| `check_orders` | Execute pending orders against live prices |
+| `stats` | Performance analytics (Sharpe, win rate, drawdown) |
+| `resolve` | Resolve a closed market (winners get $1/share) |
+| `resolve_all` | Resolve all closed markets |
+| `backtest` | Backtest a strategy against historical snapshots |
+
+## Strategy examples
+
+Three ready-to-use strategies in `examples/`:
+
+### Momentum (`examples/momentum.py`)
+
+Buys when YES price crosses above 0.55, takes profit at 0.70, stops loss at 0.35.
+
+```bash
+pm-trader benchmark run examples.momentum.run
+```
+
+### Mean reversion (`examples/mean_reversion.py`)
+
+Buys when YES price drops 12+ cents below 0.50 fair value, sells when it reverts.
+
+```bash
+pm-trader benchmark run examples.mean_reversion.run
+```
+
+### Limit grid (`examples/limit_grid.py`)
+
+Places a grid of limit buy orders below current price with take-profit sells above.
+
+```bash
+pm-trader benchmark run examples.limit_grid.run
+```
+
+### Writing your own strategy
+
+```python
+# my_strategy.py
+from pm_trader.engine import Engine
+
+def run(engine: Engine) -> None:
+    """Your strategy receives a fully initialized Engine."""
+    markets = engine.api.search_markets("crypto")
+    for market in markets:
+        if market.closed or market.yes_price < 0.3:
+            continue
+        engine.buy(market.slug, "yes", 100.0)
+```
+
+```bash
+pm-trader benchmark run my_strategy.run
+```
+
+For backtesting with historical data:
+
+```python
+def backtest_strategy(engine, snapshot, prices):
+    """Called once per historical price snapshot."""
+    if snapshot.midpoint > 0.6:
+        engine.buy(snapshot.market_slug, snapshot.outcome, 50.0)
+```
 
 ## How it works
 
@@ -96,57 +199,34 @@ Tools: `init_account`, `get_balance`, `buy`, `sell`, `portfolio`, `history`, `pl
 4. **Slippage tracking** — Records deviation from midpoint in basis points
 5. **Order types** — FOK (fill-or-kill), FAK (fill-and-kill / partial), limit GTC/GTD
 
-All state lives in `~/.pm-sim/<account>/paper.db` (SQLite, WAL mode).
+All state lives in `~/.pm-trader/<account>/paper.db` (SQLite, WAL mode).
 
 ## Multi-account support
 
 Run parallel strategies with isolated accounts:
 
 ```bash
-pm-sim --account aggressive init --balance 5000
-pm-sim --account conservative init --balance 5000
+pm-trader --account aggressive init --balance 5000
+pm-trader --account conservative init --balance 5000
 
-pm-sim --account aggressive buy some-market yes 500
-pm-sim --account conservative buy some-market yes 100
+pm-trader --account aggressive buy some-market yes 500
+pm-trader --account conservative buy some-market yes 100
 
-pm-sim benchmark compare aggressive conservative
-```
-
-## Backtesting
-
-Replay historical price data through a strategy:
-
-```python
-# my_strat.py
-def momentum(engine, snapshot, prices):
-    """Buy when price rises above 0.6."""
-    if snapshot.midpoint > 0.6:
-        engine.buy(snapshot.market_slug, snapshot.outcome, 50.0)
-```
-
-```bash
-pm-sim benchmark run my_strat.momentum
-```
-
-Data format (CSV):
-```
-timestamp,market_slug,outcome,midpoint
-2026-01-01T00:00:00Z,will-x-happen,yes,0.65
-2026-01-01T01:00:00Z,will-x-happen,yes,0.68
+pm-trader benchmark compare aggressive conservative
 ```
 
 ## Analytics
 
 ```bash
-pm-sim stats
+pm-trader stats
 ```
 
-Returns: Sharpe ratio, win rate, max drawdown, ROI%, total P&L, trade counts, fee totals, average trade size.
+Returns: Sharpe ratio (sample variance), win rate (cost-averaged), max drawdown, ROI%, total P&L, trade counts, fee totals, average trade size.
 
 ## Project structure
 
 ```
-pm_sim/
+pm_trader/
   cli.py          # Click CLI (30+ commands)
   mcp_server.py   # FastMCP server (23 tools)
   engine.py       # Core orchestration
@@ -159,13 +239,52 @@ pm_sim/
   db.py           # SQLite persistence layer
   models.py       # Dataclasses and error types
   export.py       # CSV/JSON export
+examples/
+  momentum.py     # Momentum strategy (buy breakout, stop loss)
+  mean_reversion.py  # Mean reversion (buy dips near fair value)
+  limit_grid.py   # Grid trading (limit orders at multiple levels)
 ```
+
+## Share your results
+
+Generate a shareable stats card and post to X/Twitter:
+
+```bash
+pm-trader stats --tweet    # X/Twitter optimized (< 280 chars)
+pm-trader stats --card     # markdown for Telegram/Discord
+pm-trader stats --plain    # plain text
+```
+
+Example output:
+
+```
+🚀 My AI agent's Polymarket results:
+
+ROI: +18.5%
+P&L: +$1,850
+Sharpe: 1.42 | Win: 68% | 23 trades
+
+Paper trading with real order books, zero risk
+
+#Polymarket #AITrading #PredictionMarkets
+npx clawhub install polymarket-paper-trader
+```
+
+AI agents can use the `stats_card` MCP tool to generate and share cards automatically.
 
 ## Tests
 
 ```bash
-pytest                           # 451 tests, 100% coverage
+pytest                           # 527 tests, 100% coverage
 pytest tests/test_e2e_live.py    # live API integration tests
+```
+
+## OpenClaw / ClawHub
+
+Available on [ClawHub](https://clawhub.com) as `polymarket-paper-trader`:
+
+```bash
+npx clawhub install polymarket-paper-trader
 ```
 
 ## License
