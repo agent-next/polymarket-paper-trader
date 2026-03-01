@@ -27,12 +27,16 @@ async def lifespan(app: FastAPI):
     # Background scheduler: tests pre-set scheduler=None to skip
     if not hasattr(app.state, "scheduler"):  # pragma: no cover
         from apscheduler.schedulers.background import BackgroundScheduler
-        from server.config import CHECK_ORDERS_INTERVAL, AUTO_RESOLVE_INTERVAL
+        from server.config import (
+            CHECK_ORDERS_INTERVAL, AUTO_RESOLVE_INTERVAL,
+            BACKUP_DIR, BACKUP_INTERVAL,
+        )
         from server.jobs.check_orders import check_orders_job
         from server.jobs.auto_resolve import auto_resolve_job
+        from server.jobs.backup import backup_db
 
+        scheduler = BackgroundScheduler()
         if app.state.polymarket is not None:
-            scheduler = BackgroundScheduler()
             scheduler.add_job(
                 check_orders_job, "interval",
                 seconds=CHECK_ORDERS_INTERVAL,
@@ -43,10 +47,13 @@ async def lifespan(app: FastAPI):
                 seconds=AUTO_RESOLVE_INTERVAL,
                 args=[db, app.state.polymarket],
             )
-            scheduler.start()
-            app.state.scheduler = scheduler
-        else:
-            app.state.scheduler = None
+        scheduler.add_job(
+            backup_db, "interval",
+            seconds=BACKUP_INTERVAL,
+            args=[db, BACKUP_DIR],
+        )
+        scheduler.start()
+        app.state.scheduler = scheduler
 
     yield
 
