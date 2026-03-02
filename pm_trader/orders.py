@@ -126,11 +126,16 @@ def cancel_all_orders(conn: sqlite3.Connection) -> list[LimitOrder]:
     pending = get_pending_orders(conn)
     if not pending:
         return []
+    ids = [o.id for o in pending]
     conn.execute(
         "UPDATE limit_orders SET status = 'cancelled' WHERE status = 'pending'"
     )
     conn.commit()
-    return pending
+    placeholders = ",".join("?" * len(ids))
+    rows = conn.execute(
+        f"SELECT * FROM limit_orders WHERE id IN ({placeholders})", ids
+    ).fetchall()
+    return [_row_to_order(row) for row in rows]
 
 
 def mark_filled(conn: sqlite3.Connection, order_id: int) -> LimitOrder:

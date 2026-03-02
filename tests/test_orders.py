@@ -135,6 +135,7 @@ class TestCancelAllOrders:
         _create(conn)
         cancelled = cancel_all_orders(conn)
         assert len(cancelled) == 3
+        assert all(o.status == "cancelled" for o in cancelled)
         pending = get_pending_orders(conn)
         assert len(pending) == 0
 
@@ -145,6 +146,7 @@ class TestCancelAllOrders:
         cancelled = cancel_all_orders(conn)
         assert len(cancelled) == 1  # only #2 was pending
         assert cancelled[0].id == 2
+        assert cancelled[0].status == "cancelled"
 
 
 class TestShouldFill:
