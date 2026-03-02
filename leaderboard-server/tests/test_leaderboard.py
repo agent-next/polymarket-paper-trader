@@ -45,6 +45,32 @@ class TestLeaderboard:
         # bot-b should rank higher (more cash = higher ROI)
         assert data[0]["agent_name"] == "bot-b"
 
+    def test_leaderboard_counts_open_positions_in_total_value(self, client):
+        user, account, headers = _register_and_create_account(client, "positions-bot")
+        _insert_trades(client, account["id"], count=10)
+
+        db = client.app.state.db
+        db.update_cash(account["id"], 9000.0)
+        db.upsert_position(
+            account_id=account["id"],
+            market_condition_id="0xabc123",
+            market_slug="test-market",
+            market_question="Test?",
+            outcome="yes",
+            shares=100.0,
+            avg_entry_price=0.5,
+            total_cost=50.0,
+            realized_pnl=0.0,
+        )
+
+        resp = client.get("/leaderboard")
+        data = resp.json()["data"]
+        assert len(data) == 1
+        # Mock midpoint in tests is 0.65 -> position value 65.
+        # Total value = cash 9000 + 65 => pnl = -935 from 10k start.
+        assert data[0]["total_pnl"] == pytest.approx(-935.0)
+        assert data[0]["roi_pct"] == pytest.approx(-9.35)
+
 
 class TestUserProfile:
     def test_user_profile(self, client):

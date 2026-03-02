@@ -57,7 +57,34 @@ def _compute_tier(trade_count: int, roi_pct: float, sharpe: float) -> str:
     return "bronze"
 
 
-def _stats_for_account(db: DB, account_dict: dict) -> dict | None:
+def _compute_positions_value(db: DB, account_id: int, polymarket) -> float:
+    """Mark-to-market open positions using live midpoint prices."""
+    if polymarket is None:
+        return 0.0
+
+    positions = db.get_open_positions(account_id)
+    if not positions:
+        return 0.0
+
+    market_cache: dict[str, object] = {}
+    total_value = 0.0
+    for pos in positions:
+        try:
+            slug = pos["market_slug"]
+            market = market_cache.get(slug)
+            if market is None:
+                market = polymarket.get_market(slug)
+                market_cache[slug] = market
+            token_id = market.get_token_id(pos["outcome"])
+            midpoint = float(polymarket.get_midpoint(token_id))
+            total_value += float(pos["shares"]) * midpoint
+        except Exception:
+            continue
+
+    return total_value
+
+
+def _stats_for_account(db: DB, polymarket, account_dict: dict) -> dict | None:
     """Compute stats for a single account dict. Returns None on failure."""
     account_id = account_dict["id"]
     trade_dicts = db.get_trades(account_id, limit=10000)
@@ -66,7 +93,8 @@ def _stats_for_account(db: DB, account_dict: dict) -> dict | None:
     try:
         trades = [_dict_to_trade(t) for t in trade_dicts]
         account = _dict_to_account(account_dict)
-        stats = compute_stats(trades, account, positions_value=0.0)
+        positions_value = _compute_positions_value(db, account_id, polymarket)
+        stats = compute_stats(trades, account, positions_value=positions_value)
         return stats
     except Exception:
         return None
@@ -77,12 +105,13 @@ def _stats_for_account(db: DB, account_dict: dict) -> dict | None:
 # ---------------------------------------------------------------------------
 
 @router.get("")
-def leaderboard(db: DB = Depends(get_db)):
+def leaderboard(request: Request, db: DB = Depends(get_db)):
     """Top N accounts by ROI%. Only accounts with 10+ trades qualify."""
+    polymarket = request.app.state.polymarket
     rows = db.get_leaderboard_accounts(min_trades=10)
     results = []
     for row in rows:
-        stats = _stats_for_account(db, row)
+        stats = _stats_for_account(db, polymarket, row)
         if stats is None:
             continue
         trade_count = stats["total_trades"]
@@ -116,8 +145,9 @@ def activity_feed(db: DB = Depends(get_db), limit: int = 20):
 
 
 @router.get("/users/{agent_name}")
-def user_profile(agent_name: str, db: DB = Depends(get_db)):
+def user_profile(agent_name: str, request: Request, db: DB = Depends(get_db)):
     """User profile with all accounts and basic stats."""
+    polymarket = request.app.state.polymarket
     user = db.get_user_by_name(agent_name)
     if user is None:
         raise HTTPException(404, detail="User not found")
@@ -125,7 +155,7 @@ def user_profile(agent_name: str, db: DB = Depends(get_db)):
     account_list = []
     for acc in accounts:
         trade_count = db.get_trade_count(acc["id"])
-        stats = _stats_for_account(db, acc)
+        stats = _stats_for_account(db, polymarket, acc)
         account_list.append({
             "account_id": acc["id"],
             "account_name": acc["name"],
@@ -143,8 +173,9 @@ def user_profile(agent_name: str, db: DB = Depends(get_db)):
 
 
 @router.get("/pk/{account_a}/{account_b}")
-def head_to_head(account_a: int, account_b: int, db: DB = Depends(get_db)):
+def head_to_head(account_a: int, account_b: int, request: Request, db: DB = Depends(get_db)):
     """Head-to-head comparison of two accounts."""
+    polymarket = request.app.state.polymarket
     acc_a = db.get_account(account_a)
     if acc_a is None:
         raise HTTPException(404, detail=f"Account {account_a} not found")
@@ -154,7 +185,7 @@ def head_to_head(account_a: int, account_b: int, db: DB = Depends(get_db)):
 
     def _build_side(acc: dict) -> dict:
         trade_count = db.get_trade_count(acc["id"])
-        stats = _stats_for_account(db, acc)
+        stats = _stats_for_account(db, polymarket, acc)
         return {
             "account_id": acc["id"],
             "account_name": acc["name"],
