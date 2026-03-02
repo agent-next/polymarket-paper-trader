@@ -385,29 +385,31 @@ class TestFee200BpsBuy:
         # $100 buy with 200 bps fee
         result = simulate_buy_fill(multi_level_book, 100.0, fee_rate_bps=200)
 
-        # avg_price ~0.66468, so min(0.66468, 0.33532) = 0.33532
-        # fee = 0.02 * 0.33532 * 100 = 0.67064
-        expected_fee = (200 / 10_000) * min(result.avg_price, 1 - result.avg_price) * 100.0
+        expected_fee = sum(
+            calculate_fee(200, fill.price, fill.cost, enforce_minimum=False)
+            for fill in result.fills
+        )
         assert result.fee == pytest.approx(expected_fee)
         assert result.fee > 0
 
 
 class TestFee175BpsSell:
-    """175 bps on a 100-share sell at price 0.64."""
+    """175 bps on a sell with $64 gross proceeds."""
 
     def test_exact_calculation(self) -> None:
-        # fee = (175/10000) * min(0.64, 0.36) * 100 = 0.0175 * 0.36 * 100 = 0.63
-        fee = calculate_fee(175, 0.64, 100.0)
-        assert fee == pytest.approx(0.63)
+        # Sell 100 shares at $0.64 => gross proceeds = $64
+        # fee = (175/10000) * min(0.64, 0.36) * 64 = 0.4032
+        fee = calculate_fee(175, 0.64, 64.0)
+        assert fee == pytest.approx(0.4032)
 
     def test_sell_with_fee(self, multi_level_book: OrderBook) -> None:
         # Sell 100 shares with 175 bps fee
         result = simulate_sell_fill(multi_level_book, 100.0, fee_rate_bps=175)
 
-        # 100 shares fills entirely at bid level 1 (price=0.64, size=150)
-        # avg_price = 0.64, fee = 0.0175 * min(0.64, 0.36) * 100 = 0.63
+        # 100 shares fills entirely at bid level 1 (price=0.64, size=150):
+        # gross proceeds = $64, fee = 0.0175 * min(0.64, 0.36) * 64 = 0.4032
         assert result.avg_price == pytest.approx(0.64)
-        assert result.fee == pytest.approx(0.63)
+        assert result.fee == pytest.approx(0.4032)
 
 
 class TestFeeMinimum:
@@ -418,6 +420,38 @@ class TestFeeMinimum:
         # fee = (1/10000) * 0.50 * 0.001 = 0.00000005 -> clamped to 0.0001
         fee = calculate_fee(1, 0.50, 0.001)
         assert fee == pytest.approx(0.0001)
+
+
+class TestFokFloatingPointTolerance:
+    """FOK should not reject fills due to tiny floating-point remainders."""
+
+    def test_buy_exact_depth_with_float_noise(self) -> None:
+        book = OrderBook(
+            bids=[OrderBookLevel(price=0.40, size=1.0)],
+            asks=[
+                OrderBookLevel(price=0.10, size=1.0),
+                OrderBookLevel(price=0.20, size=1.0),
+            ],
+        )
+        result = simulate_buy_fill(book, 0.1 + 0.2, fee_rate_bps=0, order_type="fok")
+
+        assert result.filled is True
+        assert result.is_partial is False
+        assert result.total_cost == pytest.approx(0.3)
+
+    def test_sell_exact_depth_with_float_noise(self) -> None:
+        book = OrderBook(
+            bids=[
+                OrderBookLevel(price=0.60, size=0.1),
+                OrderBookLevel(price=0.59, size=0.2),
+            ],
+            asks=[OrderBookLevel(price=0.65, size=1.0)],
+        )
+        result = simulate_sell_fill(book, 0.1 + 0.2, fee_rate_bps=0, order_type="fok")
+
+        assert result.filled is True
+        assert result.is_partial is False
+        assert result.total_shares == pytest.approx(0.3)
 
 
 class TestFeeSymmetry:
@@ -666,5 +700,8 @@ class TestDesignDocExample:
         )
         result = simulate_buy_fill(book, 100.0, fee_rate_bps=200)
 
-        expected_fee = (200 / 10_000) * min(result.avg_price, 1.0 - result.avg_price) * 100.0
+        expected_fee = sum(
+            calculate_fee(200, fill.price, fill.cost, enforce_minimum=False)
+            for fill in result.fills
+        )
         assert result.fee == pytest.approx(expected_fee)

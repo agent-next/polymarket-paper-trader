@@ -9,12 +9,21 @@ from __future__ import annotations
 
 from pm_trader.models import Fill, FillResult, OrderBook
 
+FILL_EPSILON = 1e-9
+MIN_FEE_USDC = 0.0001
+
 
 # ---------------------------------------------------------------------------
 # Fee calculation — exact Polymarket formula
 # ---------------------------------------------------------------------------
 
-def calculate_fee(fee_rate_bps: int, price: float, size: float) -> float:
+def calculate_fee(
+    fee_rate_bps: int,
+    price: float,
+    size: float,
+    *,
+    enforce_minimum: bool = True,
+) -> float:
     """Return the trading fee using the exact Polymarket formula.
 
     Formula: (fee_rate_bps / 10_000) * min(price, 1 - price) * size
@@ -30,8 +39,8 @@ def calculate_fee(fee_rate_bps: int, price: float, size: float) -> float:
 
     fee = (fee_rate_bps / 10_000) * min(price, 1.0 - price) * size
 
-    if fee > 0.0:
-        fee = max(fee, 0.0001)
+    if enforce_minimum and fee > 0.0:
+        fee = max(fee, MIN_FEE_USDC)
 
     return fee
 
@@ -63,6 +72,25 @@ def _empty_fill_result() -> FillResult:
         is_partial=False,
         fills=[],
     )
+
+
+def _sum_level_fees(fee_rate_bps: int, fills: list[Fill]) -> float:
+    """Compute fee by summing level fees, then applying a per-order minimum."""
+    if fee_rate_bps == 0 or not fills:
+        return 0.0
+
+    fee = sum(
+        calculate_fee(
+            fee_rate_bps,
+            fill.price,
+            fill.cost,
+            enforce_minimum=False,
+        )
+        for fill in fills
+    )
+    if fee > 0.0:
+        return max(fee, MIN_FEE_USDC)
+    return 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -111,7 +139,7 @@ def simulate_buy_fill(
     fills: list[Fill] = []
 
     for level_idx, level in enumerate(sorted_asks):
-        if remaining_usd <= 0:
+        if remaining_usd <= FILL_EPSILON:
             break
 
         # Limit order: skip levels above max_price
@@ -128,7 +156,7 @@ def simulate_buy_fill(
                 cost=max_cost_at_level,
                 level=level_idx + 1,
             ))
-            remaining_usd -= max_cost_at_level
+            remaining_usd = max(0.0, remaining_usd - max_cost_at_level)
         else:
             # Partial level fill — buy as many shares as remaining USD allows
             shares = remaining_usd / level.price
@@ -148,12 +176,12 @@ def simulate_buy_fill(
     total_shares = sum(f.shares for f in fills)
 
     # FOK: reject if the book could not absorb the full amount
-    is_partial = remaining_usd > 0
+    is_partial = remaining_usd > FILL_EPSILON
     if order_type == "fok" and is_partial:
         return _empty_fill_result()
 
     avg_price = total_cost / total_shares if total_shares > 0 else 0.0
-    fee = calculate_fee(fee_rate_bps, avg_price, total_cost)
+    fee = _sum_level_fees(fee_rate_bps, fills)
 
     midpoint = _midpoint(book)
     if midpoint and midpoint > 0:
@@ -219,7 +247,7 @@ def simulate_sell_fill(
     fills: list[Fill] = []
 
     for level_idx, level in enumerate(sorted_bids):
-        if remaining_shares <= 0:
+        if remaining_shares <= FILL_EPSILON:
             break
 
         # Limit order: skip levels below min_price
@@ -235,7 +263,7 @@ def simulate_sell_fill(
                 cost=cost,
                 level=level_idx + 1,
             ))
-            remaining_shares -= level.size
+            remaining_shares = max(0.0, remaining_shares - level.size)
         else:
             # Partial level fill — sell only the remaining shares
             cost = remaining_shares * level.price
@@ -255,12 +283,12 @@ def simulate_sell_fill(
     total_shares = sum(f.shares for f in fills)
 
     # FOK: reject if the book could not absorb all shares
-    is_partial = remaining_shares > 0
+    is_partial = remaining_shares > FILL_EPSILON
     if order_type == "fok" and is_partial:
         return _empty_fill_result()
 
     avg_price = total_cost / total_shares if total_shares > 0 else 0.0
-    fee = calculate_fee(fee_rate_bps, avg_price, total_shares)
+    fee = _sum_level_fees(fee_rate_bps, fills)
 
     midpoint = _midpoint(book)
     if midpoint and midpoint > 0:
