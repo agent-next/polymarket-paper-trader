@@ -576,7 +576,9 @@ class TestCancelAllOrders:
 
     def test_cancel_all_not_initialized(self):
         result = _parse(cancel_all_orders())
-        assert result["ok"] is True or result["ok"] is False
+        assert result["ok"] is True
+        assert result["data"]["cancelled"] == 0
+        assert result["data"]["orders"] == []
 
     def test_cancel_all_traversal(self):
         result = _parse(cancel_all_orders(account="../evil"))
