@@ -71,6 +71,47 @@ class TestLeaderboard:
         assert data[0]["total_pnl"] == pytest.approx(-935.0)
         assert data[0]["roi_pct"] == pytest.approx(-9.35)
 
+    def test_leaderboard_positions_value_graceful_when_polymarket_missing(self, client):
+        user, account, headers = _register_and_create_account(client, "no-poly-bot")
+        _insert_trades(client, account["id"], count=10)
+        client.app.state.polymarket = None
+
+        resp = client.get("/leaderboard")
+        data = resp.json()["data"]
+        assert len(data) == 1
+        # With no polymarket client, open positions are treated as 0 mark-to-market.
+        assert data[0]["total_pnl"] == pytest.approx(0.0)
+
+    def test_leaderboard_positions_value_skips_position_errors(self, client):
+        user, account, headers = _register_and_create_account(client, "skip-pos-bot")
+        _insert_trades(client, account["id"], count=10)
+        db = client.app.state.db
+        db.upsert_position(
+            account_id=account["id"],
+            market_condition_id="0xbad",
+            market_slug="bad-market",
+            market_question="Bad?",
+            outcome="yes",
+            shares=100.0,
+            avg_entry_price=0.5,
+            total_cost=50.0,
+            realized_pnl=0.0,
+        )
+
+        class BrokenPoly:
+            def get_market(self, slug):
+                raise RuntimeError("boom")
+
+            def get_midpoint(self, token_id):
+                return 0.5
+
+        client.app.state.polymarket = BrokenPoly()
+        resp = client.get("/leaderboard")
+        data = resp.json()["data"]
+        assert len(data) == 1
+        # Position lookup failure is swallowed; ranking still responds.
+        assert data[0]["agent_name"] == "skip-pos-bot"
+
 
 class TestUserProfile:
     def test_user_profile(self, client):
