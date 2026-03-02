@@ -1,19 +1,62 @@
 {% extends "base.html" %}
 {% block title %}Account {{ account.name }} — Polymarket{% endblock %}
 {% block content %}
-<h1>{{ agent_name }} / {{ account.name }}</h1>
+<h1><a href="/u/{{ agent_name }}">{{ agent_name }}</a> / {{ account.name }}</h1>
 
-<h2>Balance</h2>
-<table>
-    <tr><td>Cash</td><td>${{ "%.2f"|format(account.cash) }}</td></tr>
-    <tr><td>Starting</td><td>${{ "%.2f"|format(account.starting_balance) }}</td></tr>
-</table>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1em; margin-bottom: 2em;">
+    <div>
+        <small>Cash</small>
+        <div><strong>${{ "%.2f"|format(account.cash) }}</strong></div>
+    </div>
+    <div>
+        <small>Positions Value</small>
+        <div><strong>${{ "%.2f"|format(positions_value) }}</strong></div>
+    </div>
+    <div>
+        <small>Total Value</small>
+        <div><strong>${{ "%.2f"|format(total_value) }}</strong></div>
+    </div>
+    <div>
+        <small>P&L</small>
+        <div class="{{ 'positive' if pnl >= 0 else 'negative' }}">
+            <strong>${{ "%.2f"|format(pnl) }}</strong>
+        </div>
+    </div>
+    <div>
+        <small>ROI</small>
+        <div class="{{ 'positive' if roi_pct >= 0 else 'negative' }}">
+            <strong>{{ "%.2f"|format(roi_pct) }}%</strong>
+        </div>
+    </div>
+    {% if stats %}
+    <div>
+        <small>Sharpe</small>
+        <div><strong>{{ "%.2f"|format(stats.sharpe_ratio) if stats.sharpe_ratio else "—" }}</strong></div>
+    </div>
+    <div>
+        <small>Win Rate</small>
+        <div><strong>{{ "%.1f"|format(stats.win_rate) }}%</strong></div>
+    </div>
+    <div>
+        <small>Max Drawdown</small>
+        <div class="negative"><strong>{{ "%.2f"|format(stats.max_drawdown) }}%</strong></div>
+    </div>
+    {% endif %}
+</div>
 
 <h2>Positions</h2>
 {% if positions %}
 <table>
     <thead>
-        <tr><th>Market</th><th>Outcome</th><th>Shares</th><th>Avg Entry</th><th>Cost</th></tr>
+        <tr>
+            <th>Market</th>
+            <th>Outcome</th>
+            <th>Shares</th>
+            <th>Avg Entry</th>
+            <th>Live Price</th>
+            <th>Value</th>
+            <th>P&L</th>
+        </tr>
     </thead>
     <tbody>
         {% for pos in positions %}
@@ -22,7 +65,11 @@
             <td>{{ pos.outcome | upper }}</td>
             <td>{{ "%.2f"|format(pos.shares) }}</td>
             <td>${{ "%.4f"|format(pos.avg_entry_price) }}</td>
-            <td>${{ "%.2f"|format(pos.total_cost) }}</td>
+            <td>${{ "%.4f"|format(pos.live_price) }}</td>
+            <td>${{ "%.2f"|format(pos.current_value) }}</td>
+            <td class="{{ 'positive' if pos.unrealized_pnl >= 0 else 'negative' }}">
+                ${{ "%.2f"|format(pos.unrealized_pnl) }}
+            </td>
         </tr>
         {% endfor %}
     </tbody>

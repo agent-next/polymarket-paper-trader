@@ -56,6 +56,18 @@ class TestAccountPage:
         resp = client.get(f"/a/{account_id}")
         assert resp.status_code == 200
         assert "default" in resp.text
+        assert "Total Value" in resp.text
+        assert "P&L" in resp.text
+        assert "ROI" in resp.text
+
+    def test_account_page_with_trades(self, client):
+        _, account, headers = _register_and_create_account(client, "stats-acc-bot")
+        _insert_trades(client, account["id"], count=5)
+        resp = client.get(f"/a/{account['id']}")
+        assert resp.status_code == 200
+        assert "Sharpe" in resp.text
+        assert "Win Rate" in resp.text
+        assert "Max Drawdown" in resp.text
 
     def test_account_not_found(self, client):
         resp = client.get("/a/999")
