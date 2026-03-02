@@ -1,8 +1,12 @@
 """Background job: auto-resolve closed markets."""
 from __future__ import annotations
 
+import logging
+
 from server.adapters.polymarket import PolymarketClient
 from server.db import DB
+
+logger = logging.getLogger(__name__)
 
 
 def auto_resolve_job(db: DB, polymarket: PolymarketClient) -> int:
@@ -18,7 +22,8 @@ def auto_resolve_job(db: DB, polymarket: PolymarketClient) -> int:
     for slug in slugs:
         try:
             market = polymarket.get_market(slug)
-        except Exception:
+        except Exception as e:
+            logger.warning("auto_resolve: failed to fetch market slug=%s: %s", slug, e)
             continue
 
         if not market.closed:
@@ -32,6 +37,11 @@ def auto_resolve_job(db: DB, polymarket: PolymarketClient) -> int:
                 break
 
         if winning_outcome is None:
+            logger.info(
+                "auto_resolve: skipped closed market without clear winner slug=%s prices=%s",
+                slug,
+                market.outcome_prices,
+            )
             continue
 
         # Resolve ALL positions for this market across ALL accounts
