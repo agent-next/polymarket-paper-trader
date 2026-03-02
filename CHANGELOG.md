@@ -4,6 +4,8 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## Unreleased
 
+## [0.1.7] - 2026-03-01
+
 ### Added
 - skills.sh support — skill discoverable via `npx skills add agent-next/polymarket-paper-trader`
 - Market discovery: `get_tags` — list all market categories/tags (cached 5 min)
