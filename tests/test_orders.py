@@ -13,6 +13,7 @@ from pm_trader.orders import (
     create_order,
     expire_orders,
     get_pending_orders,
+    get_reserved_buy_notional,
     init_orders_schema,
     _migrate_orders_schema_if_needed,
     mark_partially_filled,
@@ -99,6 +100,30 @@ class TestGetPendingOrders:
         assert len(pending) == 1
         assert pending[0].status == "partially_filled"
         assert pending[0].remaining_amount == 40.0
+
+
+class TestReservedBuyNotional:
+    def test_empty_is_zero(self, conn):
+        assert get_reserved_buy_notional(conn) == 0.0
+
+    def test_sums_only_open_buy_remaining_amount(self, conn):
+        _create(conn, side="buy", amount=100.0)   # id=1
+        _create(conn, side="buy", amount=50.0)    # id=2
+        _create(conn, side="sell", amount=70.0)   # id=3
+        mark_partially_filled(conn, 2, 20.0)
+        cancel_order(conn, 1)
+        assert get_reserved_buy_notional(conn) == pytest.approx(20.0)
+
+    def test_handles_none_row_from_driver(self):
+        class _Cursor:
+            def fetchone(self):
+                return None
+
+        class _Conn:
+            def execute(self, *_args, **_kwargs):
+                return _Cursor()
+
+        assert get_reserved_buy_notional(_Conn()) == 0.0
 
 
 class TestCancelOrder:

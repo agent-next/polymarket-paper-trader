@@ -139,6 +139,20 @@ def get_pending_orders(conn: sqlite3.Connection) -> list[LimitOrder]:
     return [_row_to_order(r) for r in rows]
 
 
+def get_reserved_buy_notional(conn: sqlite3.Connection) -> float:
+    """Return USD notional reserved by open buy limit orders."""
+    row = conn.execute(
+        """\
+        SELECT COALESCE(SUM(remaining_amount), 0.0) AS reserved
+        FROM limit_orders
+        WHERE side = 'buy' AND status IN ('pending', 'partially_filled')
+        """
+    ).fetchone()
+    if row is None:
+        return 0.0
+    return float(row["reserved"] or 0.0)
+
+
 def get_order(conn: sqlite3.Connection, order_id: int) -> LimitOrder | None:
     """Return a specific order, or None."""
     return _get_order(conn, order_id)

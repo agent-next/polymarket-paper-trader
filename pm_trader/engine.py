@@ -32,13 +32,14 @@ from pm_trader.orders import (
     create_order,
     expire_orders,
     get_pending_orders,
+    get_reserved_buy_notional,
     init_orders_schema,
     mark_filled,
     mark_partially_filled,
     reject_order,
     should_fill,
 )
-from pm_trader.orderbook import simulate_buy_fill, simulate_sell_fill
+from pm_trader.orderbook import calculate_fee, simulate_buy_fill, simulate_sell_fill
 
 MIN_ORDER_USD = 1.0  # Polymarket minimum order size
 TICK_EPSILON = 1e-9
@@ -116,6 +117,23 @@ class Engine:
         snapped = ticks * tick_size
         if abs(price - snapped) > TICK_EPSILON:
             raise TickSizeViolationError(price, tick_size)
+
+    def _reserved_buy_notional(self) -> float:
+        """USD currently reserved by open buy limit orders."""
+        return get_reserved_buy_notional(self.db.conn)
+
+    def _available_cash(self) -> float:
+        """Cash available for new buy orders after existing reservations."""
+        account = self._require_account()
+        return max(0.0, account.cash - self._reserved_buy_notional())
+
+    @staticmethod
+    def _estimate_buy_fee_upper_bound(amount_usd: float, fee_rate_bps: int) -> float:
+        """Conservative fee estimate for reserving buy limit-order cash."""
+        if amount_usd <= 0 or fee_rate_bps <= 0:
+            return 0.0
+        # Worst case of min(price, 1-price) occurs at price=0.5.
+        return calculate_fee(fee_rate_bps, 0.5, amount_usd)
 
     @staticmethod
     def _require_market_tradable(market) -> None:
@@ -401,8 +419,12 @@ class Engine:
         account = self._require_account()
         portfolio = self.get_portfolio()
         positions_value = sum(p["current_value"] for p in portfolio)
+        reserved_cash = self._reserved_buy_notional()
+        available_cash = max(0.0, account.cash - reserved_cash)
         return {
             "cash": account.cash,
+            "available_cash": available_cash,
+            "reserved_cash": reserved_cash,
             "starting_balance": account.starting_balance,
             "positions_value": positions_value,
             "total_value": account.cash + positions_value,
@@ -433,7 +455,7 @@ class Engine:
         expires_at: str | None = None,
     ) -> dict:
         """Place a GTC or GTD limit order."""
-        self._require_account()
+        account = self._require_account()
         if side not in ("buy", "sell"):
             raise OrderRejectedError(f"Invalid side: {side!r}")
         if not (0 < limit_price < 1):
@@ -448,11 +470,25 @@ class Engine:
         market = self.api.get_market(slug_or_id)
         outcome = self._validate_outcome(outcome, market)
         self._require_market_tradable(market)
+        token_id = market.get_token_id(outcome)
         tick_size = market.tick_size
         if tick_size <= 0:
-            token_id = market.get_token_id(outcome)
             tick_size = self.api.get_tick_size(token_id)
         self._validate_tick_size(limit_price, tick_size)
+        if side == "buy":
+            try:
+                fee_rate_bps = int(float(market.fee_rate_bps))
+            except (TypeError, ValueError):
+                fee_rate_bps = 0
+            if fee_rate_bps <= 0:
+                try:
+                    fee_rate_bps = int(float(self.api.get_fee_rate(token_id)))
+                except Exception:
+                    fee_rate_bps = 0
+            required = amount + self._estimate_buy_fee_upper_bound(amount, fee_rate_bps)
+            available = max(0.0, account.cash - self._reserved_buy_notional())
+            if required > available + FILL_EPSILON:
+                raise InsufficientBalanceError(required=required, available=available)
         order = create_order(
             self.db.conn,
             market_slug=market.slug,

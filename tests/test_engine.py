@@ -399,6 +399,19 @@ class TestBalance:
         assert balance["positions_value"] > 0
         assert balance["total_value"] > 0
 
+    def test_balance_exposes_reserved_and_available_cash(self, initialized_engine: Engine):
+        _mock_api(initialized_engine)
+        initialized_engine.place_limit_order("btc", "yes", "buy", 2_000.0, 0.55)
+
+        balance = initialized_engine.get_balance()
+        assert balance["reserved_cash"] == pytest.approx(2_000.0)
+        assert balance["available_cash"] == pytest.approx(8_000.0)
+
+    def test_available_cash_helper(self, initialized_engine: Engine):
+        _mock_api(initialized_engine)
+        initialized_engine.place_limit_order("btc", "yes", "buy", 1_500.0, 0.55)
+        assert initialized_engine._available_cash() == pytest.approx(8_500.0)
+
 
 # ---------------------------------------------------------------------------
 # History tests
@@ -597,6 +610,26 @@ class TestCheckOrdersRejection:
         # No pending orders left
         assert len(get_pending_orders(initialized_engine.db.conn)) == 0
 
+    def test_buy_order_rejected_when_fill_exceeds_cash(self, initialized_engine: Engine):
+        """Bypassed placement checks still reject at fill execution if cash is insufficient."""
+        _mock_api(initialized_engine)
+        initialized_engine.init_account(1.0)
+        from pm_trader.orders import create_order
+
+        create_order(
+            initialized_engine.db.conn,
+            market_slug="will-bitcoin-hit-100k",
+            market_condition_id="0xabc123",
+            outcome="yes",
+            side="buy",
+            amount=100.0,
+            limit_price=0.70,
+        )
+        results = initialized_engine.check_orders()
+        rejected = [r for r in results if r["action"] == "rejected"]
+        assert len(rejected) == 1
+        assert "Insufficient balance" in rejected[0]["reason"]
+
 
 class TestLimitOrderValidation:
     def test_gtd_without_expiry_rejected(self, initialized_engine: Engine):
@@ -620,6 +653,43 @@ class TestLimitOrderValidation:
             initialized_engine.place_limit_order(
                 "btc", "yes", "buy", 100.0, 0.555,
             )
+
+    def test_buy_limit_reserves_cash_and_blocks_overcommit(self, initialized_engine: Engine):
+        _mock_api(initialized_engine)
+        initialized_engine.place_limit_order("btc", "yes", "buy", 9_000.0, 0.55)
+
+        with pytest.raises(InsufficientBalanceError):
+            initialized_engine.place_limit_order("btc", "yes", "buy", 2_000.0, 0.55)
+
+    def test_cancelled_buy_limit_releases_reserved_cash(self, initialized_engine: Engine):
+        _mock_api(initialized_engine)
+        order = initialized_engine.place_limit_order("btc", "yes", "buy", 9_000.0, 0.55)
+        initialized_engine.cancel_limit_order(order["id"])
+
+        # Should be placeable again after cancellation releases reservation.
+        initialized_engine.place_limit_order("btc", "yes", "buy", 9_000.0, 0.55)
+
+    def test_buy_limit_fee_rate_fallback_on_invalid_values(self, initialized_engine: Engine):
+        _mock_api(initialized_engine)
+        market = Market(
+            condition_id=SAMPLE_MARKET.condition_id,
+            slug=SAMPLE_MARKET.slug,
+            question=SAMPLE_MARKET.question,
+            description=SAMPLE_MARKET.description,
+            outcomes=list(SAMPLE_MARKET.outcomes),
+            outcome_prices=list(SAMPLE_MARKET.outcome_prices),
+            tokens=[dict(t) for t in SAMPLE_MARKET.tokens],
+            active=SAMPLE_MARKET.active,
+            closed=SAMPLE_MARKET.closed,
+            volume=SAMPLE_MARKET.volume,
+            liquidity=SAMPLE_MARKET.liquidity,
+            end_date=SAMPLE_MARKET.end_date,
+            fee_rate_bps="invalid",  # type: ignore[arg-type]
+            tick_size=SAMPLE_MARKET.tick_size,
+        )
+        initialized_engine.api.get_market = MagicMock(return_value=market)
+        initialized_engine.api.get_fee_rate = MagicMock(side_effect=RuntimeError("no fee rate"))
+        initialized_engine.place_limit_order("btc", "yes", "buy", 100.0, 0.55)
 
     def test_zero_tick_size_short_circuits_validation(self):
         # Defensive branch: non-positive tick should skip snapping checks.
