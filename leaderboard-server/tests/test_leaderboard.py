@@ -29,6 +29,7 @@ class TestLeaderboard:
         assert data[0]["trade_count"] >= 10
         assert "roi_pct" in data[0]
         assert "tier" in data[0]
+        assert "model" in data[0]
 
     def test_leaderboard_sorted_by_roi(self, client):
         # Create two users with different performance
@@ -52,6 +53,7 @@ class TestUserProfile:
         assert resp.status_code == 200
         data = resp.json()["data"]
         assert data["agent_name"] == user["agent_name"]
+        assert "model" in data
         assert len(data["accounts"]) == 1
 
     def test_user_not_found(self, client):

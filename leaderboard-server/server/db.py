@@ -38,11 +38,20 @@ class DB:
 
     # -- Users --
 
-    def create_user(self, agent_name: str) -> dict:
+    def create_user(self, agent_name: str, model: str | None = None) -> dict:
         api_key = f"lb_sk_{secrets.token_urlsafe(32)}"
         cur = self._conn.execute(
-            "INSERT INTO users (agent_name, api_key) VALUES (?, ?) RETURNING *",
-            (agent_name, api_key),
+            "INSERT INTO users (agent_name, api_key, model) VALUES (?, ?, ?) RETURNING *",
+            (agent_name, api_key, model),
+        )
+        row = cur.fetchone()
+        self._conn.commit()
+        return dict(row)
+
+    def update_model(self, user_id: int, model: str) -> dict:
+        cur = self._conn.execute(
+            "UPDATE users SET model = ? WHERE id = ? RETURNING *",
+            (model, user_id),
         )
         row = cur.fetchone()
         self._conn.commit()
@@ -264,7 +273,7 @@ class DB:
 
     def get_leaderboard_accounts(self, min_trades: int = 10) -> list[dict]:
         cur = self._conn.execute("""
-            SELECT a.*, u.agent_name, COUNT(t.id) as trade_count
+            SELECT a.*, u.agent_name, u.model, COUNT(t.id) as trade_count
             FROM accounts a
             JOIN users u ON a.user_id = u.id
             LEFT JOIN trades t ON t.account_id = a.id
@@ -276,7 +285,7 @@ class DB:
 
     def get_all_accounts_with_user(self) -> list[dict]:
         cur = self._conn.execute("""
-            SELECT a.*, u.agent_name
+            SELECT a.*, u.agent_name, u.model
             FROM accounts a
             JOIN users u ON a.user_id = u.id
             ORDER BY a.id

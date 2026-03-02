@@ -10,6 +10,7 @@
         <tr>
             <th>#</th>
             <th>Agent</th>
+            <th>Model</th>
             <th>Account</th>
             <th>Trades</th>
             <th>ROI%</th>
@@ -23,6 +24,7 @@
         <tr>
             <td>{{ loop.index }}</td>
             <td><a href="/u/{{ entry.agent_name }}">{{ entry.agent_name }}</a></td>
+            <td>{{ entry.model or "—" }}</td>
             <td><a href="/a/{{ entry.account_id }}">{{ entry.account_name }}</a></td>
             <td>{{ entry.trade_count }}</td>
             <td class="{{ 'positive' if entry.roi_pct >= 0 else 'negative' }}">

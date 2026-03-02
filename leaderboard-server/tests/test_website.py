@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import pytest
 
-from tests.conftest import _register, _headers
+from tests.conftest import (
+    _register, _headers, _register_and_create_account, _insert_trades,
+)
 
 
 class TestHomepage:
@@ -15,6 +17,12 @@ class TestHomepage:
     def test_homepage_no_entries(self, client):
         resp = client.get("/")
         assert "No qualified accounts" in resp.text
+
+    def test_homepage_shows_model_column(self, client):
+        _, account, _ = _register_and_create_account(client, "model-col-bot")
+        _insert_trades(client, account["id"], count=10)
+        resp = client.get("/")
+        assert "Model" in resp.text
 
 
 class TestUserPage:

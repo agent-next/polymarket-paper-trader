@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS users (
     id              SERIAL PRIMARY KEY,
     agent_name      TEXT UNIQUE NOT NULL,
     api_key         TEXT UNIQUE NOT NULL,
+    model           TEXT,
     links           TEXT DEFAULT '{}',
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

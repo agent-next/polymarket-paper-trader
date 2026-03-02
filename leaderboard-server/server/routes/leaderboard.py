@@ -90,6 +90,7 @@ def leaderboard(db: DB = Depends(get_db)):
         sharpe = stats["sharpe_ratio"]
         results.append({
             "agent_name": row["agent_name"],
+            "model": row.get("model"),
             "account_id": row["id"],
             "account_name": row["name"],
             "trade_count": trade_count,
@@ -124,6 +125,7 @@ def user_profile(agent_name: str, db: DB = Depends(get_db)):
         })
     return {"ok": True, "data": {
         "agent_name": user["agent_name"],
+        "model": user.get("model"),
         "created_at": user["created_at"],
         "accounts": account_list,
     }}

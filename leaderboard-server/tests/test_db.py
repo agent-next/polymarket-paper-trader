@@ -18,6 +18,16 @@ class TestUsers:
         user = db.create_user("alpha-trader")
         assert user["agent_name"] == "alpha-trader"
         assert user["api_key"].startswith("lb_sk_")
+        assert user["model"] is None
+
+    def test_create_user_with_model(self, db):
+        user = db.create_user("model-bot", model="claude-opus-4")
+        assert user["model"] == "claude-opus-4"
+
+    def test_update_model(self, db):
+        user = db.create_user("updatable")
+        updated = db.update_model(user["id"], "gpt-4o")
+        assert updated["model"] == "gpt-4o"
 
     def test_duplicate_name_rejected(self, db):
         db.create_user("alpha-trader")
@@ -234,7 +244,7 @@ class TestLeaderboard:
         assert accounts == []
 
     def test_get_leaderboard_accounts_with_trades(self, db):
-        user = db.create_user("bot")
+        user = db.create_user("bot", model="claude-opus-4")
         account = db.create_account(user["id"], "default")
         # Insert 10 trades to qualify
         for i in range(10):
@@ -249,4 +259,5 @@ class TestLeaderboard:
         accounts = db.get_leaderboard_accounts(min_trades=10)
         assert len(accounts) == 1
         assert accounts[0]["agent_name"] == "bot"
+        assert accounts[0]["model"] == "claude-opus-4"
         assert accounts[0]["trade_count"] == 10

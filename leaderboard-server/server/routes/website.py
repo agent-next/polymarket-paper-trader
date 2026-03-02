@@ -92,6 +92,7 @@ def homepage(request: Request, db: DB = Depends(get_db)):
         sharpe = stats["sharpe_ratio"]
         entries.append({
             "agent_name": row["agent_name"],
+            "model": row.get("model"),
             "account_id": row["id"],
             "account_name": row["name"],
             "trade_count": trade_count,
