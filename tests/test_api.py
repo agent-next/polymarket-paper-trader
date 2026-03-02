@@ -296,7 +296,7 @@ class TestClobEndpoints:
     def test_get_fee_rate(self, client: PolymarketClient, httpx_mock):
         httpx_mock.add_response(
             url=httpx.URL(CLOB_BASE + "/fee-rate", params={"token_id": "tok_yes"}),
-            json={"fee_rate_bps": 200},
+            json={"base_fee": 200},
         )
         fee = client.get_fee_rate("tok_yes")
         assert fee == 200
@@ -304,12 +304,20 @@ class TestClobEndpoints:
     def test_fee_rate_cached(self, client: PolymarketClient, httpx_mock):
         httpx_mock.add_response(
             url=httpx.URL(CLOB_BASE + "/fee-rate", params={"token_id": "tok_yes"}),
-            json={"fee_rate_bps": 175},
+            json={"base_fee": 175},
         )
         f1 = client.get_fee_rate("tok_yes")
         f2 = client.get_fee_rate("tok_yes")
         assert f1 == f2 == 175
         assert len(httpx_mock.get_requests()) == 1
+
+    def test_get_fee_rate_legacy_field_compat(self, client: PolymarketClient, httpx_mock):
+        httpx_mock.add_response(
+            url=httpx.URL(CLOB_BASE + "/fee-rate", params={"token_id": "tok_yes"}),
+            json={"fee_rate_bps": 150},
+        )
+        fee = client.get_fee_rate("tok_yes")
+        assert fee == 150
 
     def test_get_tick_size(self, client: PolymarketClient, httpx_mock):
         httpx_mock.add_response(
@@ -346,7 +354,7 @@ class TestGetTradeContext:
         )
         httpx_mock.add_response(
             url=httpx.URL(CLOB_BASE + "/fee-rate", params={"token_id": "tok_yes"}),
-            json={"fee_rate_bps": 0},
+            json={"base_fee": 0},
         )
         market, book, fee = client.get_trade_context("btc", "yes")
         assert market.condition_id == "0xabc123"
@@ -364,7 +372,7 @@ class TestGetTradeContext:
         )
         httpx_mock.add_response(
             url=httpx.URL(CLOB_BASE + "/fee-rate", params={"token_id": "tok_no"}),
-            json={"fee_rate_bps": 175},
+            json={"base_fee": 175},
         )
         market, book, fee = client.get_trade_context("btc", "no")
         assert fee == 175

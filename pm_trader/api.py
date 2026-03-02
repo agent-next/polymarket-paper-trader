@@ -234,11 +234,14 @@ class PolymarketClient:
         cache_key = f"fee_rate:{token_id}"
         cached = self._get_cached(cache_key)
         if cached is not None:
-            return int(cached.get("fee_rate_bps", 0))
+            # New CLOB payloads use `base_fee`; keep fallback for older caches.
+            return int(cached.get("base_fee", cached.get("fee_rate_bps", 0)))
 
         data = self._clob_get("/fee-rate", params={"token_id": token_id})
-        fee_bps = int(data.get("fee_rate_bps", 0))
-        self._set_cached(cache_key, {"fee_rate_bps": fee_bps})
+        # Official CLOB response key is `base_fee`; fallback keeps backward
+        # compatibility with historical fixtures.
+        fee_bps = int(data.get("base_fee", data.get("fee_rate_bps", 0)))
+        self._set_cached(cache_key, {"base_fee": fee_bps})
         return fee_bps
 
     def get_tick_size(self, token_id: str) -> float:
@@ -380,7 +383,7 @@ def _parse_market(data: dict) -> Market:
         volume=float(data.get("volume", 0) or 0),
         liquidity=float(data.get("liquidity", 0) or 0),
         end_date=data.get("endDateIso", data.get("end_date_iso", data.get("end_date", ""))),
-        fee_rate_bps=int(data.get("fee_rate_bps", 0) or 0),
+        fee_rate_bps=int(data.get("base_fee", data.get("fee_rate_bps", 0)) or 0),
         tick_size=tick_size,
     )
 
