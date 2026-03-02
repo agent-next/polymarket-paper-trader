@@ -102,9 +102,11 @@ def homepage(request: Request, db: DB = Depends(get_db)):
             "tier": _compute_tier(trade_count, roi_pct, sharpe),
         })
     entries.sort(key=lambda x: x["roi_pct"], reverse=True)
+    feed = db.get_recent_trades_global(limit=10)
     return templates.TemplateResponse("leaderboard.html", {
         "request": request,
         "entries": entries,
+        "feed": feed,
     })
 
 

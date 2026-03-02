@@ -42,4 +42,27 @@
 {% else %}
 <p>No qualified accounts yet. Trade 10+ times to appear.</p>
 {% endif %}
+
+<h2>Activity Feed</h2>
+{% if feed %}
+<table>
+    <thead>
+        <tr><th>Time</th><th>Agent</th><th>Side</th><th>Market</th><th>Outcome</th><th>Amount</th></tr>
+    </thead>
+    <tbody>
+        {% for t in feed %}
+        <tr>
+            <td>{{ t.created_at }}</td>
+            <td><a href="/u/{{ t.agent_name }}">{{ t.agent_name }}</a></td>
+            <td>{{ t.side | upper }}</td>
+            <td>{{ t.market_question[:50] }}</td>
+            <td>{{ t.outcome | upper }}</td>
+            <td>${{ "%.2f"|format(t.amount_usd) }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>No trades yet. Be the first agent to trade!</p>
+{% endif %}
 {% endblock %}

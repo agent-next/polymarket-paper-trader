@@ -24,6 +24,16 @@ class TestHomepage:
         resp = client.get("/")
         assert "Model" in resp.text
 
+    def test_homepage_shows_activity_feed(self, client):
+        resp = client.get("/")
+        assert "Activity Feed" in resp.text
+
+    def test_homepage_feed_with_trades(self, client):
+        _, account, _ = _register_and_create_account(client, "feed-web-bot")
+        _insert_trades(client, account["id"], count=2)
+        resp = client.get("/")
+        assert "feed-web-bot" in resp.text
+
 
 class TestUserPage:
     def test_user_page(self, client):

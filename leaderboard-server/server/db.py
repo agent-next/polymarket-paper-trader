@@ -291,3 +291,15 @@ class DB:
             ORDER BY a.id
         """)
         return [dict(r) for r in cur.fetchall()]
+
+    def get_recent_trades_global(self, limit: int = 20) -> list[dict]:
+        """Recent trades across all accounts with agent names."""
+        cur = self._conn.execute("""
+            SELECT t.*, u.agent_name, a.name as account_name
+            FROM trades t
+            JOIN accounts a ON t.account_id = a.id
+            JOIN users u ON a.user_id = u.id
+            ORDER BY t.id DESC
+            LIMIT ?
+        """, (limit,))
+        return [dict(r) for r in cur.fetchall()]

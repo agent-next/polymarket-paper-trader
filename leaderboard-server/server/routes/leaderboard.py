@@ -104,6 +104,17 @@ def leaderboard(db: DB = Depends(get_db)):
     return {"ok": True, "data": results}
 
 
+@router.get("/feed")
+def activity_feed(db: DB = Depends(get_db), limit: int = 20):
+    """Recent trades across all agents."""
+    if limit < 1:
+        limit = 1
+    if limit > 100:
+        limit = 100
+    trades = db.get_recent_trades_global(limit=limit)
+    return {"ok": True, "data": trades}
+
+
 @router.get("/users/{agent_name}")
 def user_profile(agent_name: str, db: DB = Depends(get_db)):
     """User profile with all accounts and basic stats."""

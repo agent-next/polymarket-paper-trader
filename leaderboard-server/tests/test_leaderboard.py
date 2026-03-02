@@ -77,3 +77,32 @@ class TestPK:
         user1, acc1, h1 = _register_and_create_account(client, "pk-bot-c")
         resp = client.get(f"/leaderboard/pk/{acc1['id']}/999")
         assert resp.status_code == 404
+
+
+class TestActivityFeed:
+    def test_feed_empty(self, client):
+        resp = client.get("/leaderboard/feed")
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+        assert resp.json()["data"] == []
+
+    def test_feed_with_trades(self, client):
+        user, account, headers = _register_and_create_account(client, "feed-bot")
+        _insert_trades(client, account["id"], count=3)
+        resp = client.get("/leaderboard/feed")
+        data = resp.json()["data"]
+        assert len(data) == 3
+        assert data[0]["agent_name"] == "feed-bot"
+
+    def test_feed_limit(self, client):
+        user, account, headers = _register_and_create_account(client, "feed-limit-bot")
+        _insert_trades(client, account["id"], count=5)
+        resp = client.get("/leaderboard/feed?limit=2")
+        data = resp.json()["data"]
+        assert len(data) == 2
+
+    def test_feed_limit_clamped(self, client):
+        resp = client.get("/leaderboard/feed?limit=0")
+        assert resp.status_code == 200
+        resp = client.get("/leaderboard/feed?limit=999")
+        assert resp.status_code == 200

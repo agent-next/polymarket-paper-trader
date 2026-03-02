@@ -261,3 +261,24 @@ class TestLeaderboard:
         assert accounts[0]["agent_name"] == "bot"
         assert accounts[0]["model"] == "claude-opus-4"
         assert accounts[0]["trade_count"] == 10
+
+    def test_get_recent_trades_global_empty(self, db):
+        trades = db.get_recent_trades_global()
+        assert trades == []
+
+    def test_get_recent_trades_global(self, db):
+        user = db.create_user("feed-bot")
+        account = db.create_account(user["id"], "default")
+        for _ in range(3):
+            db.insert_trade(
+                account_id=account["id"],
+                market_condition_id="0xabc", market_slug="test",
+                market_question="T?", outcome="yes", side="buy",
+                order_type="fok", avg_price=0.5, amount_usd=100,
+                shares=200, fee_rate_bps=0, fee=0, slippage=0,
+                levels_filled=1, is_partial=False, book_snapshot_id=None,
+            )
+        trades = db.get_recent_trades_global(limit=2)
+        assert len(trades) == 2
+        assert trades[0]["agent_name"] == "feed-bot"
+        assert "account_name" in trades[0]
