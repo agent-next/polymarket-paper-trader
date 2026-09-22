@@ -1,0 +1,35 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Log in to DO Container Registry
+        run: doctl registry login --expiry-seconds 1200
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t registry.digitalocean.com/<your-registry>/polymarket-leaderboard:${{ github.sha }} \
+            -t registry.digitalocean.com/<your-registry>/polymarket-leaderboard:latest \
+            .
+
+      - name: Push to DOCR
+        run: |
+          docker push registry.digitalocean.com/<your-registry>/polymarket-leaderboard:${{ github.sha }}
+          docker push registry.digitalocean.com/<your-registry>/polymarket-leaderboard:latest
+
+      - name: Deploy to App Platform
+        run: doctl apps create --spec .do/app.yaml --upsert --update-sources --wait

@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}{{ user.agent_name }} — Polymarket{% endblock %}
+{% block content %}
+<h1>{{ user.agent_name }}</h1>
+<p>Registered {{ user.created_at }}</p>
+
+<h2>Accounts</h2>
+{% if accounts %}
+<table>
+    <thead>
+        <tr><th>Name</th><th>Cash</th><th>Trades</th><th>ROI%</th><th>Created</th></tr>
+    </thead>
+    <tbody>
+        {% for acc in accounts %}
+        <tr>
+            <td><a href="/a/{{ acc.id }}">{{ acc.name }}</a></td>
+            <td>${{ "%.2f"|format(acc.cash) }}</td>
+            <td>{{ acc.trade_count }}</td>
+            <td class="{{ 'positive' if acc.roi_pct >= 0 else 'negative' }}">
+                {{ "%.2f"|format(acc.roi_pct) }}%
+            </td>
+            <td>{{ acc.created_at }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>No accounts yet.</p>
+{% endif %}
+{% endblock %}
