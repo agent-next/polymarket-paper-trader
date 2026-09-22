@@ -5,6 +5,7 @@ website, check_orders, and auto_resolve edge cases.
 """
 from __future__ import annotations
 
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -626,8 +627,9 @@ class TestCheckOrdersGaps:
 # ---------------------------------------------------------------------------
 
 class TestAutoResolveGaps:
-    def test_market_fetch_fails_skips(self, jobs_db):
+    def test_market_fetch_fails_skips(self, jobs_db, caplog):
         """When get_market raises, that slug is skipped."""
+        caplog.set_level(logging.WARNING)
         user = jobs_db.create_user("resolve-fail")
         account = jobs_db.create_account(user["id"], "default")
         jobs_db.upsert_position(
@@ -645,9 +647,11 @@ class TestAutoResolveGaps:
         count = auto_resolve_job(jobs_db, pm)
         assert count == 0
         assert len(jobs_db.get_open_positions(account["id"])) == 1
+        assert "failed to fetch market slug=failing-market" in caplog.text
 
-    def test_no_winning_outcome_skips(self, jobs_db):
+    def test_no_winning_outcome_skips(self, jobs_db, caplog):
         """Closed market with no outcome >= 0.99 → skip."""
+        caplog.set_level(logging.INFO)
         user = jobs_db.create_user("ambig-bot")
         account = jobs_db.create_account(user["id"], "default")
         jobs_db.upsert_position(
@@ -683,6 +687,7 @@ class TestAutoResolveGaps:
         pm = MockPolymarketClient(ambiguous_market, EMPTY_BOOK)
         count = auto_resolve_job(jobs_db, pm)
         assert count == 0
+        assert "skipped closed market without clear winner slug=ambiguous-market" in caplog.text
 
     def test_already_resolved_position_skipped(self, jobs_db):
         """Position marked is_resolved=1 → skipped."""

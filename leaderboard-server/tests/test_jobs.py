@@ -88,9 +88,90 @@ class TestCheckOrders:
         trades = db.get_trades(account["id"])
         assert len(trades) == 1
         assert trades[0]["side"] == "buy"
+        assert trades[0]["book_snapshot_id"] is not None
         # Check cash was deducted
         updated = db.get_account(account["id"])
         assert float(updated["cash"]) < 10000
+
+    def test_mixed_outcomes_use_their_own_books(self, db, sample_market):
+        """YES/NO orders in one market must not share the same order book."""
+        user = db.create_user("mixed-outcome-bot")
+        account = db.create_account(user["id"], "default")
+        db.create_limit_order(
+            account_id=account["id"],
+            market_slug="test-market",
+            market_condition_id="0xabc123",
+            outcome="yes",
+            side="buy",
+            amount=50,
+            limit_price=0.50,
+        )
+        db.create_limit_order(
+            account_id=account["id"],
+            market_slug="test-market",
+            market_condition_id="0xabc123",
+            outcome="no",
+            side="buy",
+            amount=50,
+            limit_price=0.50,
+        )
+
+        yes_book = OrderBook(
+            bids=[OrderBookLevel(price=0.40, size=200)],
+            asks=[OrderBookLevel(price=0.45, size=200)],
+        )
+        no_book = OrderBook(
+            bids=[OrderBookLevel(price=0.30, size=200)],
+            asks=[OrderBookLevel(price=0.70, size=200)],
+        )
+
+        class OutcomeBookClient:
+            def get_market(self, slug: str):
+                return sample_market
+
+            def get_order_book(self, token_id: str):
+                if token_id == "tok_yes":
+                    return yes_book
+                if token_id == "tok_no":
+                    return no_book
+                raise KeyError(token_id)
+
+            def get_fee_rate(self, token_id: str) -> int:
+                return 0
+
+        count = check_orders_job(db, OutcomeBookClient())
+        assert count == 1
+        pending = db.get_pending_orders(account["id"])
+        assert len(pending) == 1
+        assert pending[0]["outcome"] == "no"
+
+    def test_check_orders_expires_gtd_before_matching(self, db, sample_market, sample_book):
+        """Expired GTD orders should be marked expired and skipped by matching."""
+        user = db.create_user("gtd-bot")
+        account = db.create_account(user["id"], "default")
+        order = db.create_limit_order(
+            account_id=account["id"],
+            market_slug="test-market",
+            market_condition_id="0xabc123",
+            outcome="yes",
+            side="buy",
+            amount=100,
+            limit_price=0.50,
+            order_type="gtd",
+            expires_at="2000-01-01T00:00:00Z",
+        )
+
+        pm = MockPolymarketClient(sample_market, sample_book)
+        count = check_orders_job(db, pm)
+        assert count == 0
+        pending = db.get_pending_orders(account["id"])
+        assert pending == []
+
+        row = db._conn.execute(
+            "SELECT status FROM limit_orders WHERE id = ?",
+            (order["id"],),
+        ).fetchone()
+        assert row["status"] == "expired"
 
     def test_order_not_filled_above_limit(self, db, sample_market):
         """Order with limit price below all asks should not fill."""

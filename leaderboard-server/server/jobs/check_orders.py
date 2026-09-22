@@ -1,6 +1,9 @@
 """Background job: check pending limit orders against live order books."""
 from __future__ import annotations
 
+import dataclasses
+from datetime import datetime, timezone
+
 from server.adapters.polymarket import (
     simulate_buy_fill,
     simulate_sell_fill,
@@ -18,6 +21,9 @@ def check_orders_job(db: DB, polymarket: PolymarketClient) -> int:
     4. For each order, simulate fill with limit price
     5. If fillable: execute fill, update account/position/trade
     """
+    # Expire GTD orders first so check loop only sees still-actionable orders.
+    db.expire_orders(datetime.now(timezone.utc).isoformat())
+
     pending = db.get_pending_orders()  # all users' orders
     if not pending:
         return 0
@@ -34,16 +40,25 @@ def check_orders_job(db: DB, polymarket: PolymarketClient) -> int:
         first = orders[0]
         try:
             market = polymarket.get_market(first["market_slug"])
-            token_id = market.get_token_id(first["outcome"])
-            book = polymarket.get_order_book(token_id)
-            fee_rate_bps = polymarket.get_fee_rate(token_id)
         except Exception:
             continue  # Skip if API fails
+
+        # Reuse market context per token_id within this condition group.
+        token_ctx: dict[str, tuple[object, int, int]] = {}
 
         for order in orders:
             try:
                 outcome = order["outcome"]
                 token_id = market.get_token_id(outcome)
+                if token_id in token_ctx:
+                    book, fee_rate_bps, snapshot_id = token_ctx[token_id]
+                else:
+                    book = polymarket.get_order_book(token_id)
+                    fee_rate_bps = polymarket.get_fee_rate(token_id)
+                    snapshot_id = db.save_book_snapshot(
+                        token_id, dataclasses.asdict(book),
+                    )
+                    token_ctx[token_id] = (book, fee_rate_bps, snapshot_id)
 
                 if order["side"] == "buy":
                     fill = simulate_buy_fill(
@@ -78,7 +93,7 @@ def check_orders_job(db: DB, polymarket: PolymarketClient) -> int:
                                 slippage=fill.slippage_bps,
                                 levels_filled=fill.levels_filled,
                                 is_partial=fill.is_partial,
-                                book_snapshot_id=None,
+                                book_snapshot_id=snapshot_id,
                             )
                             # Update position
                             existing = db.get_position(
@@ -144,7 +159,7 @@ def check_orders_job(db: DB, polymarket: PolymarketClient) -> int:
                                 slippage=fill.slippage_bps,
                                 levels_filled=fill.levels_filled,
                                 is_partial=fill.is_partial,
-                                book_snapshot_id=None,
+                                book_snapshot_id=snapshot_id,
                             )
                             # Update position
                             remaining = existing["shares"] - fill.total_shares
