@@ -1,0 +1,19 @@
+name: science
+description: "Science and technology prediction markets"
+version: "1.0"
+markets:
+  - slug: will-openai-release-gpt5-before-july-2025
+    category: science
+    difficulty: medium
+  - slug: will-spacex-land-on-mars-2025
+    category: science
+    difficulty: hard
+  - slug: will-apple-release-ar-glasses-2025
+    category: science
+    difficulty: medium
+  - slug: will-agi-be-achieved-by-2030
+    category: science
+    difficulty: hard
+  - slug: will-neuralink-fda-approval-2025
+    category: science
+    difficulty: medium
