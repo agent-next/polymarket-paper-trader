@@ -1,0 +1,19 @@
+name: crypto
+description: "Cryptocurrency prediction markets"
+version: "1.0"
+markets:
+  - slug: will-bitcoin-hit-100k-2025
+    category: crypto
+    difficulty: easy
+  - slug: will-ethereum-hit-5000-2025
+    category: crypto
+    difficulty: medium
+  - slug: will-solana-flip-ethereum-market-cap
+    category: crypto
+    difficulty: hard
+  - slug: will-bitcoin-hit-150k-2025
+    category: crypto
+    difficulty: hard
+  - slug: will-crypto-total-market-cap-hit-5t
+    category: crypto
+    difficulty: medium

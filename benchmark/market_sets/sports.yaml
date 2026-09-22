@@ -1,0 +1,19 @@
+name: sports
+description: "Sports prediction markets"
+version: "1.0"
+markets:
+  - slug: champions-league-winner-2025
+    category: sports
+    difficulty: medium
+  - slug: will-lebron-retire-2025
+    category: sports
+    difficulty: easy
+  - slug: super-bowl-winner-2026
+    category: sports
+    difficulty: hard
+  - slug: world-series-winner-2025
+    category: sports
+    difficulty: medium
+  - slug: nba-mvp-2025
+    category: sports
+    difficulty: medium

@@ -1,0 +1,58 @@
+name: mixed
+description: "15-market canonical benchmark spanning multiple categories"
+version: "1.0"
+markets:
+  # Crypto (3)
+  - slug: will-bitcoin-hit-100k-2025
+    category: crypto
+    difficulty: easy
+  - slug: will-ethereum-hit-5000-2025
+    category: crypto
+    difficulty: medium
+  - slug: will-solana-flip-ethereum-market-cap
+    category: crypto
+    difficulty: hard
+
+  # Politics (3)
+  - slug: us-presidential-election-2028
+    category: politics
+    difficulty: hard
+  - slug: will-trump-be-president-on-july-1
+    category: politics
+    difficulty: easy
+  - slug: will-us-enter-recession-2025
+    category: politics
+    difficulty: medium
+
+  # Sports (3)
+  - slug: champions-league-winner-2025
+    category: sports
+    difficulty: medium
+  - slug: will-lebron-retire-2025
+    category: sports
+    difficulty: easy
+  - slug: super-bowl-winner-2026
+    category: sports
+    difficulty: hard
+
+  # Science & Tech (3)
+  - slug: will-openai-release-gpt5-before-july-2025
+    category: science
+    difficulty: medium
+  - slug: will-spacex-land-on-mars-2025
+    category: science
+    difficulty: hard
+  - slug: will-apple-release-ar-glasses-2025
+    category: science
+    difficulty: medium
+
+  # Macro & Other (3)
+  - slug: fed-rate-cut-june-2025
+    category: macro
+    difficulty: medium
+  - slug: will-sp500-hit-6000-2025
+    category: macro
+    difficulty: easy
+  - slug: will-tiktok-be-banned-in-us-2025
+    category: politics
+    difficulty: medium

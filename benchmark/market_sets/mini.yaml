@@ -1,0 +1,16 @@
+name: mini
+description: "3-market smoke test for quick validation"
+version: "1.1"
+markets:
+  - slug: will-leverkusen-win-the-202526-champions-league
+    category: sports
+    difficulty: medium
+    notes: "Champions League winner prediction, high volume"
+  - slug: will-china-invade-taiwan-before-2027
+    category: politics
+    difficulty: hard
+    notes: "Geopolitical prediction, high volume"
+  - slug: will-russia-enter-kramatorsk-by-june-30-821-192
+    category: politics
+    difficulty: hard
+    notes: "Ukraine conflict prediction, moderate volume"

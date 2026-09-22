@@ -1,0 +1,20 @@
+name: political
+description: "Political prediction markets"
+version: "1.0"
+markets:
+  - slug: us-presidential-election-2028
+    category: politics
+    difficulty: hard
+    notes: "Far-dated, uncertain"
+  - slug: will-trump-be-president-on-july-1
+    category: politics
+    difficulty: easy
+  - slug: will-us-enter-recession-2025
+    category: politics
+    difficulty: medium
+  - slug: will-tiktok-be-banned-in-us-2025
+    category: politics
+    difficulty: medium
+  - slug: will-ukraine-russia-ceasefire-2025
+    category: politics
+    difficulty: hard

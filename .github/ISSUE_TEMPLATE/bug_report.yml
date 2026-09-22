@@ -1,0 +1,47 @@
+name: Bug report
+description: Report a reproducible problem
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. For security issues, use the Security tab instead — see SECURITY.md.
+  - type: dropdown
+    id: package
+    attributes:
+      label: Package
+      options:
+        - polymarket-paper-trader (root)
+        - polymarket-benchmark
+        - polymarket-leaderboard-client
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `pm-trader --version` or the package version
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The observed behavior, with the exact command and full output
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. pm-trader init --balance 10000
+        2. ...
+    validations:
+      required: true

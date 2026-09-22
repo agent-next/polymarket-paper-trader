@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "polymarket-benchmark"
+version = "0.0.3"
+description = "SWE-bench for decision intelligence — LLM evaluation on prediction markets"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.0",
+    "httpx>=0.27",
+    "pydantic>=2.0",
+    "litellm>=1.40",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=6.0",
+    "respx>=0.22",
+]
+# Agent mode (--leaderboard-url) needs the leaderboard client, shipped in this
+# repo at ../leaderboard-client. Install it first:
+#   pip install -e ../leaderboard-client
+# then add the "agent" extra to record the requirement locally if desired.
+
+[project.urls]
+Repository = "https://github.com/agent-next/polymarket-paper-trader"
+Issues = "https://github.com/agent-next/polymarket-paper-trader/issues"
+
+[project.scripts]
+polymarket-benchmark = "pm_benchmark.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["pm_benchmark*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["live: tests that require network and live APIs"]
+
+[tool.coverage.run]
+source = ["pm_benchmark"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.",
+]

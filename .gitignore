@@ -11,3 +11,8 @@ build/
 .claude/projects/
 .claude/plans/
 .coverage
+
+# benchmark / toolkit artifacts
+benchmark/results/
+benchmark/.coverage
+leaderboard-client/.coverage
