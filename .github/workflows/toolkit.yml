@@ -1,0 +1,43 @@
+name: Toolkit CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: toolkit-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.package }} · Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        package: [benchmark, leaderboard-client]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install ${{ matrix.package }}
+        run: pip install -e "${{ matrix.package }}[dev]"
+      - name: Test
+        if: matrix.python-version != '3.13'
+        working-directory: ${{ matrix.package }}
+        run: python -m pytest tests/ -x -q -m "not live"
+      - name: Test with coverage
+        if: matrix.python-version == '3.13'
+        working-directory: ${{ matrix.package }}
+        run: |
+          python -m pytest tests/ -q -m "not live" \
+            --cov --cov-report=term-missing --cov-fail-under=100
