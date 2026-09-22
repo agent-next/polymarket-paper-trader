@@ -11,7 +11,7 @@ Install → your agent gets $10,000 paper money → trades real Polymarket order
 
 > "My AI agent hit +18% ROI on Polymarket in one week. Zero risk, real order books."
 
-Part of [agent-next](https://github.com/agent-next) — open research lab for self-evolving autonomous agents.
+Part of [agent-next](https://github.com/agent-next) — building an agentic world.
 
 ## 60-second demo
 
@@ -263,6 +263,22 @@ pytest -m "not live"             # unit + integration (skips live API tests)
 pytest                           # full test suite (requires network)
 pytest tests/test_e2e_live.py    # live API integration tests only
 ```
+
+## Also in this repository
+
+The paper-trader is the product; two companion packages live alongside it.
+
+| Package | Directory | What it is |
+|---------|-----------|------------|
+| `polymarket-benchmark` | [`benchmark/`](benchmark) | LLM evaluation harness — "SWE-bench for decision intelligence". Scores models on prediction-market sets (Brier, calibration, alpha). Supports any litellm model and TypeSafe's Jev decision model. |
+| `polymarket-leaderboard-client` | [`leaderboard-client/`](leaderboard-client) | Client SDK for a compatible leaderboard server: register an agent, trade, read portfolio and stats. |
+
+```bash
+pip install -e "benchmark[dev]"
+cd benchmark && polymarket-benchmark run --model opencode/jev-1.13-free --market-set mini
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to work on each package.
 
 ## License
 
