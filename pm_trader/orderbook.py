@@ -7,7 +7,11 @@ trade simulation.
 
 from __future__ import annotations
 
+import logging
+
 from pm_trader.models import Fill, FillResult, OrderBook
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -15,15 +19,17 @@ from pm_trader.models import Fill, FillResult, OrderBook
 # ---------------------------------------------------------------------------
 
 def calculate_fee(fee_rate_bps: int, price: float, size: float) -> float:
-    """Return the trading fee using the exact Polymarket formula.
+    """Return the trading fee using the legacy bps Polymarket formula.
 
     Formula: (fee_rate_bps / 10_000) * min(price, 1 - price) * size
 
-    The fee is proportional to how close the price is to 0.50 (maximum
-    uncertainty).  At extreme prices (near 0 or 1) the fee approaches zero.
+    This is the pre-``feeSchedule`` model, kept for markets that carry no
+    ``feeSchedule`` (and for cached payloads written before it existed).
+    Preferred for live markets: :func:`calculate_fee_schedule`.
 
-    A minimum fee of 0.0001 is enforced when fee_rate_bps > 0 and the
-    computed fee is positive.
+    The fee is proportional to how close the price is to 0.50.  A minimum
+    fee of 0.0001 is enforced when fee_rate_bps > 0 and the computed fee is
+    positive.
     """
     if fee_rate_bps == 0:
         return 0.0
@@ -36,9 +42,69 @@ def calculate_fee(fee_rate_bps: int, price: float, size: float) -> float:
     return fee
 
 
+def calculate_fee_schedule(
+    rate: float,
+    exponent: float,
+    price: float,
+    shares: float,
+) -> float:
+    """Return the taker fee using the official ``feeSchedule`` curve.
+
+    Formula (https://docs.polymarket.com/trading/fees, verbatim):
+
+        fee = C × feeRate × p × (1 - p)
+
+    where ``C`` is the number of shares traded and ``p`` the price of the
+    shares.  The result is a USDC amount charged to the taker at match time —
+    never a share count — so buys and sells are charged identically for the
+    same ``C`` and ``p``, and the fee is symmetric around ``p = 0.50``.
+
+    ``exponent`` is ``feeSchedule.exponent`` ("Exponent applied to the price
+    component of the fee curve").  The published curve is the identity
+    (``exponent = 1``); a non-identity exponent is not published anywhere, so
+    it is applied to the ``p * (1 - p)`` price component and logged.
+
+    Per the "Fee Precision" rule, fees are rounded to 5 decimal places: the
+    smallest fee charged is 0.00001 USDC and anything smaller rounds to zero,
+    so very small trades near the extremes may incur no fee at all.
+    """
+    if rate <= 0.0 or shares <= 0.0 or price <= 0.0 or price >= 1.0:
+        return 0.0
+
+    if exponent != 1:
+        logger.warning(
+            "feeSchedule exponent %s is not the published identity (1); "
+            "applying it to the p*(1-p) price component",
+            exponent,
+        )
+
+    return round(shares * rate * (price * (1.0 - price)) ** exponent, 5)
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+def _fill_fee(
+    *,
+    avg_price: float,
+    total_shares: float,
+    legacy_size: float,
+    fee_rate: float | None,
+    fee_rate_bps: int,
+) -> float:
+    """Fee for one simulated fill.
+
+    When ``fee_rate`` (the ``feeSchedule`` coefficient) is set it takes
+    precedence and the fee is charged on the share count ``C`` — the official
+    curve — on both the buy and the sell path.  Otherwise the legacy bps
+    model is used unchanged, with its per-side ``legacy_size`` (the USD
+    notional on a buy, the share count on a sell).
+    """
+    if fee_rate is not None:
+        return calculate_fee_schedule(fee_rate, 1, avg_price, total_shares)
+    return calculate_fee(fee_rate_bps, avg_price, legacy_size)
+
 
 def _midpoint(book: OrderBook) -> float | None:
     """Return (best_bid + best_ask) / 2, or None if either side is empty."""
@@ -75,6 +141,7 @@ def simulate_buy_fill(
     fee_rate_bps: int,
     order_type: str = "fok",
     max_price: float | None = None,
+    fee_rate: float | None = None,
 ) -> FillResult:
     """Simulate buying shares by spending *amount_usd*.
 
@@ -88,7 +155,11 @@ def simulate_buy_fill(
     amount_usd:
         Total USD to spend on shares (before fees).
     fee_rate_bps:
-        Market fee rate in basis points.
+        Legacy market fee rate in basis points — used only when ``fee_rate``
+        is not given.
+    fee_rate:
+        ``feeSchedule.rate`` coefficient.  When set, the official curve is
+        used and the fee is charged on the share count (not the notional).
     order_type:
         ``"fok"`` (fill-or-kill: all or nothing) or
         ``"fak"`` (fill-and-kill: partial fills allowed).
@@ -153,7 +224,13 @@ def simulate_buy_fill(
         return _empty_fill_result()
 
     avg_price = total_cost / total_shares if total_shares > 0 else 0.0
-    fee = calculate_fee(fee_rate_bps, avg_price, total_cost)
+    fee = _fill_fee(
+        avg_price=avg_price,
+        total_shares=total_shares,
+        legacy_size=total_cost,
+        fee_rate=fee_rate,
+        fee_rate_bps=fee_rate_bps,
+    )
 
     midpoint = _midpoint(book)
     if midpoint and midpoint > 0:
@@ -184,6 +261,7 @@ def simulate_sell_fill(
     fee_rate_bps: int,
     order_type: str = "fok",
     min_price: float | None = None,
+    fee_rate: float | None = None,
 ) -> FillResult:
     """Simulate selling *shares* into the order book.
 
@@ -197,7 +275,11 @@ def simulate_sell_fill(
     shares:
         Number of shares to sell.
     fee_rate_bps:
-        Market fee rate in basis points.
+        Legacy market fee rate in basis points — used only when ``fee_rate``
+        is not given.
+    fee_rate:
+        ``feeSchedule.rate`` coefficient.  When set, the official curve is
+        used and the fee is charged on the share count.
     order_type:
         ``"fok"`` (fill-or-kill) or ``"fak"`` (fill-and-kill).
     min_price:
@@ -260,7 +342,13 @@ def simulate_sell_fill(
         return _empty_fill_result()
 
     avg_price = total_cost / total_shares if total_shares > 0 else 0.0
-    fee = calculate_fee(fee_rate_bps, avg_price, total_shares)
+    fee = _fill_fee(
+        avg_price=avg_price,
+        total_shares=total_shares,
+        legacy_size=total_shares,
+        fee_rate=fee_rate,
+        fee_rate_bps=fee_rate_bps,
+    )
 
     midpoint = _midpoint(book)
     if midpoint and midpoint > 0:
