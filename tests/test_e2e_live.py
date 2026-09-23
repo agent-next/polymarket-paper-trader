@@ -185,11 +185,17 @@ class TestPriceAndOrderBook:
         markets = _get_binary_markets(engine, limit=20)
         token_id = markets[0].yes_token_id
         # Compare against the raw upstream field rather than "fee >= 0",
-        # which a constant 0 would satisfy.
+        # which a constant 0 would satisfy.  The documented key must be
+        # present: "fee == int(raw.get('base_fee', 0))" passes on a rename
+        # (both sides 0), so assert the key set explicitly first.
         raw = engine.api._clob_get("/fee-rate", params={"token_id": token_id})
+        assert "base_fee" in raw, (
+            f"/fee-rate body is missing the documented 'base_fee' key; "
+            f"observed keys: {sorted(raw)}"
+        )
         fee = engine.api.get_fee_rate(token_id)
         assert isinstance(fee, int)
-        assert fee == int(raw.get("base_fee", 0))
+        assert fee == int(raw["base_fee"])
 
     def test_get_tick_size(self, engine: Engine):
         markets = _get_binary_markets(engine, limit=5)

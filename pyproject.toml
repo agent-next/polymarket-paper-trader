@@ -36,6 +36,10 @@ include = ["pm_trader*"]
 
 [tool.pytest.ini_options]
 markers = ["live: tests requiring network access to Polymarket API"]
+# Root invocation collects only the product suite (same scope as CI test.yml);
+# benchmark/ and leaderboard-client/ carry their own pytest configs + CI jobs —
+# collecting them from here double-imports their conftest (ImportPathMismatch).
+testpaths = ["tests"]
 
 [project.urls]
 Homepage = "https://pypi.org/project/polymarket-paper-trader/"
