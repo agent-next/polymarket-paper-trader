@@ -2,6 +2,17 @@
 
 All notable changes to `polymarket-paper-trader` are documented here.
 
+## [0.3.0] - 2026-09-23
+
+### Changed
+- **Fee simulation now follows the official `feeSchedule` curve.** `Market.fee_schedule` (parsed in 0.2.1 as data only) is now the fee source for every trade: `fee = C × feeSchedule.rate × p × (1 - p)`, where `C` is the number of shares — charged on the share count on both the buy and the sell path, not on the USD notional. Fees round to 5 decimals; the smallest charge is 0.00001 USDC. `exponent` is applied to the `p × (1-p)` price component (the published curve is the identity, `exponent = 1`).
+- **Resting limit fills are maker fills**: they pay no fee in a `takerOnly` market, per "Makers are never charged fees."
+- Trades keep an audit trail in the existing `fee_rate_bps` column: a `feeSchedule` market records `rate × 10_000` (e.g. `0.07` → `700`) and no longer calls `GET /fee-rate`. No schema change.
+
+### Fixed
+- **Buy fees below p = 0.50 were undercharged and every sell fee was overcharged.** The old `bps/10000 × min(price, 1-price) × size` model charged buys on the USD notional (agreeing with the official curve only at `p ≥ 0.50`) and applied a different price component on sells. At 200 bps a $100 buy at 0.30 paid $0.60 instead of $1.40; a 100-share sell at 0.50 paid $1.00 instead of $0.50. Both now match `https://docs.polymarket.com/trading/fees`.
+- The legacy `bps` model (and its 0.0001 minimum fee) is retained unchanged as the fallback for markets that publish no usable `feeSchedule` — absent, `rate = 0` (fee-free categories such as Geopolitics), or a non-identity `exponent`.
+
 ## [0.2.1] - 2026-09-23
 
 ### Fixed
