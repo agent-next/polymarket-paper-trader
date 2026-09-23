@@ -12,6 +12,7 @@ import pytest
 from pm_trader.db import Database
 from pm_trader.engine import Engine
 from pm_trader.models import (
+    ApiError,
     InsufficientBalanceError,
     InvalidOutcomeError,
     Market,
@@ -1083,3 +1084,29 @@ class TestMakerFillFees:
             assert placed_sell["status"] == "pending"
         finally:
             engine_mod.simulate_buy_fill, engine_mod.simulate_sell_fill = orig_buy, orig_sell
+
+    def test_transient_failure_at_placement_rejects_atomically(
+        self, initialized_engine: Engine,
+    ):
+        """Book fetch failing mid-placement must NOT leave a pending order:
+        a caller retry would double-place and the orphan would later fill as
+        a fee-free maker (review finding, round 3)."""
+        _mock_api(initialized_engine, market=_schedule_market(**CRYPTO_SCHEDULE))
+
+        def flaky_book(token_id):
+            raise ApiError("Gamma API request failed: transient")
+        initialized_engine.api.get_order_book = MagicMock(side_effect=flaky_book)
+
+        with pytest.raises(ApiError):
+            initialized_engine.place_limit_order("btc", "yes", "buy", 100.0, 0.70)
+        assert initialized_engine.get_pending_orders() == []
+
+        # Caller retries once the API recovers: exactly ONE order, filled as taker.
+        _mock_api(initialized_engine, market=_schedule_market(**CRYPTO_SCHEDULE))
+        placed = initialized_engine.place_limit_order("btc", "yes", "buy", 100.0, 0.70)
+        assert placed["status"] == "filled"
+        trades = initialized_engine.get_history(limit=5)
+        assert len(trades) == 1
+        assert trades[0].fee == pytest.approx(
+            trades[0].shares * 0.07 * trades[0].avg_price * (1 - trades[0].avg_price)
+        )

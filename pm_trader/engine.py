@@ -488,10 +488,15 @@ class Engine:
         # as a TAKER — it lifts standing liquidity, exactly like a real CLOB never
         # rests a limit through the opposite side. Only orders that rest unfilled
         # are maker fills when the market later moves through them.
+        #
+        # ANY failure while deciding marketability (permanent OR transient)
+        # rejects the placement: an order left pending with unknown cross state
+        # would later fill as a fee-free maker via check_orders, undercharging
+        # the taker fee — and a caller retry would then double-place.
         try:
             if self._try_immediate_limit_fill(market, order):
                 return _order_to_dict(get_order(self.db.conn, order.id))
-        except _PERMANENT_ORDER_ERRORS:
+        except Exception:
             reject_order(self.db.conn, order.id)
             raise
         return _order_to_dict(order)
