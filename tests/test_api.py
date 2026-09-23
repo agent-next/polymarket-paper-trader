@@ -90,6 +90,7 @@ def _clob_market(condition_id: str = "0xabc123", **overrides) -> dict:
         "mos": 5.0,
         "mbf": 0,
         "tbf": 0,
+        "fd": {"r": 0.07, "e": 1, "to": True},
     }
     body.update(overrides)
     return body
@@ -112,6 +113,15 @@ def _legacy_clob_market(condition_id: str, **overrides) -> dict:
     }
     body.update(overrides)
     return body
+
+
+def _condition_id_lookups(httpx_mock) -> list[dict]:
+    """Query params of every Gamma /markets lookup by condition_ids, in order."""
+    return [
+        dict(r.url.params)
+        for r in httpx_mock.get_requests()
+        if r.url.path == "/markets" and r.url.params.get("condition_ids")
+    ]
 
 
 def _search_response(markets: list[dict] | None = None, **overrides) -> dict:
@@ -216,6 +226,29 @@ class TestParseMarket:
             "rebateRate": 0.0,
         }
 
+    def test_maker_taker_base_fees_parsed(self):
+        """Gamma carries makerBaseFee/takerBaseFee in bps."""
+        data = {**SAMPLE_GAMMA_MARKET, "makerBaseFee": 15, "takerBaseFee": 25}
+        market = _parse_market(data)
+        assert market.maker_base_fee_bps == 15
+        assert market.taker_base_fee_bps == 25
+
+    def test_maker_taker_base_fees_default_to_zero(self):
+        market = _parse_market(SAMPLE_GAMMA_MARKET)
+        assert market.maker_base_fee_bps == 0
+        assert market.taker_base_fee_bps == 0
+
+    def test_maker_taker_base_fees_snake_case_and_null(self):
+        """Snake_case (cached/test) keys work; nulls fall back to 0."""
+        data = {
+            **SAMPLE_GAMMA_MARKET,
+            "maker_base_fee_bps": 5,
+            "takerBaseFee": None,
+        }
+        market = _parse_market(data)
+        assert market.maker_base_fee_bps == 5
+        assert market.taker_base_fee_bps == 0
+
 
 # ---------------------------------------------------------------------------
 # _parse_clob_market tests
@@ -224,7 +257,7 @@ class TestParseMarket:
 
 class TestParseClobMarket:
     def test_abbreviated_keys(self):
-        """Current CLOB payload: c / t[{t,o}] / mts / mos / mbf / tbf."""
+        """Current CLOB payload: c / t[{t,o}] / mts / mos / mbf / tbf / fd."""
         market = _parse_clob_market(
             _clob_market("0xcond", mts=0.0025, mos=15.0, mbf=10, tbf=20)
         )
@@ -248,6 +281,45 @@ class TestParseClobMarket:
         assert market.min_order_size == 0.0
         assert market.maker_base_fee_bps == 0
         assert market.taker_base_fee_bps == 0
+        # No `fd` block -> no fee schedule, rather than a zeroed one
+        assert market.fee_schedule is None
+
+    def test_fee_schedule_from_fd_block(self):
+        """`fd` (r/e/to) maps onto the Gamma feeSchedule shape."""
+        market = _parse_clob_market(
+            _clob_market("0xfd1", fd={"r": 0.07, "e": 1, "to": True})
+        )
+        assert market.fee_schedule == {
+            "rate": 0.07,
+            "exponent": 1,
+            "takerOnly": True,
+            "rebateRate": 0.0,
+        }
+
+    def test_fee_schedule_from_fd_block_with_rebate(self):
+        """A rebate rate inside `fd` is surfaced as rebateRate."""
+        market = _parse_clob_market(
+            _clob_market("0xfd2", fd={"r": 0.04, "e": 2, "to": False, "rr": 0.25})
+        )
+        assert market.fee_schedule == {
+            "rate": 0.04,
+            "exponent": 2,
+            "takerOnly": False,
+            "rebateRate": 0.25,
+        }
+
+    def test_fee_schedule_fd_missing_subfields_default(self):
+        market = _parse_clob_market(_clob_market("0xfd3", fd={"r": None}))
+        assert market.fee_schedule == {
+            "rate": 0.0,
+            "exponent": 0,
+            "takerOnly": False,
+            "rebateRate": 0.0,
+        }
+
+    def test_fee_schedule_fd_non_dict_is_none(self):
+        market = _parse_clob_market(_clob_market("0xfd4", fd="0.07"))
+        assert market.fee_schedule is None
 
     def test_legacy_keys_still_parse(self):
         """Mixed generations: the pre-drift long-key shape keeps working."""
@@ -260,6 +332,7 @@ class TestParseClobMarket:
         assert market.tokens[0]["token_id"] == "tok_c_yes"
         assert market.tick_size == 0.005
         assert market.min_order_size == 0.0
+        assert market.fee_schedule is None
 
     def test_tokens_as_json_string(self):
         market = _parse_clob_market({
@@ -840,6 +913,97 @@ class TestGetMarketClobFallbackPath:
         # Should return the Gamma-enriched data
         assert market.condition_id == "0xabc123"  # from SAMPLE_GAMMA_MARKET
         assert market.slug == "will-bitcoin-hit-100k"
+        # The first enrichment lookup hit, so no closed=true retry was issued
+        assert _condition_id_lookups(httpx_mock) == [{"condition_ids": "0xclob1"}]
+
+    def test_clob_enrichment_retries_with_closed_for_closed_market(
+        self, client: PolymarketClient, httpx_mock
+    ):
+        """A closed market is invisible to the default condition_ids lookup
+        (Gamma defaults `closed` to false) and found by the closed=true retry,
+        so the CLOB stub no longer misreports it as open."""
+        httpx_mock.add_response(
+            url=httpx.URL(GAMMA_BASE + "/markets", params={"slug": "0xclosed1"}),
+            json=[],
+        )
+        httpx_mock.add_response(
+            url=httpx.URL(
+                GAMMA_BASE + "/markets",
+                params={"slug": "0xclosed1", "closed": "true"},
+            ),
+            json=[],
+        )
+        httpx_mock.add_response(
+            url=httpx.URL(CLOB_BASE + "/clob-markets/0xclosed1"),
+            json=_clob_market("0xclosed1"),
+        )
+        # Open lookup: Gamma hides the closed market
+        httpx_mock.add_response(
+            url=httpx.URL(
+                GAMMA_BASE + "/markets", params={"condition_ids": "0xclosed1"}
+            ),
+            json=[],
+        )
+        # closed=true lookup finds it
+        httpx_mock.add_response(
+            url=httpx.URL(
+                GAMMA_BASE + "/markets",
+                params={"condition_ids": "0xclosed1", "closed": "true"},
+            ),
+            json=[{**SAMPLE_GAMMA_MARKET, "closed": True, "active": False}],
+        )
+        market = client.get_market("0xclosed1")
+        # Real slug/question come back from the retry...
+        assert market.slug == "will-bitcoin-hit-100k"
+        assert market.question == "Will Bitcoin hit $100k by end of 2026?"
+        # ...and the market is reported closed, not as the CLOB stub's open
+        assert market.closed is True
+        assert market.active is False
+        assert _condition_id_lookups(httpx_mock) == [
+            {"condition_ids": "0xclosed1"},
+            {"condition_ids": "0xclosed1", "closed": "true"},
+        ]
+
+    def test_clob_enrichment_ignores_unusable_gamma_payload(
+        self, client: PolymarketClient, httpx_mock
+    ):
+        """A condition_ids response with no usable market (a bare dict, then a
+        list without a condition id) keeps the CLOB stub after both attempts."""
+        httpx_mock.add_response(
+            url=httpx.URL(GAMMA_BASE + "/markets", params={"slug": "0xunusable"}),
+            json=[],
+        )
+        httpx_mock.add_response(
+            url=httpx.URL(
+                GAMMA_BASE + "/markets",
+                params={"slug": "0xunusable", "closed": "true"},
+            ),
+            json=[],
+        )
+        httpx_mock.add_response(
+            url=httpx.URL(CLOB_BASE + "/clob-markets/0xunusable"),
+            json=_clob_market("0xunusable", mts=0.005),
+        )
+        httpx_mock.add_response(
+            url=httpx.URL(
+                GAMMA_BASE + "/markets", params={"condition_ids": "0xunusable"}
+            ),
+            json={"error": "unexpected format"},
+        )
+        httpx_mock.add_response(
+            url=httpx.URL(
+                GAMMA_BASE + "/markets",
+                params={"condition_ids": "0xunusable", "closed": "true"},
+            ),
+            json=[{"slug": "no-condition-id"}],
+        )
+        market = client.get_market("0xunusable")
+        assert market.condition_id == "0xunusable"
+        assert market.tick_size == 0.005
+        assert _condition_id_lookups(httpx_mock) == [
+            {"condition_ids": "0xunusable"},
+            {"condition_ids": "0xunusable", "closed": "true"},
+        ]
 
     def test_clob_returns_data_gamma_enrichment_fails_falls_back_to_clob(
         self, client: PolymarketClient, httpx_mock
@@ -878,7 +1042,7 @@ class TestGetMarketClobFallbackPath:
         self, client: PolymarketClient, httpx_mock
     ):
         """Abbreviated CLOB data has no slug and the condition_ids enrichment
-        finds nothing; falls back to CLOB-only data."""
+        finds nothing (open, then closed=true); falls back to CLOB-only data."""
         httpx_mock.add_response(
             url=httpx.URL(GAMMA_BASE + "/markets", params={"slug": "0xnoslugs"}),
             json=[],
@@ -896,6 +1060,14 @@ class TestGetMarketClobFallbackPath:
         )
         httpx_mock.add_response(
             url=httpx.URL(GAMMA_BASE + "/markets", params={"condition_ids": "0xnoslugs"}),
+            json=[],
+        )
+        # closed=true retry also finds nothing
+        httpx_mock.add_response(
+            url=httpx.URL(
+                GAMMA_BASE + "/markets",
+                params={"condition_ids": "0xnoslugs", "closed": "true"},
+            ),
             json=[],
         )
         market = client.get_market("0xnoslugs")

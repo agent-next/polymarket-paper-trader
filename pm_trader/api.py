@@ -142,20 +142,26 @@ class PolymarketClient:
                 if isinstance(clob_data, dict) and _clob_condition_id(clob_data):
                     # CLOB returns tokens with outcome/token_id — enrich with
                     # Gamma data.  Abbreviated CLOB payloads carry no slug, so
-                    # look the market up by condition id in that case.
+                    # look the market up by condition id in that case.  Gamma
+                    # defaults `closed` to false, so a closed market needs the
+                    # closed=true retry, exactly as on the slug path above.
                     market = _parse_clob_market(clob_data)
-                    enrich_params = (
-                        {"slug": market.slug}
+                    enrich_attempts: tuple[dict, ...] = (
+                        ({"slug": market.slug},)
                         if market.slug
-                        else {"condition_ids": market.condition_id}
+                        else (
+                            {"condition_ids": market.condition_id},
+                            {"condition_ids": market.condition_id, "closed": "true"},
+                        )
                     )
                     try:
-                        gamma_data = self._gamma_get(
-                            "/markets", params=enrich_params
-                        )
-                        if isinstance(gamma_data, list) and len(gamma_data) > 0:
-                            self._set_cached(cache_key, gamma_data[0])
-                            return _parse_market(gamma_data[0])
+                        for enrich_params in enrich_attempts:
+                            gamma_market = _first_gamma_market(
+                                self._gamma_get("/markets", params=enrich_params)
+                            )
+                            if gamma_market is not None:
+                                self._set_cached(cache_key, gamma_market)
+                                return _parse_market(gamma_market)
                     except Exception:
                         pass
                     # Fall back to CLOB-only data
@@ -308,11 +314,43 @@ def _clob_condition_id(data: dict) -> str:
     return data.get("c") or data.get("condition_id") or ""
 
 
+def _first_gamma_market(data: object) -> dict | None:
+    """First usable market in a Gamma /markets response.
+
+    An empty list, or a list whose entries carry no condition id, holds no
+    market data — callers retry (with ``closed=true``) or fall back.
+    """
+    if not isinstance(data, list):
+        return None
+    for entry in data:
+        if isinstance(entry, dict) and _has_condition_id(entry):
+            return entry
+    return None
+
+
+def _clob_fee_schedule(fd: object) -> dict | None:
+    """Fee schedule from a CLOB abbreviated ``fd`` block.
+
+    ``fd`` carries the same metadata as Gamma's ``feeSchedule`` in short keys:
+    ``r`` (rate), ``e`` (exponent), ``to`` (takerOnly) and, when present,
+    ``rr`` (rebate rate).  ``rate`` is a coefficient, not bps.
+    """
+    if not isinstance(fd, dict):
+        return None
+    return {
+        "rate": float(fd.get("r", 0) or 0),
+        "exponent": int(fd.get("e", 0) or 0),
+        "takerOnly": bool(fd.get("to", False)),
+        "rebateRate": float(fd.get("rr", fd.get("rebateRate", 0)) or 0),
+    }
+
+
 def _parse_clob_market(data: dict) -> Market:
     """Parse a CLOB /clob-markets/{condition_id} response into a Market.
 
     Handles the current abbreviated payload (``c``, ``t``/``o`` tokens,
-    ``mts``/``mos``/``mbf``/``tbf``) as well as the legacy long-key shape.
+    ``mts``/``mos``/``mbf``/``tbf``, ``fd``) as well as the legacy long-key
+    shape.
     """
     tokens_raw = data.get("t", data.get("tokens", []))
     if isinstance(tokens_raw, str):
@@ -345,6 +383,7 @@ def _parse_clob_market(data: dict) -> Market:
         min_order_size=float(data.get("mos", 0) or 0),
         maker_base_fee_bps=int(data.get("mbf", 0) or 0),
         taker_base_fee_bps=int(data.get("tbf", 0) or 0),
+        fee_schedule=_clob_fee_schedule(data.get("fd")),
     )
 
 
@@ -443,6 +482,12 @@ def _parse_market(data: dict) -> Market:
         fee_rate_bps=int(data.get("fee_rate_bps", 0) or 0),
         tick_size=tick_size,
         fee_schedule=fee_schedule,
+        maker_base_fee_bps=int(
+            data.get("makerBaseFee", data.get("maker_base_fee_bps", 0)) or 0
+        ),
+        taker_base_fee_bps=int(
+            data.get("takerBaseFee", data.get("taker_base_fee_bps", 0)) or 0
+        ),
     )
 
 
