@@ -8,12 +8,14 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from pm_trader.orders import (
+    _migrate_orders_schema_if_needed,
     cancel_all_orders,
     cancel_order,
     create_order,
     expire_orders,
     get_pending_orders,
     init_orders_schema,
+    mark_partially_filled,
     should_fill,
     LimitOrder,
 )
@@ -51,6 +53,7 @@ class TestCreateOrder:
         assert order.market_slug == "test-market"
         assert order.limit_price == 0.55
         assert order.order_type == "gtc"
+        assert order.remaining_amount == 100.0
 
     def test_auto_increments_id(self, conn):
         o1 = _create(conn)
@@ -89,6 +92,17 @@ class TestGetPendingOrders:
         assert len(pending) == 1
         assert pending[0].id == 2
 
+    def test_includes_partially_filled(self, conn):
+        _create(conn, amount=120.0)
+        updated = mark_partially_filled(conn, 1, 40.0)
+        assert updated.status == "partially_filled"
+        assert updated.remaining_amount == 40.0
+        pending = get_pending_orders(conn)
+        assert len(pending) == 1
+        assert pending[0].id == 1
+        assert pending[0].status == "partially_filled"
+        assert pending[0].remaining_amount == 40.0
+
 
 class TestCancelOrder:
     def test_cancel_pending(self, conn):
@@ -103,6 +117,12 @@ class TestCancelOrder:
         _create(conn)
         cancel_order(conn, 1)
         assert cancel_order(conn, 1) is None
+
+    def test_cancel_partially_filled(self, conn):
+        _create(conn)
+        mark_partially_filled(conn, 1, 40.0)
+        order = cancel_order(conn, 1)
+        assert order.status == "cancelled"
 
 
 class TestExpireOrders:
@@ -153,7 +173,8 @@ class TestShouldFill:
     def test_buy_at_limit(self):
         order = LimitOrder(
             id=1, market_slug="m", market_condition_id="0x1",
-            outcome="yes", side="buy", amount=100, limit_price=0.55,
+            outcome="yes", side="buy", amount=100, remaining_amount=100,
+            limit_price=0.55,
             order_type="gtc", expires_at=None, status="pending",
             created_at="", filled_at=None,
         )
@@ -164,10 +185,90 @@ class TestShouldFill:
     def test_sell_at_limit(self):
         order = LimitOrder(
             id=1, market_slug="m", market_condition_id="0x1",
-            outcome="yes", side="sell", amount=50, limit_price=0.70,
+            outcome="yes", side="sell", amount=50, remaining_amount=50,
+            limit_price=0.70,
             order_type="gtc", expires_at=None, status="pending",
             created_at="", filled_at=None,
         )
         assert should_fill(order, 0.70) is True
         assert should_fill(order, 0.80) is True
         assert should_fill(order, 0.60) is False
+
+
+class TestOrdersMigration:
+    def test_noop_when_table_missing(self):
+        """A fresh DB (no limit_orders table yet) needs no migration."""
+        c = sqlite3.connect(":memory:")
+        c.row_factory = sqlite3.Row
+        _migrate_orders_schema_if_needed(c)
+        tables = [
+            r["name"] for r in c.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        ]
+        assert "limit_orders" not in tables
+        assert "limit_orders_old" not in tables
+
+    def test_migrates_legacy_schema_to_remaining_amount(self):
+        """A pre-0.3.1 table is rebuilt: open orders keep their full size,
+        terminal orders are zeroed, ids and timestamps survive."""
+        c = sqlite3.connect(":memory:")
+        c.row_factory = sqlite3.Row
+        c.executescript(
+            """\
+            CREATE TABLE limit_orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                market_slug TEXT NOT NULL,
+                market_condition_id TEXT NOT NULL,
+                outcome TEXT NOT NULL CHECK (length(outcome) > 0),
+                side TEXT NOT NULL CHECK (side IN ('buy', 'sell')),
+                amount REAL NOT NULL,
+                limit_price REAL NOT NULL,
+                order_type TEXT NOT NULL CHECK (order_type IN ('gtc', 'gtd')),
+                expires_at TEXT,
+                status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'filled', 'cancelled', 'expired', 'rejected')),
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                filled_at TEXT
+            );
+            """
+        )
+        c.execute(
+            """\
+            INSERT INTO limit_orders (
+                id, market_slug, market_condition_id, outcome, side,
+                amount, limit_price, order_type, status, created_at
+            ) VALUES (1, 'm', '0x1', 'yes', 'buy', 100.0, 0.55, 'gtc', 'pending', '2026-01-01')
+            """
+        )
+        c.execute(
+            """\
+            INSERT INTO limit_orders (
+                id, market_slug, market_condition_id, outcome, side,
+                amount, limit_price, order_type, status, created_at, filled_at
+            ) VALUES (2, 'm', '0x1', 'yes', 'buy', 50.0, 0.60, 'gtc', 'filled', '2026-01-02', '2026-01-03')
+            """
+        )
+        c.commit()
+
+        _migrate_orders_schema_if_needed(c)
+
+        names = {
+            r["name"] for r in c.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+        assert "limit_orders_old" not in names
+
+        pending = c.execute("SELECT * FROM limit_orders WHERE id = 1").fetchone()
+        assert pending["status"] == "pending"
+        assert pending["remaining_amount"] == 100.0
+        assert pending["created_at"] == "2026-01-01"
+
+        filled = c.execute("SELECT * FROM limit_orders WHERE id = 2").fetchone()
+        assert filled["status"] == "filled"
+        assert filled["remaining_amount"] == 0.0
+        assert filled["filled_at"] == "2026-01-03"
+
+        # Idempotent: a second pass is a no-op
+        _migrate_orders_schema_if_needed(c)
+        assert c.execute("SELECT COUNT(*) AS n FROM limit_orders").fetchone()["n"] == 2

@@ -36,10 +36,11 @@ class LimitOrder:
     outcome: str
     side: str  # "buy" or "sell"
     amount: float  # USD for buy, shares for sell
+    remaining_amount: float  # Remaining USD (buy) or shares (sell)
     limit_price: float
     order_type: str  # "gtc" or "gtd"
     expires_at: str | None  # ISO timestamp for GTD, None for GTC
-    status: str  # "pending", "filled", "cancelled", "expired"
+    status: str  # "pending", "partially_filled", "filled", "cancelled", "expired"
     created_at: str
     filled_at: str | None = None
 
@@ -52,10 +53,11 @@ CREATE TABLE IF NOT EXISTS limit_orders (
     outcome TEXT NOT NULL CHECK (length(outcome) > 0),
     side TEXT NOT NULL CHECK (side IN ('buy', 'sell')),
     amount REAL NOT NULL,
+    remaining_amount REAL NOT NULL,
     limit_price REAL NOT NULL,
     order_type TEXT NOT NULL CHECK (order_type IN ('gtc', 'gtd')),
     expires_at TEXT,
-    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'filled', 'cancelled', 'expired', 'rejected')),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'partially_filled', 'filled', 'cancelled', 'expired', 'rejected')),
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     filled_at TEXT
 );
@@ -65,6 +67,47 @@ CREATE TABLE IF NOT EXISTS limit_orders (
 def init_orders_schema(conn: sqlite3.Connection) -> None:
     """Create the limit_orders table if it doesn't exist."""
     conn.executescript(ORDERS_SCHEMA)
+    _migrate_orders_schema_if_needed(conn)
+
+
+def _migrate_orders_schema_if_needed(conn: sqlite3.Connection) -> None:
+    """Migrate a pre-remaining_amount limit_orders table in place.
+
+    Detection is DDL sniffing (the repo has no schema-version pragma): a table
+    whose DDL already carries both ``remaining_amount`` and
+    ``partially_filled`` needs nothing, and a missing table is the fresh-DB
+    case. Otherwise rebuild: open orders keep their full size as
+    ``remaining_amount``; terminal orders are zeroed. Row ids and timestamps
+    are preserved.
+    """
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'limit_orders'"
+    ).fetchone()
+    if row is None or row["sql"] is None:
+        return
+    ddl = row["sql"]
+    if "remaining_amount" in ddl and "partially_filled" in ddl:
+        return
+    conn.execute("ALTER TABLE limit_orders RENAME TO limit_orders_old")
+    conn.executescript(ORDERS_SCHEMA)
+    conn.execute(
+        """\
+        INSERT INTO limit_orders (
+            id, market_slug, market_condition_id, outcome, side,
+            amount, remaining_amount, limit_price, order_type,
+            expires_at, status, created_at, filled_at
+        )
+        SELECT id, market_slug, market_condition_id, outcome, side,
+               amount,
+               CASE WHEN status IN ('pending', 'partially_filled')
+                    THEN amount ELSE 0 END,
+               limit_price, order_type,
+               expires_at, status, created_at, filled_at
+        FROM limit_orders_old
+        """
+    )
+    conn.execute("DROP TABLE limit_orders_old")
+    conn.commit()
 
 
 def create_order(
@@ -85,20 +128,23 @@ def create_order(
         """\
         INSERT INTO limit_orders (
             market_slug, market_condition_id, outcome, side,
-            amount, limit_price, order_type, expires_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            amount, remaining_amount, limit_price, order_type, expires_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (market_slug, market_condition_id, outcome, side,
-         amount, limit_price, order_type, normalized_expires),
+         amount, amount, limit_price, order_type, normalized_expires),
     )
     conn.commit()
     return _get_order(conn, cursor.lastrowid)
 
 
 def get_pending_orders(conn: sqlite3.Connection) -> list[LimitOrder]:
-    """Return all pending limit orders."""
+    """Return all open (pending or partially filled) limit orders."""
     rows = conn.execute(
-        "SELECT * FROM limit_orders WHERE status = 'pending' ORDER BY id"
+        """\
+        SELECT * FROM limit_orders
+        WHERE status IN ('pending', 'partially_filled') ORDER BY id
+        """
     ).fetchall()
     return [_row_to_order(r) for r in rows]
 
@@ -109,12 +155,13 @@ def get_order(conn: sqlite3.Connection, order_id: int) -> LimitOrder | None:
 
 
 def cancel_order(conn: sqlite3.Connection, order_id: int) -> LimitOrder | None:
-    """Cancel a pending order. Returns the updated order or None if not found."""
+    """Cancel an open order. Returns the updated order or None if not found."""
     order = _get_order(conn, order_id)
-    if order is None or order.status != "pending":
+    if order is None or order.status not in ("pending", "partially_filled"):
         return None
     conn.execute(
-        "UPDATE limit_orders SET status = 'cancelled' WHERE id = ?",
+        "UPDATE limit_orders SET status = 'cancelled' "
+        "WHERE id = ? AND status IN ('pending', 'partially_filled')",
         (order_id,),
     )
     conn.commit()
@@ -122,12 +169,13 @@ def cancel_order(conn: sqlite3.Connection, order_id: int) -> LimitOrder | None:
 
 
 def cancel_all_orders(conn: sqlite3.Connection) -> list[LimitOrder]:
-    """Cancel all pending orders. Returns list of cancelled orders."""
+    """Cancel all open orders. Returns list of cancelled orders."""
     pending = get_pending_orders(conn)
     if not pending:
         return []
     conn.execute(
-        "UPDATE limit_orders SET status = 'cancelled' WHERE status = 'pending'"
+        "UPDATE limit_orders SET status = 'cancelled' "
+        "WHERE status IN ('pending', 'partially_filled')"
     )
     conn.commit()
     return [replace(o, status="cancelled") for o in pending]
@@ -136,8 +184,22 @@ def cancel_all_orders(conn: sqlite3.Connection) -> list[LimitOrder]:
 def mark_filled(conn: sqlite3.Connection, order_id: int) -> LimitOrder:
     """Mark an order as filled."""
     conn.execute(
-        "UPDATE limit_orders SET status = 'filled', filled_at = datetime('now') WHERE id = ?",
+        "UPDATE limit_orders SET status = 'filled', remaining_amount = 0, "
+        "filled_at = datetime('now') WHERE id = ?",
         (order_id,),
+    )
+    conn.commit()
+    return _get_order(conn, order_id)
+
+
+def mark_partially_filled(
+    conn: sqlite3.Connection, order_id: int, remaining_amount: float,
+) -> LimitOrder:
+    """Record a partial fill: the order stays open for remaining_amount."""
+    conn.execute(
+        "UPDATE limit_orders SET status = 'partially_filled', "
+        "remaining_amount = ? WHERE id = ?",
+        (remaining_amount, order_id),
     )
     conn.commit()
     return _get_order(conn, order_id)
@@ -146,7 +208,7 @@ def mark_filled(conn: sqlite3.Connection, order_id: int) -> LimitOrder:
 def reject_order(conn: sqlite3.Connection, order_id: int) -> LimitOrder:
     """Mark an order as permanently rejected (unfillable)."""
     conn.execute(
-        "UPDATE limit_orders SET status = 'rejected' WHERE id = ?",
+        "UPDATE limit_orders SET status = 'rejected', remaining_amount = 0 WHERE id = ?",
         (order_id,),
     )
     conn.commit()
@@ -159,7 +221,8 @@ def expire_orders(conn: sqlite3.Connection) -> list[LimitOrder]:
     rows = conn.execute(
         """\
         SELECT * FROM limit_orders
-        WHERE status = 'pending' AND order_type = 'gtd' AND expires_at <= ?
+        WHERE status IN ('pending', 'partially_filled')
+          AND order_type = 'gtd' AND expires_at <= ?
         """,
         (now,),
     ).fetchall()
@@ -168,7 +231,8 @@ def expire_orders(conn: sqlite3.Connection) -> list[LimitOrder]:
         conn.execute(
             """\
             UPDATE limit_orders SET status = 'expired'
-            WHERE status = 'pending' AND order_type = 'gtd' AND expires_at <= ?
+            WHERE status IN ('pending', 'partially_filled')
+              AND order_type = 'gtd' AND expires_at <= ?
             """,
             (now,),
         )
@@ -211,6 +275,7 @@ def _row_to_order(row: sqlite3.Row) -> LimitOrder:
         outcome=row["outcome"],
         side=row["side"],
         amount=row["amount"],
+        remaining_amount=row["remaining_amount"],
         limit_price=row["limit_price"],
         order_type=row["order_type"],
         expires_at=row["expires_at"],
