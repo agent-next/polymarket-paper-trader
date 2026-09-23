@@ -2,6 +2,15 @@
 
 All notable changes to `polymarket-paper-trader` are documented here.
 
+## [Unreleased]
+
+### Changed
+- **Tradability gates**: `buy`, `sell`, and `place_limit_order` now reject markets that are closed, not active, or not accepting orders (`check_orders` permanently rejects resting orders in such markets instead of retrying them forever). Limit prices are validated against the market's tick size (`TICK_SIZE_VIOLATION`) before any order row is created; markets reporting no tick size fall back to the cached CLOB `/tick-size` endpoint. `sell` now enforces the $1 minimum gross notional (shares × best bid).
+- **Partial-fill order lifecycle**: limit orders track `remaining_amount` and a `partially_filled` status. A partial FAK fill keeps its remainder open instead of silently dropping it; the remainder of a marketable limit that only partly fills at placement rests as a maker order. `get_pending_orders`, cancel, and expire now operate on partially filled orders, and `check_orders` permanently rejects resting orders on paused/closed markets. Existing databases migrate automatically (one-shot, in-place rebuild preserving ids and timestamps) on the next Engine start.
+
+### Fixed
+- **Gamma string booleans parsed as `True`**: `active`, `closed`, `acceptingOrders`, and `negRisk` arrive as strings (`"false"`) from the live Gamma API; `bool("false")` is `True`, so a market reporting `active="false"` passed the old closed-only gate. Parsing is now string-aware (`_to_bool`), case-insensitive, with `None` falling back to the caller default. `Market` gains `accepting_orders` (default `True`) and `neg_risk` (default `False`), exposed additively on the MCP wire payloads.
+
 ## [0.3.0] - 2026-09-23
 
 ### Changed
