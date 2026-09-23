@@ -2,11 +2,17 @@
 
 All notable changes to `polymarket-paper-trader` are documented here.
 
-## Unreleased
+## [0.2.0] - 2026-09-23
 
 ### Added
-- OpenCode GitHub Action on `/oc` / `/opencode`, new issues, and non-draft PRs. Public bot model is FreeInference `qwen3.6-35b` (`opencode.json` + `FREEINFERENCE_API_KEY`).
-- Preflight step fails the `/oc` jobs when `FREEINFERENCE_API_KEY` is empty; `tests/test_opencode_bot.py` pins the shipped workflow and provider.
+- Benchmark harness (`benchmark/`) and leaderboard client SDK (`leaderboard-client/`) are now part of this repository, with OSS scaffolding (LICENSE, CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md).
+- OpenCode GitHub Action: answers `/oc` and `/opencode` on issue and pull-request comments, triages new issues, and shallow-reviews non-draft PRs. The public bot runs the free FreeInference `qwen3.6-35b` model (`opencode.json` + `FREEINFERENCE_API_KEY`).
+- `/oc` jobs fail closed — a preflight step stops the job when `FREEINFERENCE_API_KEY` is empty. `tests/test_opencode_bot.py` pins the shipped workflow and provider.
+- Weekly live-API monitor (`live.yml`, Mondays 09:23 UTC) runs the live e2e suite against the real Gamma and CLOB APIs.
+- Toolkit CI (`toolkit.yml`) tests `benchmark/` and `leaderboard-client/` across Python 3.10-3.13 with a 100% coverage gate.
+
+### Changed
+- Bump the ClawHub CLI from `0.7.0` to `0.23.3` — required for the MIT-0 license gate used when publishing the skill.
 
 ## [0.1.8] - 2026-08-14
 
