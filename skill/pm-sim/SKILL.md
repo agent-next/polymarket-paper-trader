@@ -1,7 +1,7 @@
 ---
 name: pm-sim
 description: "[DEPRECATED] Renamed to polymarket-paper-trader. Run: npx clawhub install polymarket-paper-trader"
-version: 0.2.0
+version: 0.2.1
 ---
 
 # pm-sim is now polymarket-paper-trader

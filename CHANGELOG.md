@@ -2,6 +2,20 @@
 
 All notable changes to `polymarket-paper-trader` are documented here.
 
+## [0.2.1] - 2026-09-23
+
+### Fixed
+- **CLOB fee rate always 0**: `GET /fee-rate` now returns `{"base_fee": <int bps>}`; `get_fee_rate()` read the old `fee_rate_bps` key and so returned 0 for every market. It now reads `base_fee` (and still accepts `fee_rate_bps` from cached rows written before the drift).
+- **CLOB single-market endpoint moved**: `GET /markets/{condition_id}` is gone; the client now calls `GET /clob-markets/{condition_id}` and parses the abbreviated payload (`c`, `t`/`o` tokens, `mts`, `mos`, `mbf`, `tbf`). The old long-key shape is still accepted.
+- **Closed markets were unreachable by slug**: Gamma's `GET /markets` defaults `closed` to false, so closed markets never matched. `get_market()` now retries the slug lookup once with `closed=true` before falling back to CLOB.
+- **Gamma enrichment of CLOB lookups**: abbreviated CLOB payloads carry no slug, so enrichment now falls back to a `condition_ids` lookup instead of returning a market with empty slug/question.
+- **Text search moved to `GET /public-search`**: `search_markets()` used the undocumented `GET /markets?_q=`, which no longer filters. It now calls `/public-search` and flattens `events[].markets`. The return type is unchanged.
+- **Event-by-slug moved**: `get_event()` now calls `GET /events/slug/{slug}` (the `/events/{id}` form is id-only).
+
+### Added
+- `Market.fee_schedule` — the nested Gamma `feeSchedule` object (`rate`, `exponent`, `takerOnly`, `rebateRate`). `rate` is a coefficient, not bps; it is data-only and does not affect fee simulation.
+- `Market.min_order_size`, `Market.maker_base_fee_bps`, `Market.taker_base_fee_bps` — parsed from the abbreviated CLOB payload (`mos`, `mbf`, `tbf`).
+
 ## [0.2.0] - 2026-09-23
 
 ### Added
