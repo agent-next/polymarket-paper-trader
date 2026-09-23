@@ -692,37 +692,31 @@ class TestCheckOrdersEdgeCases:
         assert len(acct.get_pending_orders()) == 1
 
     def test_limit_sell_exceeds_position(self, acct):
-        """Limit sell for more shares than held should be rejected."""
+        """Marketable limit sell for more shares than held: rejected at placement."""
         _mock(acct, book=_book(asks=[(0.50, 5000)], bids=[(0.64, 5000)]))
         acct.buy("test-market", "yes", 10.0)  # Buy a small amount
         position_shares = acct.get_portfolio()[0]["shares"]
 
-        # Place limit sell for far more shares than we hold
-        acct.place_limit_order(
-            "test-market", "yes", "sell", position_shares + 100, 0.60,
-        )
-
-        # Book bids are high enough to trigger → but shares exceed position
-        high_book = _book(asks=[(0.70, 5000)], bids=[(0.64, 5000)])
-        acct.api.get_order_book = MagicMock(return_value=high_book)
-        results = acct.check_orders()
-        rejected = [r for r in results if r["action"] == "rejected"]
-        assert len(rejected) == 1
+        # Bids (0.64) are above the 0.60 limit -> marketable at placement, but
+        # the share amount exceeds the position: rejected immediately, never rests.
+        from pm_trader.models import OrderRejectedError
+        with pytest.raises(OrderRejectedError):
+            acct.place_limit_order(
+                "test-market", "yes", "sell", position_shares + 100, 0.60,
+            )
+        assert acct.get_pending_orders() == []
 
     def test_limit_buy_insufficient_balance(self, acct):
-        """Limit buy that fills but exceeds cash should be rejected."""
+        """Marketable limit buy the account can't afford: rejected at placement."""
         # Start with very low balance
         acct.init_account(1.0)
         _mock(acct, book=_book(asks=[(0.50, 10000)], bids=[(0.49, 5000)]))
-        acct.place_limit_order("test-market", "yes", "buy", 1000.0, 0.55)
-
-        # Price drops — order triggers, but account can't afford it
-        cheap_book = _book(asks=[(0.50, 10000)], bids=[(0.49, 5000)])
-        acct.api.get_order_book = MagicMock(return_value=cheap_book)
-        results = acct.check_orders()
-        # Should be rejected due to insufficient balance
-        rejected = [r for r in results if r["action"] == "rejected"]
-        assert len(rejected) == 1
+        # Asks (0.50) are below the 0.55 limit -> marketable at placement, but
+        # the account cannot cover it: rejected immediately, never rests.
+        from pm_trader.models import InsufficientBalanceError
+        with pytest.raises(InsufficientBalanceError):
+            acct.place_limit_order("test-market", "yes", "buy", 1000.0, 0.55)
+        assert acct.get_pending_orders() == []
 
 
 # ---------------------------------------------------------------------------
@@ -891,10 +885,15 @@ class TestDefensiveGuards:
     def test_check_orders_no_fillable_liquidity(self, acct):
         """check_orders skips order when simulate returns unfilled non-partial."""
         _mock(acct, book=_book(asks=[(0.65, 5000)], bids=[(0.64, 5000)]))
-        # Place limit buy at a price equal to the ask, so the pre-check passes
-        acct.place_limit_order("test-market", "yes", "buy", 100.0, 0.65)
+        # Place BELOW the ask so the order rests (a marketable limit would fill
+        # at placement and never reach check_orders).
+        acct.place_limit_order("test-market", "yes", "buy", 100.0, 0.60)
 
-        # Now mock simulate_buy_fill to return an empty fill (defensive edge)
+        # Market moves down to the limit, so check_orders' pre-check passes...
+        crossed_book = _book(asks=[(0.60, 5000)], bids=[(0.59, 5000)])
+        acct.api.get_order_book = MagicMock(return_value=crossed_book)
+
+        # ...but simulate returns an empty fill (defensive edge): skip, stay pending
         from pm_trader.orderbook import FillResult
         empty_fill = FillResult(
             filled=False, is_partial=False, total_shares=0.0,

@@ -989,3 +989,97 @@ class TestMakerFillFees:
         results = initialized_engine.check_orders()
         assert [r["action"] for r in results] == ["filled"]
         assert initialized_engine.get_history(limit=1)[0].fee == 0.0
+
+    def test_marketable_limit_buy_pays_taker_fee_at_placement(
+        self, initialized_engine: Engine,
+    ):
+        """A limit through the ask never rests: it fills NOW as a taker."""
+        _mock_api(initialized_engine, market=_schedule_market(**CRYPTO_SCHEDULE))
+        cash_before = initialized_engine.get_account().cash
+
+        placed = initialized_engine.place_limit_order(
+            "btc", "yes", "buy", 100.0, 0.70,  # best ask 0.66 < 0.70: marketable
+        )
+        assert placed["status"] == "filled"
+        assert initialized_engine.get_pending_orders() == []
+
+        trade = initialized_engine.get_history(limit=1)[0]
+        assert trade.fee == pytest.approx(
+            trade.shares * 0.07 * trade.avg_price * (1 - trade.avg_price)
+        )
+        assert trade.fee > 0.0
+        assert initialized_engine.get_account().cash == pytest.approx(
+            cash_before - trade.amount_usd - trade.fee, abs=1e-9
+        )
+
+    def test_marketable_limit_sell_pays_taker_fee_at_placement(
+        self, initialized_engine: Engine,
+    ):
+        _mock_api(initialized_engine, market=_schedule_market(**CRYPTO_SCHEDULE))
+        initialized_engine.buy("btc", "yes", 100.0)
+
+        placed = initialized_engine.place_limit_order(
+            "btc", "yes", "sell", 10.0, 0.50,  # best bid 0.64 > 0.50: marketable
+        )
+        assert placed["status"] == "filled"
+
+        trade = initialized_engine.get_history(limit=1)[0]
+        assert trade.fee == pytest.approx(
+            trade.shares * 0.07 * trade.avg_price * (1 - trade.avg_price)
+        )
+
+    def test_resting_limit_still_fills_maker_free(
+        self, initialized_engine: Engine,
+    ):
+        """Placed BELOW the ask: rests; the market later moves down to the
+        limit and lifts the resting order — a maker fill, no fee."""
+        _mock_api(initialized_engine, market=_schedule_market(**CRYPTO_SCHEDULE))
+
+        placed = initialized_engine.place_limit_order(
+            "btc", "yes", "buy", 100.0, 0.60,  # best ask 0.66 > 0.60: rests
+        )
+        assert placed["status"] == "pending"
+
+        # Sellers lower their asks INTO our resting bid (someone else crossed).
+        from unittest.mock import MagicMock
+        moved_book = _make_book(
+            bids=[(0.59, 5000)],
+            asks=[(0.60, 5000)],
+        )
+        initialized_engine.api.get_order_book = MagicMock(return_value=moved_book)
+
+        results = initialized_engine.check_orders()
+        assert [r["action"] for r in results] == ["filled"]
+        trade = initialized_engine.get_history(limit=1)[0]
+        assert trade.fee == 0.0
+
+    def test_marketable_limit_with_no_depth_rests(
+        self, initialized_engine: Engine,
+    ):
+        """Price crosses at placement but the fill comes back empty (defensive
+        edge): rest the order instead of erroring."""
+        _mock_api(initialized_engine, market=_schedule_market(**CRYPTO_SCHEDULE))
+        from pm_trader.orderbook import FillResult
+        import pm_trader.engine as engine_mod
+        empty_fill = FillResult(
+            filled=False, is_partial=False, total_shares=0.0,
+            total_cost=0.0, avg_price=0.0, fee=0.0,
+            slippage_bps=0.0, levels_filled=0, fills=[],
+        )
+
+        orig_buy, orig_sell = engine_mod.simulate_buy_fill, engine_mod.simulate_sell_fill
+        engine_mod.simulate_buy_fill = lambda *a, **kw: empty_fill
+        engine_mod.simulate_sell_fill = lambda *a, **kw: empty_fill
+        try:
+            placed = initialized_engine.place_limit_order(
+                "btc", "yes", "buy", 100.0, 0.70,  # crosses (ask 0.66 < 0.70)
+            )
+            assert placed["status"] == "pending"
+            assert initialized_engine.get_history(limit=1) == []
+
+            placed_sell = initialized_engine.place_limit_order(
+                "btc", "yes", "sell", 1.0, 0.60,  # crosses (bid 0.64 > 0.60)
+            )
+            assert placed_sell["status"] == "pending"
+        finally:
+            engine_mod.simulate_buy_fill, engine_mod.simulate_sell_fill = orig_buy, orig_sell

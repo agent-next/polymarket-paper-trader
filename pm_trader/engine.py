@@ -31,6 +31,7 @@ from pm_trader.orders import (
     cancel_order,
     create_order,
     expire_orders,
+    get_order,
     get_pending_orders,
     init_orders_schema,
     mark_filled,
@@ -483,7 +484,55 @@ class Engine:
             order_type=order_type,
             expires_at=expires_at,
         )
+        # Marketable limit (crosses the book at placement): executes immediately
+        # as a TAKER — it lifts standing liquidity, exactly like a real CLOB never
+        # rests a limit through the opposite side. Only orders that rest unfilled
+        # are maker fills when the market later moves through them.
+        try:
+            if self._try_immediate_limit_fill(market, order):
+                return _order_to_dict(get_order(self.db.conn, order.id))
+        except _PERMANENT_ORDER_ERRORS:
+            reject_order(self.db.conn, order.id)
+            raise
         return _order_to_dict(order)
+
+    def _try_immediate_limit_fill(self, market: Market, order) -> bool:
+        """Fill a freshly placed limit order now when it crosses the book.
+
+        A marketable limit is a taker fill (pays the fee). Returns True when
+        the order was filled and marked; False when it rests (no cross or no
+        fillable liquidity within the limit). Transient errors propagate so
+        the order simply rests and the next check_orders() retries it.
+        """
+        token_id = market.get_token_id(order.outcome)
+        book = self.api.get_order_book(token_id)
+        fee_rate, fee_rate_bps = self._resolve_fee(market, token_id)
+
+        if order.side == "buy":
+            best_ask = min((l.price for l in book.asks), default=None)
+            if best_ask is None or best_ask > order.limit_price:
+                return False
+            fill = simulate_buy_fill(
+                book, order.amount, fee_rate_bps, "fak",
+                max_price=order.limit_price, fee_rate=fee_rate,
+            )
+            if not fill.filled and not fill.is_partial:
+                return False
+            self._execute_limit_buy(market, order, fill, fee_rate_bps, maker=False)
+        else:
+            best_bid = max((l.price for l in book.bids), default=None)
+            if best_bid is None or best_bid < order.limit_price:
+                return False
+            fill = simulate_sell_fill(
+                book, order.amount, fee_rate_bps, "fak",
+                min_price=order.limit_price, fee_rate=fee_rate,
+            )
+            if not fill.filled and not fill.is_partial:
+                return False
+            self._execute_limit_sell(market, order, fill, fee_rate_bps, maker=False)
+
+        mark_filled(self.db.conn, order.id)
+        return True
 
     def get_pending_orders(self) -> list[dict]:
         """Return all pending limit orders."""
@@ -575,14 +624,16 @@ class Engine:
 
         return results
 
-    def _execute_limit_buy(self, market, order, fill, fee_rate_bps: int) -> None:
+    def _execute_limit_buy(self, market, order, fill, fee_rate_bps: int, *, maker: bool = True) -> None:
         """Record a limit buy fill using a pre-computed FillResult.
 
-        A resting limit fill is a maker fill, so it pays no fee in a
-        ``takerOnly`` market.
+        A RESTING limit fill (``maker=True``, the default — the market later
+        moved through our price) pays no fee in a ``takerOnly`` market. A
+        marketable limit that crossed the book at placement passes
+        ``maker=False`` and pays the taker fee.
         """
         account = self._require_account()
-        fee = 0.0 if _maker_fee_exempt(market) else fill.fee
+        fee = 0.0 if (maker and _maker_fee_exempt(market)) else fill.fee
         total_outflow = fill.total_cost + fee
         if total_outflow > account.cash:
             raise InsufficientBalanceError(
@@ -613,14 +664,16 @@ class Engine:
             avg_fill_price=fill.avg_price,
         )
 
-    def _execute_limit_sell(self, market, order, fill, fee_rate_bps: int) -> None:
+    def _execute_limit_sell(self, market, order, fill, fee_rate_bps: int, *, maker: bool = True) -> None:
         """Record a limit sell fill using a pre-computed FillResult.
 
-        A resting limit fill is a maker fill, so it pays no fee in a
-        ``takerOnly`` market.
+        A RESTING limit fill (``maker=True``, the default — the market later
+        moved through our price) pays no fee in a ``takerOnly`` market. A
+        marketable limit that crossed the book at placement passes
+        ``maker=False`` and pays the taker fee.
         """
         account = self._require_account()
-        fee = 0.0 if _maker_fee_exempt(market) else fill.fee
+        fee = 0.0 if (maker and _maker_fee_exempt(market)) else fill.fee
         position = self.db.get_position(market.condition_id, order.outcome)
         if position is None or position.shares <= 0:
             raise NoPositionError(market.slug, order.outcome)
