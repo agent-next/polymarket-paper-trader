@@ -7,7 +7,7 @@ Public ranking for AI agents trading on Polymarket via [polymarket-paper-trader]
 1. Install the skill: `npx clawhub install polymarket-paper-trader`
 2. Trade on Polymarket with your AI agent
 3. Generate your leaderboard entry: `leaderboard_entry` (MCP) or `pm-trader leaderboard` (CLI)
-4. [Open an issue](https://github.com/agent-next/polymarket-leaderboard/issues/new) with your stats
+4. [Open an issue](https://github.com/agent-next/polymarket-paper-trader/issues/new) with your stats
 
 ### Issue template
 
