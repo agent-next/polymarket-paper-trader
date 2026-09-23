@@ -23,6 +23,7 @@ from pm_trader.models import (
     OrderRejectedError,
     Position,
     ResolveResult,
+    TickSizeViolationError,
     Trade,
     TradeResult,
 )
@@ -35,12 +36,15 @@ from pm_trader.orders import (
     get_pending_orders,
     init_orders_schema,
     mark_filled,
+    mark_partially_filled,
     reject_order,
     should_fill,
 )
 from pm_trader.orderbook import simulate_buy_fill, simulate_sell_fill
 
 MIN_ORDER_USD = 1.0  # Polymarket minimum order size
+TICK_EPSILON = 1e-9  # float-noise tolerance for tick-grid comparison
+FILL_EPSILON = 1e-9  # float-noise tolerance for "fully filled" comparison
 
 # Errors that indicate an order is permanently unfillable (not transient)
 _PERMANENT_ORDER_ERRORS = (
@@ -132,6 +136,31 @@ class Engine:
                 raise InvalidOutcomeError(outcome, valid)
         return outcome
 
+    @staticmethod
+    def _validate_tick_size(price: float, tick_size: float) -> None:
+        """Reject a limit price that is not on the market's tick grid.
+
+        A non-positive tick size carries no grid constraint. Comparison
+        tolerates float noise: the price must round-trip to itself.
+        """
+        if tick_size <= 0:
+            return
+        snapped = round(price / tick_size) * tick_size
+        if abs(price - snapped) > TICK_EPSILON:
+            raise TickSizeViolationError(price, tick_size)
+
+    @staticmethod
+    def _require_market_tradable(market) -> None:
+        """Raise unless the market accepts orders right now."""
+        if market.closed:
+            raise MarketClosedError(market.slug)
+        if not market.active:
+            raise OrderRejectedError(f"Market '{market.slug}' is not active")
+        if not market.accepting_orders:
+            raise OrderRejectedError(
+                f"Market '{market.slug}' is not accepting orders"
+            )
+
     # ------------------------------------------------------------------
     # Fee resolution
     # ------------------------------------------------------------------
@@ -175,14 +204,12 @@ class Engine:
         # Fetch market and validate outcome against actual market outcomes
         market = self.api.get_market(slug_or_id)
         outcome = self._validate_outcome(outcome, market)
+        self._require_market_tradable(market)
 
         # Fetch live order book and fee rate
         token_id = market.get_token_id(outcome)
         book = self.api.get_order_book(token_id)
         fee_rate, fee_rate_bps = self._resolve_fee(market, token_id)
-
-        if market.closed:
-            raise MarketClosedError(market.slug)
 
         # Simulate fill against the real order book
         fill = simulate_buy_fill(
@@ -295,13 +322,19 @@ class Engine:
                 f"Cannot sell {shares:.4f} shares, only hold {position.shares:.4f}"
             )
 
-        if market.closed:
-            raise MarketClosedError(market.slug)
+        self._require_market_tradable(market)
 
         # Fetch live book and fee rate
         token_id = market.get_token_id(outcome)
         book = self.api.get_order_book(token_id)
         fee_rate, fee_rate_bps = self._resolve_fee(market, token_id)
+
+        # Gross proceeds at the best bid must clear the minimum order size
+        best_bid = max((level.price for level in book.bids), default=0.0)
+        if best_bid > 0 and shares * best_bid < MIN_ORDER_USD:
+            raise OrderRejectedError(
+                f"Minimum order size is ${MIN_ORDER_USD:.2f}"
+            )
 
         # Simulate fill against the real order book
         fill = simulate_sell_fill(
@@ -473,6 +506,16 @@ class Engine:
 
         market = self.api.get_market(slug_or_id)
         outcome = self._validate_outcome(outcome, market)
+        self._require_market_tradable(market)
+
+        # Validate the price against the market tick grid BEFORE creating any
+        # row: a violation must leave no order behind. Markets reporting no
+        # tick size fall back to the cached CLOB /tick-size endpoint.
+        tick_size = market.tick_size
+        if tick_size <= 0:
+            tick_size = self.api.get_tick_size(market.get_token_id(outcome))
+        self._validate_tick_size(limit_price, tick_size)
+
         order = create_order(
             self.db.conn,
             market_slug=market.slug,
@@ -505,9 +548,11 @@ class Engine:
         """Fill a freshly placed limit order now when it crosses the book.
 
         A marketable limit is a taker fill (pays the fee). Returns True when
-        the order was filled and marked; False when it rests (no cross or no
-        fillable liquidity within the limit). Transient errors propagate so
-        the order simply rests and the next check_orders() retries it.
+        the order was executed now — fully (``filled``) or partially (any
+        remainder rests as ``partially_filled`` for the next check_orders);
+        False when it rests (no cross or no fillable liquidity within the
+        limit). Transient errors propagate so the order simply rests and the
+        next check_orders() retries it.
         """
         token_id = market.get_token_id(order.outcome)
         book = self.api.get_order_book(token_id)
@@ -518,7 +563,7 @@ class Engine:
             if best_ask is None or best_ask > order.limit_price:
                 return False
             fill = simulate_buy_fill(
-                book, order.amount, fee_rate_bps, "fak",
+                book, order.remaining_amount, fee_rate_bps, "fak",
                 max_price=order.limit_price, fee_rate=fee_rate,
             )
             if not fill.filled and not fill.is_partial:
@@ -529,15 +574,31 @@ class Engine:
             if best_bid is None or best_bid < order.limit_price:
                 return False
             fill = simulate_sell_fill(
-                book, order.amount, fee_rate_bps, "fak",
+                book, order.remaining_amount, fee_rate_bps, "fak",
                 min_price=order.limit_price, fee_rate=fee_rate,
             )
             if not fill.filled and not fill.is_partial:
                 return False
             self._execute_limit_sell(market, order, fill, fee_rate_bps, maker=False)
 
-        mark_filled(self.db.conn, order.id)
+        self._settle_order_fill(order, fill)
         return True
+
+    def _settle_order_fill(self, order, fill) -> LimitOrder:
+        """Close an order after an execution, keeping any partial remainder.
+
+        Returns the updated order: ``filled`` when nothing (within
+        FILL_EPSILON) is left, otherwise resting as ``partially_filled``
+        with the reduced remaining_amount.
+        """
+        remaining = (
+            order.remaining_amount - fill.total_cost
+            if order.side == "buy"
+            else order.remaining_amount - fill.total_shares
+        )
+        if remaining <= FILL_EPSILON:
+            return mark_filled(self.db.conn, order.id)
+        return mark_partially_filled(self.db.conn, order.id, remaining)
 
     def get_pending_orders(self) -> list[dict]:
         """Return all pending limit orders."""
@@ -557,10 +618,10 @@ class Engine:
         return [_order_to_dict(o) for o in cancelled]
 
     def check_orders(self) -> list[dict]:
-        """Check all pending orders against live prices and execute fills.
+        """Check all open orders against live prices and execute fills.
 
         This is the agent-callable trigger. Call it periodically.
-        Returns list of filled/expired orders.
+        Returns list of filled/partially_filled/expired/rejected orders.
 
         Limit price enforcement: buy orders only consume ask levels at or
         below the limit price; sell orders only consume bid levels at or
@@ -574,11 +635,12 @@ class Engine:
         for o in expired:
             results.append({"order": _order_to_dict(o), "action": "expired"})
 
-        # Check pending orders against live order books
+        # Check open orders against live order books
         pending = get_pending_orders(self.db.conn)
         for order in pending:
             try:
                 market = self.api.get_market(order.market_slug)
+                self._require_market_tradable(market)
                 token_id = market.get_token_id(order.outcome)
                 book = self.api.get_order_book(token_id)
                 fee_rate, fee_rate_bps = self._resolve_fee(market, token_id)
@@ -589,7 +651,7 @@ class Engine:
                     if best_ask is None or best_ask > order.limit_price:
                         continue
                     fill = simulate_buy_fill(
-                        book, order.amount, fee_rate_bps, "fak",
+                        book, order.remaining_amount, fee_rate_bps, "fak",
                         max_price=order.limit_price, fee_rate=fee_rate,
                     )
                 else:
@@ -598,7 +660,7 @@ class Engine:
                     if best_bid is None or best_bid < order.limit_price:
                         continue
                     fill = simulate_sell_fill(
-                        book, order.amount, fee_rate_bps, "fak",
+                        book, order.remaining_amount, fee_rate_bps, "fak",
                         min_price=order.limit_price, fee_rate=fee_rate,
                     )
 
@@ -611,10 +673,11 @@ class Engine:
                 else:
                     self._execute_limit_sell(market, order, fill, fee_rate_bps)
 
-                updated = mark_filled(self.db.conn, order.id)
+                # Keep any remainder open instead of dropping it
+                updated = self._settle_order_fill(order, fill)
                 results.append({
                     "order": _order_to_dict(updated),
-                    "action": "filled",
+                    "action": updated.status,
                 })
             except _PERMANENT_ORDER_ERRORS as e:
                 # Permanent failure — mark rejected so it's not retried
@@ -843,6 +906,7 @@ def _order_to_dict(order) -> dict:
         "outcome": order.outcome,
         "side": order.side,
         "amount": order.amount,
+        "remaining_amount": order.remaining_amount,
         "limit_price": order.limit_price,
         "order_type": order.order_type,
         "expires_at": order.expires_at,
