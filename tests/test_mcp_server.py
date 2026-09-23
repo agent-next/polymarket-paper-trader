@@ -459,6 +459,8 @@ class TestSearchMarkets:
         assert result["ok"] is True
         assert len(result["data"]) == 1
         assert result["data"][0]["slug"] == "will-bitcoin-hit-100k"
+        assert result["data"][0]["accepting_orders"] is True
+        assert "neg_risk" in result["data"][0]
 
     def test_search_with_limit(self):
         init_account()
