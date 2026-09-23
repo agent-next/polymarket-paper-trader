@@ -10,7 +10,12 @@ from __future__ import annotations
 import pytest
 
 from pm_trader.models import OrderBook, OrderBookLevel
-from pm_trader.orderbook import calculate_fee, simulate_buy_fill, simulate_sell_fill
+from pm_trader.orderbook import (
+    calculate_fee,
+    calculate_fee_schedule,
+    simulate_buy_fill,
+    simulate_sell_fill,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -58,6 +63,15 @@ def thin_book() -> OrderBook:
 def empty_book() -> OrderBook:
     """An order book with no levels on either side."""
     return OrderBook(bids=[], asks=[])
+
+
+@pytest.fixture
+def low_price_book() -> OrderBook:
+    """A book priced below 0.50, where share- and notional-based fees differ."""
+    return OrderBook(
+        bids=[OrderBookLevel(price=0.28, size=1_000.0)],
+        asks=[OrderBookLevel(price=0.30, size=1_000.0)],
+    )
 
 
 # =========================================================================
@@ -433,6 +447,153 @@ class TestFeeSymmetry:
             fee_a = calculate_fee(150, price, 50.0)
             fee_b = calculate_fee(150, 1.0 - price, 50.0)
             assert fee_a == pytest.approx(fee_b), f"Asymmetric fee at price={price}"
+
+
+# =========================================================================
+# OFFICIAL feeSchedule CURVE
+# =========================================================================
+#
+# fee = C × feeRate × p × (1 - p), C = shares, p = price — verbatim from
+# https://docs.polymarket.com/trading/fees.  Every expected value below is
+# copied from that page's "Fee Tables (100 Shares)" tabs (C = 100).
+
+
+class TestFeeScheduleDocsTable:
+    """The curve reproduces the published per-category fee table."""
+
+    @pytest.mark.parametrize(
+        "rate, price, expected",
+        [
+            # Crypto (rate 0.07)
+            (0.07, 0.01, 0.07),
+            (0.07, 0.05, 0.33),
+            (0.07, 0.10, 0.63),
+            (0.07, 0.20, 1.12),
+            (0.07, 0.30, 1.47),
+            (0.07, 0.45, 1.73),
+            (0.07, 0.50, 1.75),
+            (0.07, 0.70, 1.47),
+            (0.07, 0.99, 0.07),
+            # Sports (rate 0.05)
+            (0.05, 0.05, 0.24),
+            (0.05, 0.10, 0.45),
+            (0.05, 0.30, 1.05),
+            (0.05, 0.50, 1.25),
+            (0.05, 0.90, 0.45),
+            # Finance / Politics / Mentions / Tech (rate 0.04)
+            (0.04, 0.10, 0.36),
+            (0.04, 0.30, 0.84),
+            (0.04, 0.45, 0.99),
+            (0.04, 0.50, 1.00),
+        ],
+    )
+    def test_docs_table_100_shares(
+        self, rate: float, price: float, expected: float,
+    ) -> None:
+        # The published table shows USDC to the cent, so allow half a cent.
+        assert calculate_fee_schedule(rate, 1, price, 100.0) == pytest.approx(
+            expected, abs=5e-3
+        )
+
+    def test_symmetric_around_half(self) -> None:
+        """p and 1-p incur the same dollar fee (docs: symmetric at 50%)."""
+        for price in [0.05, 0.20, 0.35, 0.45]:
+            assert calculate_fee_schedule(
+                0.07, 1, price, 100.0
+            ) == pytest.approx(calculate_fee_schedule(0.07, 1, 1 - price, 100.0))
+
+    def test_charged_on_shares_not_notional(self) -> None:
+        """C is the share count: 100 shares at 0.50 pays 1.75, not 0.875."""
+        assert calculate_fee_schedule(0.07, 1, 0.50, 100.0) == pytest.approx(1.75)
+        # The USD notional here is 50; charging that instead would give 0.875.
+        assert calculate_fee_schedule(0.07, 1, 0.50, 100.0) != pytest.approx(0.875)
+
+
+class TestFeeScheduleEdges:
+    """Boundary prices, dead inputs, exponent variants, 5-dp rounding."""
+
+    @pytest.mark.parametrize("price", [0.0, 1.0])
+    def test_degenerate_prices_are_free(self, price: float) -> None:
+        assert calculate_fee_schedule(0.07, 1, price, 100.0) == 0.0
+
+    @pytest.mark.parametrize(
+        "rate, exponent, shares",
+        [(0.0, 1, 100.0), (-0.01, 1, 100.0), (0.07, 1, 0.0), (0.07, 1, -5.0)],
+    )
+    def test_free_when_no_fee_inputs(
+        self, rate: float, exponent: float, shares: float,
+    ) -> None:
+        assert calculate_fee_schedule(rate, exponent, 0.50, shares) == 0.0
+
+    def test_exponent_identity_matches_docs_formula(self) -> None:
+        """exponent=1 drops out of the published formula."""
+        expected = 100 * 0.07 * 0.30 * 0.70
+        assert calculate_fee_schedule(0.07, 1, 0.30, 100.0) == pytest.approx(expected)
+
+    def test_exponent_zero_flattens_the_price_component(self) -> None:
+        """(p(1-p))**0 == 1, so the fee is shares × rate anywhere."""
+        assert calculate_fee_schedule(0.05, 0, 0.10, 100.0) == pytest.approx(5.0)
+        assert calculate_fee_schedule(0.05, 0, 0.90, 100.0) == pytest.approx(5.0)
+
+    def test_exponent_two_squares_the_price_component(self) -> None:
+        expected = 100 * 0.05 * (0.30 * 0.70) ** 2
+        assert calculate_fee_schedule(0.05, 2, 0.30, 100.0) == pytest.approx(expected)
+
+    def test_rounded_to_five_decimals(self) -> None:
+        # 100 × 0.07 × 0.05 × 0.95 = 0.3325 exactly
+        assert calculate_fee_schedule(0.07, 1, 0.05, 100.0) == 0.33250
+
+    def test_smallest_charged_fee_is_0_00001(self) -> None:
+        """Anything smaller than 0.00001 rounds to zero ("Fee Precision")."""
+        # 0.0002 × 0.07 × 0.5 × 0.5 = 0.0000035 → below the smallest charge
+        assert calculate_fee_schedule(0.07, 1, 0.50, 0.0002) == 0.0
+        # 0.001 × 0.07 × 0.5 × 0.5 = 0.0000175 → rounds to 0.00002
+        assert calculate_fee_schedule(0.07, 1, 0.50, 0.001) == pytest.approx(0.00002)
+
+
+class TestFillSimUsesScheduleFee:
+    """simulate_*_fill charges the official curve when fee_rate is given."""
+
+    def test_buy_charges_on_shares(self, low_price_book: OrderBook) -> None:
+        """$100 at 0.30 buys 333.33 shares; the fee uses C, not the $100."""
+        result = simulate_buy_fill(
+            low_price_book, 100.0, fee_rate_bps=0, fee_rate=0.07,
+        )
+        assert result.avg_price == pytest.approx(0.30)
+        assert result.total_shares == pytest.approx(100.0 / 0.30)
+        # C × rate × p × (1-p) = 333.333 × 0.07 × 0.30 × 0.70 = 4.90
+        assert result.fee == pytest.approx(100.0 / 0.30 * 0.07 * 0.30 * 0.70)
+        # Charging the USD notional instead would give 2.10
+        assert result.fee != pytest.approx(0.07 * 0.30 * 100.0)
+
+    def test_sell_charges_on_shares(self, multi_level_book: OrderBook) -> None:
+        result = simulate_sell_fill(
+            multi_level_book, 100.0, fee_rate_bps=0, fee_rate=0.07,
+        )
+        expected = calculate_fee_schedule(
+            0.07, 1, result.avg_price, result.total_shares,
+        )
+        assert result.fee == pytest.approx(expected, abs=1e-9)
+
+    def test_fee_rate_takes_precedence_over_bps(self) -> None:
+        book = OrderBook(
+            bids=[OrderBookLevel(price=0.50, size=100.0)],
+            asks=[OrderBookLevel(price=0.50, size=100.0)],
+        )
+        # The legacy 200 bps model would charge the $50 notional: 0.50
+        result = simulate_buy_fill(book, 50.0, fee_rate_bps=200, fee_rate=0.04)
+        # 100 shares × 0.04 × 0.5 × 0.5 = 1.00
+        assert result.total_shares == pytest.approx(100.0)
+        assert result.fee == pytest.approx(100 * 0.04 * 0.25)
+
+    def test_fallback_to_bps_when_no_fee_rate(self) -> None:
+        book = OrderBook(
+            bids=[OrderBookLevel(price=0.50, size=100.0)],
+            asks=[OrderBookLevel(price=0.50, size=100.0)],
+        )
+        result = simulate_buy_fill(book, 50.0, fee_rate_bps=200)
+        # Legacy model charges the USD notional: 0.02 * 0.5 * 50 = 0.50
+        assert result.fee == pytest.approx(0.50)
 
 
 # =========================================================================

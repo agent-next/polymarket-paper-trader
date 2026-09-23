@@ -1,9 +1,9 @@
 """Comprehensive end-to-end tests against the real Polymarket API.
 
 These tests use a $10k paper account and exercise every code path
-against live market data.  Fees are currently 0 on all active
-Polymarket markets, so the fee code path is tested separately
-with injected fee rates.
+against live market data.  Live markets carry a feeSchedule, so the
+legacy bps fee path is tested separately with an injected fee rate and
+the feeSchedule resolution neutralized.
 
 Run with:  python3 -m pytest tests/test_e2e_live.py -v -s
 Skip with: python3 -m pytest -m "not live"
@@ -477,7 +477,8 @@ class TestTradeHistory:
 
 
 # ---------------------------------------------------------------------------
-# 7. Fee simulation (injected, since real markets are 0 fee)
+# 7. Fee simulation (feeSchedule resolution neutralized so the legacy bps
+#    path can be exercised against live markets with an injected rate)
 # ---------------------------------------------------------------------------
 
 
@@ -485,11 +486,15 @@ class TestFeeSimulation:
     """Test fee handling by temporarily overriding the API fee response."""
 
     def test_buy_with_200bps_fee(self, engine: Engine):
-        """Simulate a 200bps fee market."""
+        """Simulate a 200bps fee market on the legacy (no feeSchedule) path."""
+        import pm_trader.engine as engine_mod
+
         markets = _get_binary_markets(engine, limit=20)
 
-        # Monkey-patch fee rate to 200bps
+        # Monkey-patch fee rate to 200bps and neutralise feeSchedule resolution
         original_get_fee_rate = engine.api.get_fee_rate
+        original_resolve = engine_mod._resolve_fee_rate
+        engine_mod._resolve_fee_rate = lambda market: None
         engine.api.get_fee_rate = lambda token_id: 200
 
         try:
@@ -519,9 +524,12 @@ class TestFeeSimulation:
             pytest.skip("No market with sufficient ask liquidity")
         finally:
             engine.api.get_fee_rate = original_get_fee_rate
+            engine_mod._resolve_fee_rate = original_resolve
 
     def test_sell_with_175bps_fee(self, engine: Engine):
-        """Simulate a 175bps fee on sell."""
+        """Simulate a 175bps fee on the legacy (no feeSchedule) sell path."""
+        import pm_trader.engine as engine_mod
+
         markets = _get_binary_markets(engine, limit=10)
         m = None
         for candidate in markets:
@@ -534,6 +542,8 @@ class TestFeeSimulation:
             pytest.skip("No position to sell in a liquid market")
 
         original_get_fee_rate = engine.api.get_fee_rate
+        original_resolve = engine_mod._resolve_fee_rate
+        engine_mod._resolve_fee_rate = lambda market: None
         engine.api.get_fee_rate = lambda token_id: 175
 
         try:
@@ -554,12 +564,30 @@ class TestFeeSimulation:
             )
         finally:
             engine.api.get_fee_rate = original_get_fee_rate
+            engine_mod._resolve_fee_rate = original_resolve
 
     def test_fee_formula_correctness(self, engine: Engine):
-        """Verify fee = (bps/10000) * min(price, 1-price) * size."""
-        from pm_trader.orderbook import calculate_fee
+        """Verify both fee models against their published formulas.
 
-        # Test at various prices
+        Official: fee = C x feeRate x p x (1-p)   (docs.polymarket.com/trading/fees)
+        Legacy:   fee = (bps/10000) * min(p, 1-p) * size
+        """
+        from pm_trader.orderbook import calculate_fee, calculate_fee_schedule
+
+        # Official curve — the docs' 100-share Crypto table (rate 0.07)
+        for price, expected in [
+            (0.10, 0.63),
+            (0.30, 1.47),
+            (0.50, 1.75),
+            (0.70, 1.47),
+            (0.90, 0.63),
+        ]:
+            fee = calculate_fee_schedule(0.07, 1, price, 100.0)
+            assert fee == pytest.approx(expected, abs=0.005), (
+                f"Official fee mismatch at p={price}: got {fee}"
+            )
+
+        # Legacy bps fallback — unchanged for markets without a feeSchedule
         cases = [
             (200, 0.50, 100.0),  # max uncertainty
             (200, 0.10, 100.0),  # low price

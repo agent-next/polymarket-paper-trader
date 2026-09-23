@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -839,3 +840,152 @@ class TestOrderTypeValidation:
             initialized_engine.place_limit_order(
                 "btc", "yes", "buy", 100.0, 0.55, order_type="bad",
             )
+
+
+# ---------------------------------------------------------------------------
+# feeSchedule-driven fee curve
+# ---------------------------------------------------------------------------
+
+def _schedule_market(**schedule) -> Market:
+    """SAMPLE_MARKET carrying a Gamma-style feeSchedule block."""
+    return replace(SAMPLE_MARKET, fee_schedule=dict(schedule))
+
+
+CRYPTO_SCHEDULE = {"rate": 0.07, "exponent": 1, "takerOnly": True, "rebateRate": 0.25}
+
+
+class TestFeeScheduleMarket:
+    """A market carrying a feeSchedule is charged with the official curve."""
+
+    def test_buy_charges_official_curve_on_shares(
+        self, initialized_engine: Engine,
+    ):
+        _mock_api(initialized_engine, market=_schedule_market(**CRYPTO_SCHEDULE))
+        trade = initialized_engine.buy("btc", "yes", 100.0).trade
+
+        # $100 at 0.66 = 151.515... shares
+        assert trade.avg_price == pytest.approx(0.66)
+        assert trade.fee == pytest.approx(
+            trade.shares * 0.07 * 0.66 * (1 - 0.66)
+        )
+        # Audit trail keeps the rate as its bps equivalent (0.07 → 700)
+        assert trade.fee_rate_bps == 700
+        # feeSchedule is the fee source — the CLOB bps endpoint is not consulted
+        initialized_engine.api.get_fee_rate.assert_not_called()
+
+    def test_buy_below_half_pays_more_than_the_legacy_model(
+        self, initialized_engine: Engine,
+    ):
+        book = _make_book(bids=[(0.28, 1000)], asks=[(0.30, 1000)])
+        _mock_api(
+            initialized_engine,
+            market=_schedule_market(**CRYPTO_SCHEDULE),
+            book=book,
+        )
+        trade = initialized_engine.buy("btc", "yes", 100.0).trade
+
+        # 333.33 shares × 0.07 × 0.30 × 0.70 = 4.90 (legacy notional: 2.10)
+        assert trade.shares == pytest.approx(100.0 / 0.30)
+        assert trade.fee == pytest.approx(4.90, abs=0.005)
+
+    def test_sell_charges_official_curve_on_shares(
+        self, initialized_engine: Engine,
+    ):
+        _mock_api(initialized_engine, market=_schedule_market(**CRYPTO_SCHEDULE))
+        initialized_engine.buy("btc", "yes", 100.0)
+        trade = initialized_engine.sell("btc", "yes", 50.0).trade
+
+        # 50 shares × 0.07 × 0.64 × 0.36 = 0.8064
+        assert trade.avg_price == pytest.approx(0.64)
+        assert trade.fee == pytest.approx(50 * 0.07 * 0.64 * 0.36)
+
+    def test_zero_rate_falls_back_to_bps(self, initialized_engine: Engine):
+        """A fee-free category (rate 0) has no schedule to charge."""
+        schedule = {"rate": 0.0, "exponent": 1, "takerOnly": True, "rebateRate": 0}
+        _mock_api(initialized_engine, market=_schedule_market(**schedule))
+        trade = initialized_engine.buy("btc", "yes", 100.0).trade
+
+        assert trade.fee == 0.0
+        initialized_engine.api.get_fee_rate.assert_called_once_with("tok_yes")
+
+    def test_non_identity_exponent_falls_back_to_bps(
+        self, initialized_engine: Engine,
+    ):
+        schedule = {"rate": 0.07, "exponent": 2, "takerOnly": True, "rebateRate": 0}
+        _mock_api(
+            initialized_engine, market=_schedule_market(**schedule), fee_rate=200,
+        )
+        trade = initialized_engine.buy("btc", "yes", 100.0).trade
+
+        assert trade.fee_rate_bps == 200
+        # Legacy model: 0.02 × min(0.66, 0.34) × $100
+        assert trade.fee == pytest.approx(0.02 * 0.34 * trade.amount_usd)
+
+
+class TestMakerFillFees:
+    """Resting limit fills are maker fills."""
+
+    @staticmethod
+    def _place_buy(engine: Engine) -> None:
+        from pm_trader.orders import create_order
+
+        create_order(
+            engine.db.conn,
+            market_slug="will-bitcoin-hit-100k",
+            market_condition_id="0xabc123",
+            outcome="yes",
+            side="buy",
+            amount=100.0,
+            limit_price=0.70,  # At/above best ask (0.66), so it fills
+        )
+
+    def test_taker_only_market_pays_no_maker_fee(
+        self, initialized_engine: Engine,
+    ):
+        _mock_api(initialized_engine, market=_schedule_market(**CRYPTO_SCHEDULE))
+        self._place_buy(initialized_engine)
+        cash_before = initialized_engine.get_account().cash
+
+        results = initialized_engine.check_orders()
+        assert [r["action"] for r in results] == ["filled"]
+
+        trade = initialized_engine.get_history(limit=1)[0]
+        assert trade.fee == 0.0
+        # Cash moves by the fill cost alone
+        assert initialized_engine.get_account().cash == pytest.approx(
+            cash_before - trade.amount_usd, abs=1e-9
+        )
+
+    def test_non_taker_only_market_charges_the_maker(
+        self, initialized_engine: Engine,
+    ):
+        schedule = {"rate": 0.05, "exponent": 1, "takerOnly": False, "rebateRate": 0.25}
+        _mock_api(initialized_engine, market=_schedule_market(**schedule))
+        self._place_buy(initialized_engine)
+
+        initialized_engine.check_orders()
+        trade = initialized_engine.get_history(limit=1)[0]
+        assert trade.fee == pytest.approx(
+            trade.shares * 0.05 * trade.avg_price * (1 - trade.avg_price)
+        )
+
+    def test_taker_only_market_pays_no_maker_fee_on_sell(
+        self, initialized_engine: Engine,
+    ):
+        _mock_api(initialized_engine, market=_schedule_market(**CRYPTO_SCHEDULE))
+        initialized_engine.buy("btc", "yes", 100.0)
+        from pm_trader.orders import create_order
+
+        create_order(
+            initialized_engine.db.conn,
+            market_slug="will-bitcoin-hit-100k",
+            market_condition_id="0xabc123",
+            outcome="yes",
+            side="sell",
+            amount=10.0,
+            limit_price=0.50,  # Below best bid (0.64), so it fills
+        )
+
+        results = initialized_engine.check_orders()
+        assert [r["action"] for r in results] == ["filled"]
+        assert initialized_engine.get_history(limit=1)[0].fee == 0.0

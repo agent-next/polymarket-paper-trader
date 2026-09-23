@@ -16,6 +16,7 @@ from pm_trader.models import (
     ApiError,
     InsufficientBalanceError,
     InvalidOutcomeError,
+    Market,
     MarketClosedError,
     NoPositionError,
     NotInitializedError,
@@ -48,6 +49,33 @@ _PERMANENT_ORDER_ERRORS = (
     MarketClosedError,
     NoPositionError,
 )
+
+
+def _resolve_fee_rate(market: Market) -> float | None:
+    """Return the ``feeSchedule`` rate to charge, or None for the legacy path.
+
+    Polymarket's fee source is the market's ``feeSchedule`` object.  It is
+    usable only when ``rate`` is positive and ``exponent`` is the published
+    identity (1) — the non-identity curve form is not documented, so such a
+    market keeps the legacy bps behaviour rather than guessing.
+    """
+    schedule = market.fee_schedule
+    if not schedule:
+        return None
+    rate = float(schedule.get("rate", 0) or 0)
+    if rate <= 0 or schedule.get("exponent", 0) != 1:
+        return None
+    return rate
+
+
+def _maker_fee_exempt(market: Market) -> bool:
+    """Whether resting (maker) fills pay no fee in this market.
+
+    ``feeSchedule.takerOnly``: "When true, fees are charged to the taker side
+    only, and makers pay no fee."
+    """
+    schedule = market.fee_schedule
+    return bool(schedule) and bool(schedule.get("takerOnly", False))
 
 
 class Engine:
@@ -104,6 +132,24 @@ class Engine:
         return outcome
 
     # ------------------------------------------------------------------
+    # Fee resolution
+    # ------------------------------------------------------------------
+
+    def _resolve_fee(
+        self, market: Market, token_id: str,
+    ) -> tuple[float | None, int]:
+        """Return ``(feeSchedule rate or None, bps for the trade record)``.
+
+        The market's ``feeSchedule`` is the fee source when usable: its rate
+        is recorded as the bps equivalent (``rate × 10_000``) and the CLOB
+        fee-rate endpoint is not consulted.  Otherwise the legacy bps rate.
+        """
+        rate = _resolve_fee_rate(market)
+        if rate is None:
+            return None, self.api.get_fee_rate(token_id)
+        return rate, round(rate * 10_000)
+
+    # ------------------------------------------------------------------
     # BUY — spend USD, receive shares
     # ------------------------------------------------------------------
 
@@ -132,13 +178,15 @@ class Engine:
         # Fetch live order book and fee rate
         token_id = market.get_token_id(outcome)
         book = self.api.get_order_book(token_id)
-        fee_rate_bps = self.api.get_fee_rate(token_id)
+        fee_rate, fee_rate_bps = self._resolve_fee(market, token_id)
 
         if market.closed:
             raise MarketClosedError(market.slug)
 
         # Simulate fill against the real order book
-        fill = simulate_buy_fill(book, amount_usd, fee_rate_bps, order_type)
+        fill = simulate_buy_fill(
+            book, amount_usd, fee_rate_bps, order_type, fee_rate=fee_rate,
+        )
 
         if not fill.filled and not fill.is_partial:
             raise OrderRejectedError(
@@ -252,10 +300,12 @@ class Engine:
         # Fetch live book and fee rate
         token_id = market.get_token_id(outcome)
         book = self.api.get_order_book(token_id)
-        fee_rate_bps = self.api.get_fee_rate(token_id)
+        fee_rate, fee_rate_bps = self._resolve_fee(market, token_id)
 
         # Simulate fill against the real order book
-        fill = simulate_sell_fill(book, shares, fee_rate_bps, order_type)
+        fill = simulate_sell_fill(
+            book, shares, fee_rate_bps, order_type, fee_rate=fee_rate,
+        )
 
         if not fill.filled and not fill.is_partial:
             raise OrderRejectedError(
@@ -477,7 +527,7 @@ class Engine:
                 market = self.api.get_market(order.market_slug)
                 token_id = market.get_token_id(order.outcome)
                 book = self.api.get_order_book(token_id)
-                fee_rate_bps = self.api.get_fee_rate(token_id)
+                fee_rate, fee_rate_bps = self._resolve_fee(market, token_id)
 
                 if order.side == "buy":
                     # Only fill at ask levels <= limit_price
@@ -486,7 +536,7 @@ class Engine:
                         continue
                     fill = simulate_buy_fill(
                         book, order.amount, fee_rate_bps, "fak",
-                        max_price=order.limit_price,
+                        max_price=order.limit_price, fee_rate=fee_rate,
                     )
                 else:
                     # Only fill at bid levels >= limit_price
@@ -495,7 +545,7 @@ class Engine:
                         continue
                     fill = simulate_sell_fill(
                         book, order.amount, fee_rate_bps, "fak",
-                        min_price=order.limit_price,
+                        min_price=order.limit_price, fee_rate=fee_rate,
                     )
 
                 if not fill.filled and not fill.is_partial:
@@ -526,9 +576,14 @@ class Engine:
         return results
 
     def _execute_limit_buy(self, market, order, fill, fee_rate_bps: int) -> None:
-        """Record a limit buy fill using a pre-computed FillResult."""
+        """Record a limit buy fill using a pre-computed FillResult.
+
+        A resting limit fill is a maker fill, so it pays no fee in a
+        ``takerOnly`` market.
+        """
         account = self._require_account()
-        total_outflow = fill.total_cost + fill.fee
+        fee = 0.0 if _maker_fee_exempt(market) else fill.fee
+        total_outflow = fill.total_cost + fee
         if total_outflow > account.cash:
             raise InsufficientBalanceError(
                 required=total_outflow, available=account.cash,
@@ -545,7 +600,7 @@ class Engine:
             amount_usd=fill.total_cost,
             shares=fill.total_shares,
             fee_rate_bps=fee_rate_bps,
-            fee=fill.fee,
+            fee=fee,
             slippage=fill.slippage_bps,
             levels_filled=fill.levels_filled,
             is_partial=fill.is_partial,
@@ -554,13 +609,18 @@ class Engine:
             market=market,
             outcome=order.outcome,
             new_shares=fill.total_shares,
-            cost=fill.total_cost + fill.fee,
+            cost=fill.total_cost + fee,
             avg_fill_price=fill.avg_price,
         )
 
     def _execute_limit_sell(self, market, order, fill, fee_rate_bps: int) -> None:
-        """Record a limit sell fill using a pre-computed FillResult."""
+        """Record a limit sell fill using a pre-computed FillResult.
+
+        A resting limit fill is a maker fill, so it pays no fee in a
+        ``takerOnly`` market.
+        """
         account = self._require_account()
+        fee = 0.0 if _maker_fee_exempt(market) else fill.fee
         position = self.db.get_position(market.condition_id, order.outcome)
         if position is None or position.shares <= 0:
             raise NoPositionError(market.slug, order.outcome)
@@ -569,7 +629,7 @@ class Engine:
                 f"Cannot sell {fill.total_shares:.4f} shares, "
                 f"only hold {position.shares:.4f}"
             )
-        net_proceeds = fill.total_cost - fill.fee
+        net_proceeds = fill.total_cost - fee
         self.db.update_cash(account.cash + net_proceeds)
         self.db.insert_trade(
             market_condition_id=market.condition_id,
@@ -582,7 +642,7 @@ class Engine:
             amount_usd=fill.total_cost,
             shares=fill.total_shares,
             fee_rate_bps=fee_rate_bps,
-            fee=fill.fee,
+            fee=fee,
             slippage=fill.slippage_bps,
             levels_filled=fill.levels_filled,
             is_partial=fill.is_partial,
