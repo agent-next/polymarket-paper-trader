@@ -183,15 +183,20 @@ class TestPriceAndOrderBook:
 
     def test_get_fee_rate(self, engine: Engine):
         markets = _get_binary_markets(engine, limit=20)
-        fee = engine.api.get_fee_rate(markets[0].yes_token_id)
+        token_id = markets[0].yes_token_id
+        # Compare against the raw upstream field rather than "fee >= 0",
+        # which a constant 0 would satisfy.
+        raw = engine.api._clob_get("/fee-rate", params={"token_id": token_id})
+        fee = engine.api.get_fee_rate(token_id)
         assert isinstance(fee, int)
-        assert fee >= 0
+        assert fee == int(raw.get("base_fee", 0))
 
     def test_get_tick_size(self, engine: Engine):
         markets = _get_binary_markets(engine, limit=5)
         for m in markets:
             tick = engine.api.get_tick_size(m.yes_token_id)
-            assert tick in (0.1, 0.01, 0.001, 0.0001), (
+            # Upstream grids include 0.1 / 0.01 / 0.0025 / 0.001 / 0.0001
+            assert tick in (0.1, 0.01, 0.0025, 0.001, 0.0001), (
                 f"Unexpected tick size {tick} for {m.slug}"
             )
 

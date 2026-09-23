@@ -15,8 +15,10 @@ from pm_trader.api import (
     CLOB_BASE,
     GAMMA_BASE,
     PolymarketClient,
+    _parse_clob_market,
     _parse_market,
     _parse_order_book,
+    _parse_search_results,
 )
 from pm_trader.db import Database
 from pm_trader.models import ApiError, MarketNotFoundError
@@ -76,6 +78,54 @@ SAMPLE_BOOK_RESPONSE = {
 }
 
 
+def _clob_market(condition_id: str = "0xabc123", **overrides) -> dict:
+    """Build a current (abbreviated) CLOB /clob-markets response body."""
+    body = {
+        "c": condition_id,
+        "t": [
+            {"t": "tok_yes", "o": "Yes"},
+            {"t": "tok_no", "o": "No"},
+        ],
+        "mts": 0.01,
+        "mos": 5.0,
+        "mbf": 0,
+        "tbf": 0,
+    }
+    body.update(overrides)
+    return body
+
+
+def _legacy_clob_market(condition_id: str, **overrides) -> dict:
+    """Build a pre-drift (long-key) CLOB /clob-markets response body."""
+    body = {
+        "condition_id": condition_id,
+        "market_slug": "clob-market-slug",
+        "question": "CLOB market?",
+        "description": "",
+        "active": True,
+        "closed": False,
+        "minimum_tick_size": "0.01",
+        "tokens": [
+            {"token_id": "tok_c_yes", "outcome": "Yes"},
+            {"token_id": "tok_c_no", "outcome": "No"},
+        ],
+    }
+    body.update(overrides)
+    return body
+
+
+def _search_response(markets: list[dict] | None = None, **overrides) -> dict:
+    """Build a Gamma /public-search response envelope."""
+    body = {
+        "events": [{"title": "Bitcoin", "markets": markets or []}],
+        "tags": [],
+        "profiles": [],
+        "pagination": {"hasMore": False, "totalResults": len(markets or [])},
+    }
+    body.update(overrides)
+    return body
+
+
 # ---------------------------------------------------------------------------
 # _parse_market tests
 # ---------------------------------------------------------------------------
@@ -128,6 +178,150 @@ class TestParseMarket:
         assert market.volume == 0.0
         assert market.liquidity == 0.0
 
+    def test_fee_schedule_present(self):
+        data = {
+            **SAMPLE_GAMMA_MARKET,
+            "feeSchedule": {
+                "rate": 0.07,
+                "exponent": 1,
+                "takerOnly": True,
+                "rebateRate": 0.25,
+            },
+            "feesEnabled": True,
+        }
+        market = _parse_market(data)
+        assert market.fee_schedule == {
+            "rate": 0.07,
+            "exponent": 1,
+            "takerOnly": True,
+            "rebateRate": 0.25,
+        }
+        # rate is a coefficient, not bps — fee_rate_bps stays untouched
+        assert market.fee_rate_bps == 0
+
+    def test_fee_schedule_absent_is_none(self):
+        market = _parse_market(SAMPLE_GAMMA_MARKET)
+        assert market.fee_schedule is None
+
+    def test_fee_schedule_non_dict_is_none(self):
+        data = {**SAMPLE_GAMMA_MARKET, "feeSchedule": "0.07"}
+        assert _parse_market(data).fee_schedule is None
+
+    def test_fee_schedule_missing_subfields_default(self):
+        data = {**SAMPLE_GAMMA_MARKET, "feeSchedule": {"rate": None}}
+        assert _parse_market(data).fee_schedule == {
+            "rate": 0.0,
+            "exponent": 0,
+            "takerOnly": False,
+            "rebateRate": 0.0,
+        }
+
+
+# ---------------------------------------------------------------------------
+# _parse_clob_market tests
+# ---------------------------------------------------------------------------
+
+
+class TestParseClobMarket:
+    def test_abbreviated_keys(self):
+        """Current CLOB payload: c / t[{t,o}] / mts / mos / mbf / tbf."""
+        market = _parse_clob_market(
+            _clob_market("0xcond", mts=0.0025, mos=15.0, mbf=10, tbf=20)
+        )
+        assert market.condition_id == "0xcond"
+        assert market.tokens == [
+            {"token_id": "tok_yes", "outcome": "Yes"},
+            {"token_id": "tok_no", "outcome": "No"},
+        ]
+        assert market.outcomes == ["Yes", "No"]
+        assert market.tick_size == 0.0025
+        assert market.min_order_size == 15.0
+        assert market.maker_base_fee_bps == 10
+        assert market.taker_base_fee_bps == 20
+        # Abbreviated payloads carry no slug/question/description
+        assert market.slug == ""
+        assert market.question == ""
+
+    def test_abbreviated_missing_optional_fields_default(self):
+        market = _parse_clob_market({"c": "0x1", "t": [{"t": "tok", "o": "Yes"}]})
+        assert market.tick_size == 0.01
+        assert market.min_order_size == 0.0
+        assert market.maker_base_fee_bps == 0
+        assert market.taker_base_fee_bps == 0
+
+    def test_legacy_keys_still_parse(self):
+        """Mixed generations: the pre-drift long-key shape keeps working."""
+        market = _parse_clob_market(
+            _legacy_clob_market("0xold", minimum_tick_size="0.005")
+        )
+        assert market.condition_id == "0xold"
+        assert market.slug == "clob-market-slug"
+        assert market.question == "CLOB market?"
+        assert market.tokens[0]["token_id"] == "tok_c_yes"
+        assert market.tick_size == 0.005
+        assert market.min_order_size == 0.0
+
+    def test_tokens_as_json_string(self):
+        market = _parse_clob_market({
+            "c": "0x1",
+            "t": json.dumps([{"t": "tok_a", "o": "Yes"}]),
+        })
+        assert market.tokens == [{"token_id": "tok_a", "outcome": "Yes"}]
+
+    def test_no_tokens_falls_back_to_yes_no(self):
+        market = _parse_clob_market({"c": "0x1"})
+        assert market.outcomes == ["Yes", "No"]
+        assert market.active is True
+        assert market.closed is False
+
+    def test_string_bools_coerced(self):
+        market = _parse_clob_market(
+            _legacy_clob_market("0x1", active="True", closed="False")
+        )
+        assert market.active is True
+        assert market.closed is False
+
+
+# ---------------------------------------------------------------------------
+# _parse_search_results tests
+# ---------------------------------------------------------------------------
+
+
+class TestParseSearchResults:
+    def test_flattens_nested_event_markets(self):
+        data = _search_response([SAMPLE_GAMMA_MARKET])
+        results = _parse_search_results(data)
+        assert len(results) == 1
+        assert results[0].slug == "will-bitcoin-hit-100k"
+
+    def test_multiple_events_flattened(self):
+        second = {**SAMPLE_GAMMA_MARKET, "slug": "eth-etf", "condition_id": "0xeth"}
+        data = {
+            "events": [
+                {"markets": [SAMPLE_GAMMA_MARKET]},
+                {"markets": [second]},
+            ]
+        }
+        results = _parse_search_results(data)
+        assert [m.slug for m in results] == ["will-bitcoin-hit-100k", "eth-etf"]
+
+    def test_event_without_markets(self):
+        data = {"events": [{"title": "no markets"}, {"markets": None}]}
+        assert _parse_search_results(data) == []
+
+    def test_markets_without_condition_id_filtered(self):
+        data = _search_response([{"slug": "no-condition-id"}])
+        assert _parse_search_results(data) == []
+
+    def test_non_dict_response(self):
+        assert _parse_search_results([SAMPLE_GAMMA_MARKET]) == []
+        assert _parse_search_results(None) == []
+
+    def test_missing_or_non_list_events(self):
+        assert _parse_search_results({}) == []
+        assert _parse_search_results({"events": None}) == []
+        assert _parse_search_results({"events": "nope"}) == []
+
 
 # ---------------------------------------------------------------------------
 # _parse_order_book tests
@@ -167,6 +361,10 @@ class TestGetMarket:
         market = client.get_market("will-bitcoin-hit-100k")
         assert market.condition_id == "0xabc123"
         assert market.slug == "will-bitcoin-hit-100k"
+        # The open lookup hit, so no closed=true retry was needed
+        requests = httpx_mock.get_requests()
+        assert len(requests) == 1
+        assert dict(requests[0].url.params) == {"slug": "will-bitcoin-hit-100k"}
 
     def test_get_market_by_condition_id(self, client: PolymarketClient, httpx_mock):
         # First request (slug lookup) returns empty
@@ -174,34 +372,57 @@ class TestGetMarket:
             url=httpx.URL(GAMMA_BASE + "/markets", params={"slug": "0xabc123"}),
             json=[],
         )
-        # Second request goes to CLOB /markets/{condition_id}
+        # Gamma defaults closed=false, so a closed=true retry follows
         httpx_mock.add_response(
-            url=httpx.URL(CLOB_BASE + "/markets/0xabc123"),
-            json={
-                "condition_id": "0xabc123",
-                "market_slug": "will-bitcoin-hit-100k",
-                "question": "Will Bitcoin hit $100k?",
-                "description": "",
-                "active": "True",
-                "closed": "False",
-                "minimum_tick_size": "0.01",
-                "tokens": json.dumps([
-                    {"token_id": "tok_yes", "outcome": "Yes"},
-                    {"token_id": "tok_no", "outcome": "No"},
-                ]),
-            },
+            url=httpx.URL(
+                GAMMA_BASE + "/markets",
+                params={"slug": "0xabc123", "closed": "true"},
+            ),
+            json=[],
         )
-        # CLOB lookup triggers a Gamma slug lookup for enrichment
+        # Then the CLOB abbreviated endpoint for the condition id
         httpx_mock.add_response(
-            url=httpx.URL(GAMMA_BASE + "/markets", params={"slug": "will-bitcoin-hit-100k"}),
+            url=httpx.URL(CLOB_BASE + "/clob-markets/0xabc123"),
+            json=_clob_market("0xabc123"),
+        )
+        # Abbreviated CLOB payload has no slug -> enrichment by condition_ids
+        httpx_mock.add_response(
+            url=httpx.URL(GAMMA_BASE + "/markets", params={"condition_ids": "0xabc123"}),
             json=[SAMPLE_GAMMA_MARKET],
         )
         market = client.get_market("0xabc123")
         assert market.condition_id == "0xabc123"
 
+    def test_get_market_closed_market_found_on_retry(
+        self, client: PolymarketClient, httpx_mock
+    ):
+        """A closed market is missed by the default slug lookup but found
+        by the closed=true retry."""
+        httpx_mock.add_response(
+            url=httpx.URL(GAMMA_BASE + "/markets", params={"slug": "resolved-market"}),
+            json=[],
+        )
+        httpx_mock.add_response(
+            url=httpx.URL(
+                GAMMA_BASE + "/markets",
+                params={"slug": "resolved-market", "closed": "true"},
+            ),
+            json=[{**SAMPLE_GAMMA_MARKET, "closed": True, "active": False}],
+        )
+        market = client.get_market("resolved-market")
+        assert market.slug == "will-bitcoin-hit-100k"
+        assert market.closed is True
+
     def test_market_not_found(self, client: PolymarketClient, httpx_mock):
         httpx_mock.add_response(
             url=httpx.URL(GAMMA_BASE + "/markets", params={"slug": "nonexistent"}),
+            json=[],
+        )
+        httpx_mock.add_response(
+            url=httpx.URL(
+                GAMMA_BASE + "/markets",
+                params={"slug": "nonexistent", "closed": "true"},
+            ),
             json=[],
         )
         # "nonexistent" doesn't start with "0x" so no CLOB lookup
@@ -214,12 +435,41 @@ class TestGetMarket:
             json=[],
         )
         httpx_mock.add_response(
-            url=httpx.URL(CLOB_BASE + "/markets/0xdead"),
+            url=httpx.URL(
+                GAMMA_BASE + "/markets",
+                params={"slug": "0xdead", "closed": "true"},
+            ),
+            json=[],
+        )
+        httpx_mock.add_response(
+            url=httpx.URL(CLOB_BASE + "/clob-markets/0xdead"),
             status_code=404,
             text="Not Found",
         )
         with pytest.raises(MarketNotFoundError):
             client.get_market("0xdead")
+
+    def test_clob_body_without_condition_id_not_found(
+        self, client: PolymarketClient, httpx_mock
+    ):
+        """A 200 CLOB body with no condition id is not a usable market."""
+        httpx_mock.add_response(
+            url=httpx.URL(GAMMA_BASE + "/markets", params={"slug": "0xnocond"}),
+            json=[],
+        )
+        httpx_mock.add_response(
+            url=httpx.URL(
+                GAMMA_BASE + "/markets",
+                params={"slug": "0xnocond", "closed": "true"},
+            ),
+            json=[],
+        )
+        httpx_mock.add_response(
+            url=httpx.URL(CLOB_BASE + "/clob-markets/0xnocond"),
+            json={"error": "no condition id"},
+        )
+        with pytest.raises(MarketNotFoundError):
+            client.get_market("0xnocond")
 
     def test_market_cached_on_second_call(self, client: PolymarketClient, httpx_mock):
         httpx_mock.add_response(
@@ -231,7 +481,19 @@ class TestGetMarket:
         assert m1.condition_id == m2.condition_id
         assert len(httpx_mock.get_requests()) == 1
 
+    def test_cached_clob_payload_replays_abbreviated_keys(
+        self, client: PolymarketClient, httpx_mock
+    ):
+        """A bare abbreviated CLOB payload cached by the fallback path must
+        still parse on a cache hit (no HTTP call)."""
+        client._set_cached("market:0xcached", _clob_market("0xcached"))
+        market = client.get_market("0xcached")
+        assert market.condition_id == "0xcached"
+        assert market.tokens[0] == {"token_id": "tok_yes", "outcome": "Yes"}
+        assert httpx_mock.get_requests() == []
+
     def test_api_http_error(self, client: PolymarketClient, httpx_mock):
+        # Gamma 5xx propagates — the closed=true retry never runs
         httpx_mock.add_response(
             url=httpx.URL(GAMMA_BASE + "/markets", params={"slug": "err"}),
             status_code=500,
@@ -240,6 +502,7 @@ class TestGetMarket:
         with pytest.raises(ApiError) as exc_info:
             client.get_market("err")
         assert exc_info.value.status_code == 500
+        assert len(httpx_mock.get_requests()) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -265,10 +528,44 @@ class TestListMarkets:
 
 class TestSearchMarkets:
     def test_search(self, client: PolymarketClient, httpx_mock):
-        httpx_mock.add_response(json=[SAMPLE_GAMMA_MARKET])
+        httpx_mock.add_response(
+            url=httpx.URL(
+                GAMMA_BASE + "/public-search",
+                params={"q": "bitcoin", "limit_per_type": 10},
+            ),
+            json=_search_response([SAMPLE_GAMMA_MARKET]),
+        )
         results = client.search_markets("bitcoin")
         assert len(results) == 1
         assert "bitcoin" in results[0].slug
+        req = httpx_mock.get_requests()[0]
+        assert req.url.params["q"] == "bitcoin"
+        assert req.url.params["limit_per_type"] == "10"
+
+    def test_search_passes_limit_and_encodes_query(
+        self, client: PolymarketClient, httpx_mock
+    ):
+        httpx_mock.add_response(json=_search_response([SAMPLE_GAMMA_MARKET]))
+        results = client.search_markets("café 政治", limit=3)
+        assert len(results) == 1
+        req = httpx_mock.get_requests()[0]
+        assert req.url.params["q"] == "café 政治"
+        assert req.url.params["limit_per_type"] == "3"
+
+    def test_search_flattens_multiple_events(
+        self, client: PolymarketClient, httpx_mock
+    ):
+        second = {**SAMPLE_GAMMA_MARKET, "slug": "eth-etf", "condition_id": "0xeth"}
+        httpx_mock.add_response(
+            json={
+                "events": [
+                    {"markets": [SAMPLE_GAMMA_MARKET]},
+                    {"markets": [second]},
+                ],
+            }
+        )
+        results = client.search_markets("crypto")
+        assert [m.slug for m in results] == ["will-bitcoin-hit-100k", "eth-etf"]
 
 
 # ---------------------------------------------------------------------------
@@ -296,20 +593,36 @@ class TestClobEndpoints:
     def test_get_fee_rate(self, client: PolymarketClient, httpx_mock):
         httpx_mock.add_response(
             url=httpx.URL(CLOB_BASE + "/fee-rate", params={"token_id": "tok_yes"}),
-            json={"fee_rate_bps": 200},
+            json={"base_fee": 200},
         )
         fee = client.get_fee_rate("tok_yes")
         assert fee == 200
 
+    def test_get_fee_rate_legacy_key(self, client: PolymarketClient, httpx_mock):
+        """Pre-drift bodies used fee_rate_bps — still accepted."""
+        httpx_mock.add_response(
+            url=httpx.URL(CLOB_BASE + "/fee-rate", params={"token_id": "tok_yes"}),
+            json={"fee_rate_bps": 250},
+        )
+        assert client.get_fee_rate("tok_yes") == 250
+
     def test_fee_rate_cached(self, client: PolymarketClient, httpx_mock):
         httpx_mock.add_response(
             url=httpx.URL(CLOB_BASE + "/fee-rate", params={"token_id": "tok_yes"}),
-            json={"fee_rate_bps": 175},
+            json={"base_fee": 175},
         )
         f1 = client.get_fee_rate("tok_yes")
         f2 = client.get_fee_rate("tok_yes")
         assert f1 == f2 == 175
         assert len(httpx_mock.get_requests()) == 1
+
+    def test_fee_rate_cache_replays_legacy_row(
+        self, client: PolymarketClient, httpx_mock
+    ):
+        """A cache row written before the drift must still parse (no HTTP)."""
+        client._set_cached("fee_rate:tok_old", {"fee_rate_bps": 100})
+        assert client.get_fee_rate("tok_old") == 100
+        assert httpx_mock.get_requests() == []
 
     def test_get_tick_size(self, client: PolymarketClient, httpx_mock):
         httpx_mock.add_response(
@@ -346,7 +659,7 @@ class TestGetTradeContext:
         )
         httpx_mock.add_response(
             url=httpx.URL(CLOB_BASE + "/fee-rate", params={"token_id": "tok_yes"}),
-            json={"fee_rate_bps": 0},
+            json={"base_fee": 0},
         )
         market, book, fee = client.get_trade_context("btc", "yes")
         assert market.condition_id == "0xabc123"
@@ -364,7 +677,7 @@ class TestGetTradeContext:
         )
         httpx_mock.add_response(
             url=httpx.URL(CLOB_BASE + "/fee-rate", params={"token_id": "tok_no"}),
-            json={"fee_rate_bps": 175},
+            json={"base_fee": 175},
         )
         market, book, fee = client.get_trade_context("btc", "no")
         assert fee == 175
@@ -499,104 +812,91 @@ class TestGetMarketClobFallbackPath:
     def test_clob_returns_data_gamma_enrichment_succeeds(
         self, client: PolymarketClient, httpx_mock
     ):
-        """Gamma returns empty list for 0x slug, CLOB returns valid market
-        data with a slug, and Gamma enrichment succeeds (lines 127-141)."""
-        # Gamma slug lookup returns empty list
+        """Gamma returns empty list for 0x slug, CLOB returns abbreviated
+        market data, and Gamma enrichment by condition_ids succeeds."""
+        # Gamma slug lookups return empty (open, then closed=true retry)
         httpx_mock.add_response(
             url=httpx.URL(GAMMA_BASE + "/markets", params={"slug": "0xclob1"}),
             json=[],
         )
-        # CLOB returns valid market data
         httpx_mock.add_response(
-            url=httpx.URL(CLOB_BASE + "/markets/0xclob1"),
-            json={
-                "condition_id": "0xclob1",
-                "market_slug": "clob-market-slug",
-                "question": "CLOB market?",
-                "description": "",
-                "active": True,
-                "closed": False,
-                "minimum_tick_size": "0.01",
-                "tokens": [
-                    {"token_id": "tok_c_yes", "outcome": "Yes"},
-                    {"token_id": "tok_c_no", "outcome": "No"},
-                ],
-            },
+            url=httpx.URL(
+                GAMMA_BASE + "/markets",
+                params={"slug": "0xclob1", "closed": "true"},
+            ),
+            json=[],
+        )
+        # CLOB abbreviated payload (no slug)
+        httpx_mock.add_response(
+            url=httpx.URL(CLOB_BASE + "/clob-markets/0xclob1"),
+            json=_clob_market("0xclob1"),
         )
         # Gamma enrichment lookup succeeds
         httpx_mock.add_response(
-            url=httpx.URL(GAMMA_BASE + "/markets", params={"slug": "clob-market-slug"}),
+            url=httpx.URL(GAMMA_BASE + "/markets", params={"condition_ids": "0xclob1"}),
             json=[SAMPLE_GAMMA_MARKET],
         )
         market = client.get_market("0xclob1")
         # Should return the Gamma-enriched data
         assert market.condition_id == "0xabc123"  # from SAMPLE_GAMMA_MARKET
+        assert market.slug == "will-bitcoin-hit-100k"
 
     def test_clob_returns_data_gamma_enrichment_fails_falls_back_to_clob(
         self, client: PolymarketClient, httpx_mock
     ):
         """Gamma enrichment raises an exception -> falls back to CLOB-only
-        data (lines 142-146)."""
-        # Gamma slug lookup returns empty list
+        data."""
         httpx_mock.add_response(
             url=httpx.URL(GAMMA_BASE + "/markets", params={"slug": "0xclob2"}),
             json=[],
         )
-        # CLOB returns valid market data with a slug
         httpx_mock.add_response(
-            url=httpx.URL(CLOB_BASE + "/markets/0xclob2"),
-            json={
-                "condition_id": "0xclob2",
-                "market_slug": "clob-only-market",
-                "question": "CLOB only market?",
-                "description": "",
-                "active": True,
-                "closed": False,
-                "minimum_tick_size": "0.005",
-                "tokens": [
-                    {"token_id": "tok_co_yes", "outcome": "Yes"},
-                    {"token_id": "tok_co_no", "outcome": "No"},
-                ],
-            },
+            url=httpx.URL(
+                GAMMA_BASE + "/markets",
+                params={"slug": "0xclob2", "closed": "true"},
+            ),
+            json=[],
         )
-        # Gamma enrichment lookup fails (network error)
+        # CLOB abbreviated payload with a 0.0025 tick and min order size
         httpx_mock.add_response(
-            url=httpx.URL(GAMMA_BASE + "/markets", params={"slug": "clob-only-market"}),
+            url=httpx.URL(CLOB_BASE + "/clob-markets/0xclob2"),
+            json=_clob_market("0xclob2", mts=0.005, mos=10.0),
+        )
+        # Gamma enrichment lookup fails
+        httpx_mock.add_response(
+            url=httpx.URL(GAMMA_BASE + "/markets", params={"condition_ids": "0xclob2"}),
             status_code=500,
             text="Internal Server Error",
         )
         market = client.get_market("0xclob2")
         # Should return the CLOB-only parsed market
         assert market.condition_id == "0xclob2"
-        assert market.slug == "clob-only-market"
         assert market.tick_size == 0.005
+        assert market.min_order_size == 10.0
 
     def test_clob_returns_data_no_slug_falls_back_to_clob(
         self, client: PolymarketClient, httpx_mock
     ):
-        """CLOB data has no slug (market_slug is empty), so the Gamma
-        enrichment is skipped; falls back to CLOB-only (lines 144-146)."""
-        # Gamma slug lookup returns empty list
+        """Abbreviated CLOB data has no slug and the condition_ids enrichment
+        finds nothing; falls back to CLOB-only data."""
         httpx_mock.add_response(
             url=httpx.URL(GAMMA_BASE + "/markets", params={"slug": "0xnoslugs"}),
             json=[],
         )
-        # CLOB returns valid market data but without a slug
         httpx_mock.add_response(
-            url=httpx.URL(CLOB_BASE + "/markets/0xnoslugs"),
-            json={
-                "condition_id": "0xnoslugs",
-                "market_slug": "",
-                "question": "No-slug market?",
-                "description": "",
-                "active": True,
-                "closed": False,
-                "minimum_tick_size": "0.01",
-                "tokens": [
-                    {"token_id": "tok_ns_yes", "outcome": "Yes"},
-                    {"token_id": "tok_ns_no", "outcome": "No"},
-                ],
-            },
+            url=httpx.URL(
+                GAMMA_BASE + "/markets",
+                params={"slug": "0xnoslugs", "closed": "true"},
+            ),
+            json=[],
+        )
+        httpx_mock.add_response(
+            url=httpx.URL(CLOB_BASE + "/clob-markets/0xnoslugs"),
+            json=_clob_market("0xnoslugs"),
+        )
+        httpx_mock.add_response(
+            url=httpx.URL(GAMMA_BASE + "/markets", params={"condition_ids": "0xnoslugs"}),
+            json=[],
         )
         market = client.get_market("0xnoslugs")
         assert market.condition_id == "0xnoslugs"
@@ -605,29 +905,22 @@ class TestGetMarketClobFallbackPath:
     def test_clob_returns_data_gamma_enrichment_returns_empty(
         self, client: PolymarketClient, httpx_mock
     ):
-        """Gamma enrichment returns an empty list -> falls back to CLOB-only
-        data (lines 142-146)."""
-        # Gamma slug lookup returns empty list
+        """A CLOB payload carrying a legacy slug is enriched by slug, and an
+        empty enrichment result falls back to CLOB-only data."""
         httpx_mock.add_response(
             url=httpx.URL(GAMMA_BASE + "/markets", params={"slug": "0xclob3"}),
             json=[],
         )
-        # CLOB returns valid market data with a slug
         httpx_mock.add_response(
-            url=httpx.URL(CLOB_BASE + "/markets/0xclob3"),
-            json={
-                "condition_id": "0xclob3",
-                "market_slug": "gamma-empty-result",
-                "question": "Gamma empty?",
-                "description": "",
-                "active": True,
-                "closed": False,
-                "minimum_tick_size": "0.01",
-                "tokens": [
-                    {"token_id": "tok_ge_yes", "outcome": "Yes"},
-                    {"token_id": "tok_ge_no", "outcome": "No"},
-                ],
-            },
+            url=httpx.URL(
+                GAMMA_BASE + "/markets",
+                params={"slug": "0xclob3", "closed": "true"},
+            ),
+            json=[],
+        )
+        httpx_mock.add_response(
+            url=httpx.URL(CLOB_BASE + "/clob-markets/0xclob3"),
+            json=_clob_market("0xclob3", market_slug="gamma-empty-result"),
         )
         # Gamma enrichment lookup returns empty list (no match)
         httpx_mock.add_response(
@@ -664,15 +957,14 @@ class TestListMarketsNonList:
 
 
 # ---------------------------------------------------------------------------
-# Line 179: search_markets returns non-list -> returns []
+# search_markets with an unexpected envelope -> []
 # ---------------------------------------------------------------------------
 
 class TestSearchMarketsNonList:
-    def test_non_list_response_returns_empty(
+    def test_response_without_events_returns_empty(
         self, client: PolymarketClient, httpx_mock
     ):
-        """When _gamma_get returns a dict instead of a list,
-        search_markets should return [] (line 179)."""
+        """An envelope with no usable events list returns []."""
         httpx_mock.add_response(json={"error": "unexpected format"})
         result = client.search_markets("bitcoin")
         assert result == []
@@ -682,6 +974,14 @@ class TestSearchMarketsNonList:
     ):
         """When _gamma_get returns None, search_markets should return []."""
         with patch.object(client, "_gamma_get", return_value=None):
+            result = client.search_markets("bitcoin")
+            assert result == []
+
+    def test_list_response_returns_empty(
+        self, client: PolymarketClient
+    ):
+        """A bare list (the old /markets shape) is no longer an envelope."""
+        with patch.object(client, "_gamma_get", return_value=[SAMPLE_GAMMA_MARKET]):
             result = client.search_markets("bitcoin")
             assert result == []
 
@@ -876,7 +1176,7 @@ class TestGetEvent:
             "markets": [{"slug": "who-wins-2028"}],
         }
         httpx_mock.add_response(
-            url=httpx.URL(GAMMA_BASE + "/events/us-elections-2028"),
+            url=httpx.URL(GAMMA_BASE + "/events/slug/us-elections-2028"),
             json=event_data,
         )
         result = client.get_event("us-elections-2028")
@@ -886,7 +1186,7 @@ class TestGetEvent:
     def test_get_event_cached(self, client: PolymarketClient, httpx_mock):
         event_data = {"title": "Event", "slug": "evt"}
         httpx_mock.add_response(
-            url=httpx.URL(GAMMA_BASE + "/events/evt"),
+            url=httpx.URL(GAMMA_BASE + "/events/slug/evt"),
             json=event_data,
         )
         r1 = client.get_event("evt")
@@ -896,7 +1196,7 @@ class TestGetEvent:
 
     def test_get_event_non_dict(self, client: PolymarketClient, httpx_mock):
         httpx_mock.add_response(
-            url=httpx.URL(GAMMA_BASE + "/events/bad"),
+            url=httpx.URL(GAMMA_BASE + "/events/slug/bad"),
             json=[],
         )
         result = client.get_event("bad")

@@ -135,6 +135,10 @@ class Market:
     end_date: str = ""
     fee_rate_bps: int = 0
     tick_size: float = 0.01
+    fee_schedule: dict[str, Any] | None = None
+    min_order_size: float = 0.0
+    maker_base_fee_bps: int = 0
+    taker_base_fee_bps: int = 0
 
     def get_token_id(self, outcome: str) -> str:
         """Token ID for any outcome (case-insensitive)."""
