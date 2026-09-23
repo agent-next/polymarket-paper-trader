@@ -5,8 +5,8 @@ All notable changes to `polymarket-paper-trader` are documented here.
 ## [0.3.0] - 2026-09-23
 
 ### Changed
-- **Fee simulation now follows the official `feeSchedule` curve.** `Market.fee_schedule` (parsed in 0.2.1 as data only) is now the fee source for every trade: `fee = C × feeSchedule.rate × p × (1 - p)`, where `C` is the number of shares — charged on the share count on both the buy and the sell path, not on the USD notional. Fees round to 5 decimals; the smallest charge is 0.00001 USDC. `exponent` is applied to the `p × (1-p)` price component (the published curve is the identity, `exponent = 1`).
-- **Resting limit fills are maker fills**: they pay no fee in a `takerOnly` market, per "Makers are never charged fees."
+- **Fee simulation now follows the official `feeSchedule` curve.** `Market.fee_schedule` (parsed in 0.2.1 as data only) is now the fee source for every trade: `fee = C × feeSchedule.rate × p × (1 - p)`, where `C` is the number of shares — charged on the share count on both the buy and the sell path, not on the USD notional. Fees round to 5 decimals; the smallest charge is 0.00001 USDC. Only the identity exponent (`exponent = 1`, the sole form Polymarket publishes today) drives the curve; a non-identity exponent is not published anywhere and conservatively falls back to the legacy model.
+- **Resting limit fills are maker fills**: they pay no fee in a `takerOnly` market, per "Makers are never charged fees." A marketable limit (one that crosses the book at placement) executes immediately as a taker fill and pays the fee, exactly as a real CLOB never rests a limit through the opposite side.
 - Trades keep an audit trail in the existing `fee_rate_bps` column: a `feeSchedule` market records `rate × 10_000` (e.g. `0.07` → `700`) and no longer calls `GET /fee-rate`. No schema change.
 
 ### Fixed

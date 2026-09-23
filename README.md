@@ -45,7 +45,7 @@ Requires Python 3.10+.
 Other tools mock prices or use random numbers. We simulate the actual exchange:
 
 - **Level-by-level order book execution** — your order walks the real Polymarket ask/bid book, consuming liquidity at each price level, just like a real trade
-- **Exact fee model** — a market's `feeSchedule` drives the official curve (`shares × rate × p × (1-p)`, taker-only, fees rounded to 5 decimals). `bps/10000 × min(price, 1-price) × shares` remains as the fallback for markets that publish no schedule
+- **Exact fee model** — a market's `feeSchedule` drives the official curve (`shares × rate × p × (1-p)`, taker-only, fees rounded to 5 decimals). The legacy model (`bps/10000 × min(price, 1-price) × size`, where size is the USD notional on buys and shares on sells) remains as the fallback for markets that publish no usable schedule
 - **Slippage tracking** — every trade records how much worse your fill was vs the midpoint, in basis points
 - **Limit order state machine** — GTC (good-til-cancelled) and GTD (good-til-date) with full lifecycle
 - **Strategy backtesting** — replay your strategy against historical price snapshots
