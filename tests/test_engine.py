@@ -22,6 +22,7 @@ from pm_trader.models import (
     OrderBook,
     OrderBookLevel,
     OrderRejectedError,
+    TickSizeViolationError,
 )
 
 
@@ -195,6 +196,45 @@ class TestBuy:
         _mock_api(initialized_engine, market=closed)
         with pytest.raises(MarketClosedError):
             initialized_engine.buy("closed-market", "yes", 100.0)
+
+    def test_buy_inactive_market_rejected(self, initialized_engine: Engine):
+        inactive = Market(
+            condition_id="0xabc123",
+            slug="inactive-market",
+            question="Inactive?",
+            description="",
+            outcomes=["Yes", "No"],
+            outcome_prices=[0.65, 0.35],
+            tokens=[
+                {"token_id": "t1", "outcome": "Yes"},
+                {"token_id": "t2", "outcome": "No"},
+            ],
+            active=False,
+            closed=False,
+        )
+        _mock_api(initialized_engine, market=inactive)
+        with pytest.raises(OrderRejectedError, match="not active"):
+            initialized_engine.buy("inactive-market", "yes", 100.0)
+
+    def test_buy_market_not_accepting_orders_rejected(self, initialized_engine: Engine):
+        paused = Market(
+            condition_id="0xabc123",
+            slug="paused-market",
+            question="Paused?",
+            description="",
+            outcomes=["Yes", "No"],
+            outcome_prices=[0.65, 0.35],
+            tokens=[
+                {"token_id": "t1", "outcome": "Yes"},
+                {"token_id": "t2", "outcome": "No"},
+            ],
+            active=True,
+            closed=False,
+            accepting_orders=False,
+        )
+        _mock_api(initialized_engine, market=paused)
+        with pytest.raises(OrderRejectedError, match="not accepting orders"):
+            initialized_engine.buy("paused-market", "yes", 100.0)
 
     def test_buy_fok_rejected_insufficient_liquidity(self, initialized_engine: Engine):
         thin_book = _make_book(
@@ -528,6 +568,36 @@ class TestWatchPrices:
             initialized_engine.watch_prices(["btc"], ["maybe"])
 
 
+class TestCheckOrders:
+    def test_check_orders_rejects_order_when_market_becomes_inactive(
+        self, initialized_engine: Engine,
+    ):
+        """A resting order in a paused market is rejected, not retried forever."""
+        _mock_api(initialized_engine)
+        from pm_trader.orders import create_order, get_pending_orders
+
+        create_order(
+            initialized_engine.db.conn,
+            market_slug="will-bitcoin-hit-100k",
+            market_condition_id="0xabc123",
+            outcome="yes",
+            side="buy",
+            amount=100.0,
+            limit_price=0.55,
+        )
+
+        initialized_engine.api.get_market = MagicMock(
+            return_value=replace(SAMPLE_MARKET, active=False)
+        )
+        results = initialized_engine.check_orders()
+
+        rejected = [r for r in results if r["action"] == "rejected"]
+        assert len(rejected) == 1
+        assert "not active" in rejected[0]["reason"]
+        assert rejected[0]["order"]["status"] == "rejected"
+        assert len(get_pending_orders(initialized_engine.db.conn)) == 0
+
+
 class TestCheckOrdersRejection:
     def test_unfillable_order_gets_rejected(self, initialized_engine: Engine):
         """An order with amount below minimum should be rejected, not retried forever."""
@@ -576,6 +646,33 @@ class TestLimitOrderValidation:
                 "btc", "yes", "buy", 0.50, 0.55,
             )
 
+    def test_limit_price_tick_size_violation_rejected(self, initialized_engine: Engine):
+        _mock_api(initialized_engine)
+        with pytest.raises(TickSizeViolationError):
+            initialized_engine.place_limit_order(
+                "btc", "yes", "buy", 100.0, 0.555,
+            )
+        # A violation leaves no order row behind
+        assert initialized_engine.get_pending_orders() == []
+
+    def test_zero_tick_size_short_circuits_validation(self):
+        """A market reporting no tick size imposes no grid constraint."""
+        Engine._validate_tick_size(0.555, 0.0)
+
+    def test_limit_order_fetches_tick_size_when_market_tick_is_missing(
+        self, initialized_engine: Engine,
+    ):
+        _mock_api(
+            initialized_engine,
+            market=replace(SAMPLE_MARKET, tick_size=0.0),
+        )
+        initialized_engine.api.get_tick_size = MagicMock(return_value=0.01)
+        placed = initialized_engine.place_limit_order(
+            "btc", "yes", "buy", 100.0, 0.55,
+        )
+        initialized_engine.api.get_tick_size.assert_called_once_with("tok_yes")
+        assert placed["status"] == "pending"
+
 
 class TestLimitOrderPriceEnforcement:
     """Bug #1: Limit orders must NOT fill at prices beyond the limit."""
@@ -618,6 +715,132 @@ class TestLimitOrderPriceEnforcement:
         filled = [r for r in results if r["action"] == "filled"]
         assert len(filled) == 1
         assert len(get_pending_orders(initialized_engine.db.conn)) == 0
+
+
+class TestLimitOrderRemainingAmount:
+    """A partial FAK fill keeps its remainder open instead of dropping it."""
+
+    def test_buy_partial_then_fill_uses_remaining_amount(
+        self, initialized_engine: Engine,
+    ):
+        _mock_api(initialized_engine)
+        from pm_trader.orders import create_order
+
+        create_order(
+            initialized_engine.db.conn,
+            market_slug="will-bitcoin-hit-100k",
+            market_condition_id="0xabc123",
+            outcome="yes",
+            side="buy",
+            amount=100.0,
+            limit_price=0.70,
+        )
+
+        # First check: only $33 of ask liquidity (0.66 x 50) -> partial fill
+        initialized_engine.api.get_order_book = MagicMock(
+            return_value=_make_book(bids=[(0.64, 500)], asks=[(0.66, 50)])
+        )
+        results = initialized_engine.check_orders()
+        assert [r["action"] for r in results] == ["partially_filled"]
+        assert results[0]["order"]["remaining_amount"] == pytest.approx(67.0)
+        assert len(initialized_engine.get_pending_orders()) == 1
+
+        # Second check: the order retries only its $67 remainder
+        initialized_engine.api.get_order_book = MagicMock(
+            return_value=_make_book(bids=[(0.64, 500)], asks=[(0.67, 500)])
+        )
+        results = initialized_engine.check_orders()
+        assert [r["action"] for r in results] == ["filled"]
+        assert initialized_engine.get_pending_orders() == []
+
+        buys = [
+            t for t in initialized_engine.get_history(limit=10) if t.side == "buy"
+        ]
+        assert len(buys) == 2
+        assert sum(t.amount_usd for t in buys) == pytest.approx(100.0)
+
+    def test_sell_partial_then_fill_uses_remaining_amount(
+        self, initialized_engine: Engine,
+    ):
+        _mock_api(initialized_engine)
+        initialized_engine.buy("btc", "yes", 100.0)
+        initial_shares = initialized_engine.db.get_position("0xabc123", "yes").shares
+
+        from pm_trader.orders import create_order
+
+        create_order(
+            initialized_engine.db.conn,
+            market_slug="will-bitcoin-hit-100k",
+            market_condition_id="0xabc123",
+            outcome="yes",
+            side="sell",
+            amount=100.0,  # 100 shares
+            limit_price=0.60,
+        )
+
+        # First check: only 40 shares bid at 0.64 (>= 0.60 limit) -> partial
+        initialized_engine.api.get_order_book = MagicMock(
+            return_value=_make_book(bids=[(0.64, 40)], asks=[(0.66, 500)])
+        )
+        results = initialized_engine.check_orders()
+        assert [r["action"] for r in results] == ["partially_filled"]
+        assert results[0]["order"]["remaining_amount"] == pytest.approx(60.0)
+
+        # Second check: enough bids for the 60-share remainder
+        initialized_engine.api.get_order_book = MagicMock(
+            return_value=_make_book(bids=[(0.64, 60)], asks=[(0.66, 500)])
+        )
+        results = initialized_engine.check_orders()
+        assert [r["action"] for r in results] == ["filled"]
+        assert initialized_engine.get_pending_orders() == []
+
+        sells = [
+            t for t in initialized_engine.get_history(limit=10) if t.side == "sell"
+        ]
+        assert len(sells) == 2
+        assert sum(t.shares for t in sells) == pytest.approx(100.0)
+
+        # The position only ever shrank by the shares actually sold
+        pos = initialized_engine.db.get_position("0xabc123", "yes")
+        assert pos.shares == pytest.approx(initial_shares - 100.0)
+
+
+class TestMarketableLimit:
+    def test_marketable_limit_partial_fill_at_placement_rests_remainder(
+        self, initialized_engine: Engine,
+    ):
+        """A marketable limit that only partly fills at placement keeps the
+        remainder as a partially_filled maker order (not dropped)."""
+        _mock_api(initialized_engine, market=_schedule_market(**CRYPTO_SCHEDULE))
+        # $33 of ask depth (0.66 x 50) under a 0.70 limit
+        initialized_engine.api.get_order_book = MagicMock(
+            return_value=_make_book(bids=[(0.64, 500)], asks=[(0.66, 50)])
+        )
+
+        placed = initialized_engine.place_limit_order("btc", "yes", "buy", 100.0, 0.70)
+        assert placed["status"] == "partially_filled"
+        assert placed["remaining_amount"] == pytest.approx(67.0)
+        assert [o["id"] for o in initialized_engine.get_pending_orders()] == [
+            placed["id"]
+        ]
+
+        # Liquidity deepens: the remainder fills as a maker via check_orders
+        initialized_engine.api.get_order_book = MagicMock(
+            return_value=_make_book(bids=[(0.64, 500)], asks=[(0.67, 500)])
+        )
+        results = initialized_engine.check_orders()
+        assert [r["action"] for r in results] == ["filled"]
+        assert initialized_engine.get_pending_orders() == []
+
+        buys = [
+            t for t in initialized_engine.get_history(limit=10) if t.side == "buy"
+        ]
+        assert len(buys) == 2
+        assert sum(t.amount_usd for t in buys) == pytest.approx(100.0)
+        # History is newest-first: the last trade is the placement taker fill
+        # (paid the fee) and the newest is the maker fill (fee-free).
+        assert buys[-1].fee > 0.0
+        assert buys[0].fee == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -670,6 +893,15 @@ class TestSellEdgeCases:
         initialized_engine.api.get_order_book = MagicMock(return_value=empty_book)
         with pytest.raises(OrderRejectedError, match="FOK rejected"):
             initialized_engine.sell("btc", "yes", 10.0)
+
+    def test_sell_below_min_notional_rejected(self, initialized_engine: Engine):
+        _mock_api(initialized_engine)
+        initialized_engine.buy("btc", "yes", 100.0)
+        tiny_notional_book = _make_book(bids=[(0.10, 1000)], asks=[(0.20, 1000)])
+        initialized_engine.api.get_order_book = MagicMock(return_value=tiny_notional_book)
+        # 5 shares x $0.10 best bid = $0.50 gross, below the $1 minimum
+        with pytest.raises(OrderRejectedError, match="Minimum order size"):
+            initialized_engine.sell("btc", "yes", 5.0)
 
 
 class TestResolveMarket:
