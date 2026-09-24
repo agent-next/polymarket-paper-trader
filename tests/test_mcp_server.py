@@ -122,6 +122,9 @@ class TestGetBalance:
         assert result["ok"] is True
         assert result["data"]["cash"] == 7_500.0
         assert result["data"]["starting_balance"] == 7_500.0
+        # Pass-through of the engine's additive reservation keys
+        assert result["data"]["reserved_cash"] == 0.0
+        assert result["data"]["available_cash"] == 7_500.0
 
 
 class TestResetAccount:

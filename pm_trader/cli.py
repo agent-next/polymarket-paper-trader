@@ -106,7 +106,7 @@ def init(ctx: click.Context, balance: float) -> None:
 @main.command()
 @click.pass_context
 def balance(ctx: click.Context) -> None:
-    """Show account balance and total portfolio value."""
+    """Show account balance (cash, reserved/available cash) and total portfolio value."""
     engine = _get_engine(ctx)
     try:
         data = engine.get_balance()

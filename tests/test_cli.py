@@ -109,6 +109,9 @@ class TestAccountCommands:
         assert data["ok"] is True
         assert data["data"]["cash"] == 10_000.0
         assert data["data"]["total_value"] == 10_000.0
+        # Pass-through of the engine's additive reservation keys
+        assert data["data"]["reserved_cash"] == 0.0
+        assert data["data"]["available_cash"] == 10_000.0
 
     def test_reset_without_confirm(self, runner, data_dir):
         result = _invoke(runner, ["reset"], data_dir)
