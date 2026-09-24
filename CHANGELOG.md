@@ -2,6 +2,15 @@
 
 All notable changes to `polymarket-paper-trader` are documented here.
 
+## [Unreleased]
+
+### Added
+- **Cash reservation for open buy limit orders.** A resting buy holds its `remaining_amount` against cash: `place_limit_order` (buy side) now rejects with `INSUFFICIENT_BALANCE` when `amount` plus a conservative fee upper bound exceeds `available_cash` (cash minus all open buys' `remaining_amount`), checked after tick validation and before any order row is created. The fee bound is `amount × feeSchedule.rate` on schedule markets (the worst case of the official curve for a USD-sized buy: `fee = C·rate·p·(1-p) = amount·rate·(1-p)`, maximized as `p → 0`) and `(bps/10_000) × 0.5 × amount` floored at `0.0001` on legacy-fee markets; zero-fee markets bound to 0, so the gate degenerates to the pure notional. Cancel, expire, fill, and partial fill release or shrink the reservation automatically via the order lifecycle — no separate ledger. Previously a $1M resting buy could be placed on a $10k account.
+- **`get_balance` reports reserved and available cash** (additive): `reserved_cash` (notional held by open buys) and `available_cash` (cash minus reserved, clamped at 0) now appear in the engine dict, the CLI `balance` JSON, and the MCP `get_balance` payload. `reserved_cash` is a subset of `cash`, so `total_value` and `pnl` are unchanged.
+
+### Changed
+- **Market buys can no longer spend reserved cash.** `buy` checks `total_cost + fee` against `available_cash` instead of raw cash, so a market order cannot consume the reserve held by resting buys; when nothing rests, `available_cash == cash` and behavior is unchanged. A resting buy that later cannot be afforded (multi-order fee-slack exhaustion) is still permanently rejected by `check_orders` via the fill-time cash guard.
+
 ## [0.3.1] - 2026-09-24
 
 ### Changed

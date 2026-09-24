@@ -77,7 +77,7 @@ pm-trader stats
 | Command | Description |
 |---------|-------------|
 | `init [--balance N]` | Create paper trading account |
-| `balance` | Show cash, positions value, total P&L |
+| `balance` | Show cash, reserved/available cash, positions value, total P&L |
 | `reset --confirm` | Wipe all data |
 | `markets list [--limit N] [--sort volume\|liquidity]` | Browse active markets |
 | `markets search QUERY` | Full-text market search |
@@ -132,7 +132,7 @@ Add to your Claude Code config:
 | Tool | What it does |
 |------|---------|
 | `init_account` | Create paper account with starting balance |
-| `get_balance` | Cash, positions value, total P&L |
+| `get_balance` | Cash, reserved/available cash, positions value, total P&L |
 | `reset_account` | Wipe all data and start fresh |
 | `search_markets` | Find markets by keyword |
 | `list_markets` | Browse markets sorted by volume/liquidity |
