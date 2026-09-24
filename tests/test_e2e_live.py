@@ -792,3 +792,96 @@ class TestFinalAccounting:
                 f"→ {p['live_price']:.4f}  P&L: ${p['unrealized_pnl']:>+8.2f}"
             )
         print(f"{'='*60}")
+
+
+# ---------------------------------------------------------------------------
+# 8. Bias vs real market data — issue #16
+#    The simulator's fills are checked against the market's own recent
+#    price history (Data API v2), an independent official source.
+# ---------------------------------------------------------------------------
+
+
+class TestBiasVsRealMarketData:
+    """Quantify simulator bias against real Polymarket data (issue #16).
+
+    Oracle: the price a simulated fill actually executes at must sit inside
+    the band of prices the market really quoted over the recent past (Data
+    API v2 price history), widened by a spread allowance.  A fill above or
+    below that band would mean a pessimistic or optimistic simulation; the
+    assertion bounds any bias by the band width instead of assuming it is
+    zero.  The fee charged is independently asserted against the official
+    feeSchedule curve computed per filled level, exactly as the exchange
+    charges per match.
+    """
+
+    SPREAD_ALLOWANCE = 0.05  # band widened by 5 cents around recent prices
+    RECENT_WINDOW_SECONDS = 60 * 60  # compare against the last hour of quotes
+
+    def _pick_market(self, engine: Engine):
+        """First liquid binary market with a two-sided book, an identity
+        feeSchedule, and a usable price history."""
+        for m in _get_binary_markets(engine, limit=10, sort_by="liquidity"):
+            fs = m.fee_schedule
+            if not fs or fs.get("rate", 0) <= 0 or fs.get("exponent") != 1:
+                continue
+            book = engine.api.get_order_book(m.yes_token_id)
+            if not book.asks or not book.bids:
+                continue
+            history = engine.api.get_price_history(m.yes_token_id,
+                                                   interval="1d")
+            if len(history) < 2:
+                continue
+            return m, book, history
+        pytest.skip("No binary market with book, feeSchedule and history")
+
+    def _recent_band(self, history):
+        """(lo, hi) of prices inside the recent window; falls back to the
+        last 30 observations when the window holds fewer (sparse series)."""
+        last_ts = history[-1]["timestamp"]
+        window = [p["price"] for p in history
+                  if p["timestamp"] >= last_ts - self.RECENT_WINDOW_SECONDS]
+        if len(window) < 2:
+            window = [p["price"] for p in history[-30:]]
+        assert len(window) >= 2
+        return min(window), max(window)
+
+    def test_buy_fill_within_recent_price_band(self, engine: Engine):
+        from pm_trader.orderbook import calculate_fee_schedule, simulate_buy_fill
+
+        m, book, history = self._pick_market(engine)
+        rate = m.fee_schedule["rate"]
+
+        fill = simulate_buy_fill(book, 25.0, 0, "fak", fee_rate=rate)
+        assert fill.filled or fill.is_partial, "Expected a fill on a live book"
+        assert fill.avg_price > 0
+
+        lo, hi = self._recent_band(history)
+        msg = (f"BUY bias: fill avg {fill.avg_price:.4f} outside recent real "
+               f"band [{lo:.4f}, {hi:.4f}] ±{self.SPREAD_ALLOWANCE}")
+        assert (lo - self.SPREAD_ALLOWANCE) <= fill.avg_price <= (
+            hi + self.SPREAD_ALLOWANCE
+        ), msg
+
+        # Fee equals the official curve summed per filled level (per match)
+        expected_fee = round(sum(
+            calculate_fee_schedule(rate, 1, f.price, f.shares)
+            for f in fill.fills
+        ), 5)
+        assert fill.fee == pytest.approx(expected_fee, abs=1e-9)
+
+    def test_sell_fill_within_recent_price_band(self, engine: Engine):
+        from pm_trader.orderbook import simulate_sell_fill
+
+        m, book, history = self._pick_market(engine)
+
+        fill = simulate_sell_fill(book, 20.0, 0, "fak",
+                                  fee_rate=m.fee_schedule["rate"])
+        assert fill.filled or fill.is_partial, "Expected a fill on a live book"
+        assert fill.avg_price > 0
+
+        lo, hi = self._recent_band(history)
+        msg = (f"SELL bias: fill avg {fill.avg_price:.4f} outside recent real "
+               f"band [{lo:.4f}, {hi:.4f}] ±{self.SPREAD_ALLOWANCE}")
+        assert (lo - self.SPREAD_ALLOWANCE) <= fill.avg_price <= (
+            hi + self.SPREAD_ALLOWANCE
+        ), msg
