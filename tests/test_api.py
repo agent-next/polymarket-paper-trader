@@ -605,15 +605,126 @@ class TestGetMarket:
 
 class TestListMarkets:
     def test_list_markets(self, client: PolymarketClient, httpx_mock):
-        httpx_mock.add_response(json=[SAMPLE_GAMMA_MARKET])
+        httpx_mock.add_response(json={"markets": [SAMPLE_GAMMA_MARKET]})
         markets = client.list_markets(limit=5)
         assert len(markets) == 1
         assert markets[0].slug == "will-bitcoin-hit-100k"
+        req = httpx_mock.get_requests()[0]
+        assert req.url.path == "/markets/keyset"
+        assert dict(req.url.params) == {
+            "active": "true",
+            "closed": "false",
+            "order": "volume_num",
+            "ascending": "false",
+            "limit": "5",
+        }
 
     def test_list_markets_empty(self, client: PolymarketClient, httpx_mock):
-        httpx_mock.add_response(json=[])
+        httpx_mock.add_response(json={"markets": []})
         markets = client.list_markets()
         assert markets == []
+
+
+class TestListMarketsKeyset:
+    def test_paginates_with_after_cursor_and_dedups(
+        self, client: PolymarketClient, httpx_mock
+    ):
+        """Page 2 carries after_cursor; a duplicated condition_id is merged."""
+        m1 = {**SAMPLE_GAMMA_MARKET, "condition_id": "0xm1", "slug": "m1"}
+        m2 = {**SAMPLE_GAMMA_MARKET, "condition_id": "0xm2", "slug": "m2"}
+        m3 = {**SAMPLE_GAMMA_MARKET, "condition_id": "0xm3", "slug": "m3"}
+        httpx_mock.add_response(
+            json={"markets": [m1, m2], "next_cursor": "c2"}
+        )
+        httpx_mock.add_response(json={"markets": [m2, m3], "next_cursor": "c3"})
+        markets = client.list_markets(limit=3)
+        assert [m.condition_id for m in markets] == ["0xm1", "0xm2", "0xm3"]
+        requests = httpx_mock.get_requests()
+        assert len(requests) == 2
+        assert "after_cursor" not in requests[0].url.params
+        assert requests[1].url.params["after_cursor"] == "c2"
+        # Only 1 market was still needed, so page 2 asks for limit=1
+        assert requests[1].url.params["limit"] == "1"
+
+    def test_missing_next_cursor_stops_after_page_one(
+        self, client: PolymarketClient, httpx_mock
+    ):
+        """No next_cursor on the final page ends paging."""
+        httpx_mock.add_response(json={"markets": [SAMPLE_GAMMA_MARKET]})
+        markets = client.list_markets(limit=20)
+        assert len(markets) == 1
+        assert len(httpx_mock.get_requests()) == 1
+
+    def test_page_limit_capped_at_100(
+        self, client: PolymarketClient, httpx_mock
+    ):
+        """Per-request limit never exceeds 100; the remainder is requested."""
+        page1 = [
+            {**SAMPLE_GAMMA_MARKET, "condition_id": f"0x{i:03x}", "slug": f"m{i}"}
+            for i in range(100)
+        ]
+        httpx_mock.add_response(json={"markets": page1, "next_cursor": "c2"})
+        httpx_mock.add_response(json={"markets": []})
+        markets = client.list_markets(limit=150)
+        assert len(markets) == 100
+        requests = httpx_mock.get_requests()
+        assert len(requests) == 2
+        assert requests[0].url.params["limit"] == "100"
+        assert requests[1].url.params["limit"] == "50"
+        assert requests[1].url.params["after_cursor"] == "c2"
+
+    @pytest.mark.parametrize("bad_cursor", [123, {}, "", None])
+    def test_malformed_next_cursor_stops(
+        self, client: PolymarketClient, httpx_mock, bad_cursor
+    ):
+        """Non-string or empty next_cursor values are treated as end-of-list."""
+        httpx_mock.add_response(
+            json={"markets": [SAMPLE_GAMMA_MARKET], "next_cursor": bad_cursor}
+        )
+        markets = client.list_markets(limit=20)
+        assert len(markets) == 1
+        assert len(httpx_mock.get_requests()) == 1
+
+    def test_repeated_cursor_not_followed(
+        self, client: PolymarketClient, httpx_mock
+    ):
+        """An already-seen next_cursor stops paging (upstream replay bug)."""
+        m2 = {**SAMPLE_GAMMA_MARKET, "condition_id": "0xm2", "slug": "m2"}
+        httpx_mock.add_response(
+            json={"markets": [SAMPLE_GAMMA_MARKET], "next_cursor": "c2"}
+        )
+        httpx_mock.add_response(json={"markets": [m2], "next_cursor": "c2"})
+        markets = client.list_markets(limit=20)
+        assert [m.condition_id for m in markets] == ["0xabc123", "0xm2"]
+        assert len(httpx_mock.get_requests()) == 2
+
+    def test_bare_list_response_still_parses(
+        self, client: PolymarketClient, httpx_mock
+    ):
+        """The legacy bare-list shape is tolerated (no cursor to follow)."""
+        httpx_mock.add_response(json=[SAMPLE_GAMMA_MARKET])
+        markets = client.list_markets()
+        assert len(markets) == 1
+        assert len(httpx_mock.get_requests()) == 1
+
+    def test_data_key_fallback(self, client: PolymarketClient, httpx_mock):
+        """Envelopes carrying items under `data` (no `markets`) still parse."""
+        httpx_mock.add_response(json={"data": [SAMPLE_GAMMA_MARKET]})
+        markets = client.list_markets()
+        assert len(markets) == 1
+
+    def test_limit_zero_makes_no_request(
+        self, client: PolymarketClient, httpx_mock
+    ):
+        assert client.list_markets(limit=0) == []
+        assert httpx_mock.get_requests() == []
+
+    def test_unknown_sort_by_sends_no_order(
+        self, client: PolymarketClient, httpx_mock
+    ):
+        httpx_mock.add_response(json={"markets": []})
+        client.list_markets(sort_by="date")
+        assert "order" not in httpx_mock.get_requests()[0].url.params
 
 
 # ---------------------------------------------------------------------------
@@ -1148,6 +1259,11 @@ class TestListMarketsNonList:
             result = client.list_markets()
             assert result == []
 
+    def test_parse_market_list_non_list(self, client: PolymarketClient):
+        """_parse_market_list itself still rejects non-list input."""
+        assert client._parse_market_list("not a list") == []
+        assert client._parse_market_list({"markets": []}) == []
+
 
 # ---------------------------------------------------------------------------
 # search_markets with an unexpected envelope -> []
@@ -1220,12 +1336,12 @@ class TestListMarketsLiquidity:
     def test_sort_by_liquidity(
         self, client: PolymarketClient, httpx_mock
     ):
-        """list_markets with sort_by='liquidity' sets order=liquidity."""
-        httpx_mock.add_response(json=[SAMPLE_GAMMA_MARKET])
+        """list_markets with sort_by='liquidity' sets order=liquidity_num."""
+        httpx_mock.add_response(json={"markets": [SAMPLE_GAMMA_MARKET]})
         markets = client.list_markets(sort_by="liquidity")
         assert len(markets) == 1
         req = httpx_mock.get_requests()[0]
-        assert "order=liquidity" in str(req.url)
+        assert "order=liquidity_num" in str(req.url)
         assert "ascending=false" in str(req.url)
 
 
@@ -1333,27 +1449,117 @@ class TestGetTags:
 
 class TestGetMarketsByTag:
     def test_get_markets_by_tag(self, client: PolymarketClient, httpx_mock):
-        httpx_mock.add_response(json=[SAMPLE_GAMMA_MARKET])
+        httpx_mock.add_response(
+            url=httpx.URL(GAMMA_BASE + "/tags/slug/politics"),
+            json={"id": "745", "slug": "politics", "label": "Politics"},
+        )
+        httpx_mock.add_response(json={"markets": [SAMPLE_GAMMA_MARKET]})
         markets = client.get_markets_by_tag("politics", limit=5)
         assert len(markets) == 1
         assert markets[0].slug == "will-bitcoin-hit-100k"
+        req = httpx_mock.get_requests()[1]
+        assert req.url.params["tag_id"] == "745"
+        assert req.url.params["limit"] == "5"
 
-    def test_get_markets_by_tag_empty(self, client: PolymarketClient, httpx_mock):
-        httpx_mock.add_response(json=[])
+    @pytest.mark.parametrize(
+        "tag_body, expected_id",
+        [
+            ({"id": "745"}, "745"),
+            ({"id": 745}, "745"),
+            ({"tagID": 42}, "42"),
+            ({"tag_id": "77"}, "77"),
+            ({"id": None, "tag_id": "9"}, "9"),
+        ],
+    )
+    def test_tag_id_resolution_variants(
+        self, client: PolymarketClient, httpx_mock, tag_body, expected_id
+    ):
+        """The tag id is accepted as int or digit-string, under `id`,
+        `tagID`, or `tag_id` keys."""
+        httpx_mock.add_response(
+            url=httpx.URL(GAMMA_BASE + "/tags/slug/nba"), json=tag_body
+        )
+        httpx_mock.add_response(json={"markets": [SAMPLE_GAMMA_MARKET]})
+        markets = client.get_markets_by_tag("nba")
+        assert len(markets) == 1
+        req = httpx_mock.get_requests()[1]
+        assert req.url.params["tag_id"] == expected_id
+
+    def test_get_markets_by_tag_unknown_slug_returns_empty(
+        self, client: PolymarketClient, httpx_mock
+    ):
+        """A 404 on /tags/slug maps to [] (legacy bogus-slug behavior)."""
+        httpx_mock.add_response(
+            url=httpx.URL(GAMMA_BASE + "/tags/slug/nonexistent"),
+            status_code=404,
+            text="Not Found",
+        )
         markets = client.get_markets_by_tag("nonexistent")
         assert markets == []
+        assert len(httpx_mock.get_requests()) == 1
 
-    def test_get_markets_by_tag_non_list(self, client: PolymarketClient, httpx_mock):
-        httpx_mock.add_response(json={"error": "bad"})
-        markets = client.get_markets_by_tag("bad")
-        assert markets == []
+    def test_get_markets_by_tag_unusable_id_returns_empty(
+        self, client: PolymarketClient, httpx_mock
+    ):
+        """A tag payload without a usable numeric id yields []."""
+        httpx_mock.add_response(
+            url=httpx.URL(GAMMA_BASE + "/tags/slug/weird"),
+            json={"id": "not-numeric", "slug": "weird"},
+        )
+        assert client.get_markets_by_tag("weird") == []
+        assert len(httpx_mock.get_requests()) == 1
+
+    def test_get_markets_by_tag_non_dict_tag_response(
+        self, client: PolymarketClient, httpx_mock
+    ):
+        """A non-dict /tags/slug body yields [] (no usable id)."""
+        httpx_mock.add_response(
+            url=httpx.URL(GAMMA_BASE + "/tags/slug/bad"), json="huh"
+        )
+        assert client.get_markets_by_tag("bad") == []
+
+    def test_get_markets_by_tag_api_error_propagates(
+        self, client: PolymarketClient, httpx_mock
+    ):
+        """Non-404 errors on the tag lookup are re-raised."""
+        httpx_mock.add_response(
+            url=httpx.URL(GAMMA_BASE + "/tags/slug/err"),
+            status_code=500,
+            text="Internal Server Error",
+        )
+        with pytest.raises(ApiError) as exc_info:
+            client.get_markets_by_tag("err")
+        assert exc_info.value.status_code == 500
+
+    def test_tag_lookup_cached_on_second_call(
+        self, client: PolymarketClient, httpx_mock
+    ):
+        """The slug→id resolution is cached; only the listing refetches."""
+        httpx_mock.add_response(
+            url=httpx.URL(GAMMA_BASE + "/tags/slug/nba"),
+            json={"id": "745", "slug": "nba", "label": "NBA"},
+        )
+        httpx_mock.add_response(json={"markets": [SAMPLE_GAMMA_MARKET]})
+        httpx_mock.add_response(json={"markets": [SAMPLE_GAMMA_MARKET]})
+        client.get_markets_by_tag("nba")
+        client.get_markets_by_tag("nba")
+        requests = httpx_mock.get_requests()
+        tag_requests = [r for r in requests if r.url.path == "/tags/slug/nba"]
+        list_requests = [r for r in requests if r.url.path == "/markets/keyset"]
+        assert len(tag_requests) == 1
+        assert len(list_requests) == 2
 
     def test_get_markets_by_tag_closed(self, client: PolymarketClient, httpx_mock):
-        httpx_mock.add_response(json=[SAMPLE_GAMMA_MARKET])
+        httpx_mock.add_response(
+            url=httpx.URL(GAMMA_BASE + "/tags/slug/politics"),
+            json={"id": "745", "slug": "politics", "label": "Politics"},
+        )
+        httpx_mock.add_response(json={"markets": [SAMPLE_GAMMA_MARKET]})
         markets = client.get_markets_by_tag("politics", closed=True)
         assert len(markets) == 1
-        req = httpx_mock.get_requests()[0]
+        req = httpx_mock.get_requests()[1]
         assert "closed=true" in str(req.url)
+        assert "active=false" in str(req.url)
 
 
 # ---------------------------------------------------------------------------

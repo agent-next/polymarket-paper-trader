@@ -29,6 +29,8 @@ CACHE_TTL_SECONDS = 300  # 5 minutes for market metadata
 
 _TIMEOUT = httpx.Timeout(10.0)
 
+_KEYSET_PAGE_LIMIT = 100  # GET /markets/keyset rejects limit > 100
+
 
 class PolymarketClient:
     """HTTP client for Polymarket public APIs."""
@@ -179,23 +181,72 @@ class PolymarketClient:
             return []
         return [_parse_market(m) for m in data if _has_condition_id(m)]
 
+    @staticmethod
+    def _split_keyset_page(data: object) -> tuple[list, str | None]:
+        """Split a keyset response into (items, next_cursor).
+
+        Tolerates the legacy bare-list shape (cursor None) and envelopes
+        carrying items under ``markets`` or ``data``.
+        """
+        if isinstance(data, list):
+            return data, None
+        if not isinstance(data, dict):
+            return [], None
+        items = data.get("markets")
+        if not isinstance(items, list):
+            items = data.get("data")
+        if not isinstance(items, list):
+            items = []
+        cursor = data.get("next_cursor")
+        if not isinstance(cursor, str) or not cursor:
+            cursor = None
+        return items, cursor
+
+    def _list_markets_keyset(self, params: dict, limit: int) -> list[Market]:
+        """Fetch up to ``limit`` markets via cursor-paginated /markets/keyset."""
+        if limit <= 0:
+            return []
+        collected: dict[str, Market] = {}
+        seen_cursors: set[str] = set()
+        cursor: str | None = None
+        while len(collected) < limit:
+            page_params = {
+                **params,
+                "limit": min(limit - len(collected), _KEYSET_PAGE_LIMIT),
+            }
+            if cursor is not None:
+                page_params["after_cursor"] = cursor
+            items, cursor = self._split_keyset_page(
+                self._gamma_get("/markets/keyset", params=page_params)
+            )
+            if not items:
+                break
+            for market in self._parse_market_list(items):
+                if market.condition_id not in collected:
+                    collected[market.condition_id] = market
+            # A cursor already followed is never re-followed — upstream once
+            # replayed page 1 with the same next_cursor forever.
+            if cursor is None or cursor in seen_cursors:
+                break
+            seen_cursors.add(cursor)
+        return list(collected.values())[:limit]
+
     def list_markets(
         self, *, limit: int = 20, sort_by: str = "volume"
     ) -> list[Market]:
         """List active markets sorted by volume or liquidity."""
         params: dict = {
-            "limit": limit,
             "active": "true",
             "closed": "false",
         }
         if sort_by == "volume":
-            params["order"] = "volume"
+            params["order"] = "volume_num"
             params["ascending"] = "false"
         elif sort_by == "liquidity":
-            params["order"] = "liquidity"
+            params["order"] = "liquidity_num"
             params["ascending"] = "false"
 
-        return self._parse_market_list(self._gamma_get("/markets", params=params))
+        return self._list_markets_keyset(params, limit)
 
     def search_markets(self, query: str, *, limit: int = 10) -> list[Market]:
         """Search markets by text query (Gamma /public-search)."""
@@ -221,14 +272,40 @@ class PolymarketClient:
     def get_markets_by_tag(
         self, tag_slug: str, *, limit: int = 20, closed: bool = False,
     ) -> list[Market]:
-        """Fetch markets filtered by tag slug."""
+        """Fetch markets filtered by tag slug (resolved to a numeric tag id)."""
+        tag_id = self._resolve_tag_id(tag_slug)
+        if tag_id is None:
+            return []
         params: dict = {
-            "tag_slug": tag_slug,
-            "limit": limit,
+            "tag_id": tag_id,
             "closed": str(closed).lower(),
             "active": str(not closed).lower(),
         }
-        return self._parse_market_list(self._gamma_get("/markets", params=params))
+        return self._list_markets_keyset(params, limit)
+
+    def _resolve_tag_id(self, tag_slug: str) -> str | None:
+        """Resolve a tag slug to its numeric id via /tags/slug.  Cached 5 min."""
+        cache_key = f"tag:{tag_slug}"
+        cached = self._get_cached(cache_key)
+        if isinstance(cached, dict):
+            data = cached
+        else:
+            try:
+                raw = self._gamma_get(f"/tags/slug/{tag_slug}")
+            except ApiError as e:
+                if e.status_code == 404:
+                    return None
+                raise
+            if not isinstance(raw, dict):
+                return None
+            self._set_cached(cache_key, raw)
+            data = raw
+        tag_id = data.get("id") or data.get("tagID") or data.get("tag_id")
+        if isinstance(tag_id, int):
+            return str(tag_id)
+        if isinstance(tag_id, str) and tag_id.isdigit():
+            return tag_id
+        return None
 
     def get_event(self, slug: str) -> dict:
         """Fetch event details (group of related markets).  Cached 5 min."""
