@@ -12,6 +12,10 @@ All notable changes to `polymarket-paper-trader` are documented here.
 - **Market buys can no longer spend reserved cash.** `buy` checks `total_cost + fee` against `available_cash` instead of raw cash, so a market order cannot consume the reserve held by resting buys; when nothing rests, `available_cash == cash` and behavior is unchanged. A resting buy that later cannot be afforded (multi-order fee-slack exhaustion) is still permanently rejected by `check_orders` via the fill-time cash guard.
 - **Slippage is now measured against the crossed quote.** `FillResult.slippage_bps` — and the `slippage` persisted on every trade and surfaced via CLI/MCP/export — is now `(avg_price - best_ask) / best_ask * 10_000` for buys and `(best_bid - avg_price) / best_bid * 10_000` for sells: a fill at the touch is exactly 0 and worse fills are positive on both sides. The previous midpoint-based value is preserved on the fill result as `slippage_bps_midpoint` (reported on `FillResult` only, not persisted).
 
+### Fixed
+- **Exact-depth FOK fills no longer rejected by binary float noise.** A FOK buy or sell that exactly consumed the book depth could return `filled=False` when binary float left a sub-1e-9 remainder (e.g. book cost `0.1 + 0.2` vs amount `0.1 + 0.2`). Buy and sell now treat remainders `<= FILL_EPSILON` (1e-9) as exhausted — so a residue can also no longer spawn a phantom micro-fill on the next level — and clamp level subtractions at 0.
+- **Multi-level fills on `feeSchedule` markets now charge per level, not at the VWAP.** A fill crossing several levels previously charged one fee at the average price; the official curve is per-match, so the fee is now `sum_i shares_i × rate × p_i × (1 - p_i)` with each level rounded to 5 decimals (min charge 0.00001). Example divergence: 10 sh @0.60 + 20 sh @0.70 at rate 0.07 → 0.462 (was 0.46667 at avg 0.6667). The legacy bps fallback is unchanged — still a single charge at the average price.
+
 ## [0.3.1] - 2026-09-24
 
 ### Changed

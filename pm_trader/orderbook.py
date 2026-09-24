@@ -13,6 +13,12 @@ from pm_trader.models import Fill, FillResult, OrderBook
 
 logger = logging.getLogger(__name__)
 
+# Float-noise tolerance for "fully filled" compares; mirrors
+# engine.FILL_EPSILON (same value/semantics — kept per-module because
+# orderbook is the lower layer and cannot import engine; same precedent as
+# analytics._EPSILON).
+FILL_EPSILON = 1e-9
+
 
 # ---------------------------------------------------------------------------
 # Fee calculation — exact Polymarket formula
@@ -87,8 +93,8 @@ def calculate_fee_schedule(
 
 def _fill_fee(
     *,
+    fills: list[Fill],
     avg_price: float,
-    total_shares: float,
     legacy_size: float,
     fee_rate: float | None,
     fee_rate_bps: int,
@@ -97,12 +103,22 @@ def _fill_fee(
 
     When ``fee_rate`` (the ``feeSchedule`` coefficient) is set it takes
     precedence and the fee is charged on the share count ``C`` — the official
-    curve — on both the buy and the sell path.  Otherwise the legacy bps
-    model is used unchanged, with its per-side ``legacy_size`` (the USD
-    notional on a buy, the share count on a sell).
+    curve — on both the buy and the sell path.  The exchange charges per
+    match, so the schedule fee is summed per filled level (each level
+    ``C_i × rate × p_i × (1 - p_i)`` rounded to 5 decimals by
+    :func:`calculate_fee_schedule`; the outer ``round`` only normalizes
+    binary noise in the sum).  Otherwise the legacy bps model is used
+    unchanged: a single charge at the average price on the per-side
+    ``legacy_size`` (the USD notional on a buy, the share count on a sell).
     """
     if fee_rate is not None:
-        return calculate_fee_schedule(fee_rate, 1, avg_price, total_shares)
+        return round(
+            sum(
+                calculate_fee_schedule(fee_rate, 1, f.price, f.shares)
+                for f in fills
+            ),
+            5,
+        )
     return calculate_fee(fee_rate_bps, avg_price, legacy_size)
 
 
@@ -172,7 +188,8 @@ def simulate_buy_fill(
         is not given.
     fee_rate:
         ``feeSchedule.rate`` coefficient.  When set, the official curve is
-        used and the fee is charged on the share count (not the notional).
+        used and the fee is charged on the share count (not the notional),
+        summed per filled level since the exchange charges per match.
     order_type:
         ``"fok"`` (fill-or-kill: all or nothing) or
         ``"fak"`` (fill-and-kill: partial fills allowed).
@@ -195,7 +212,7 @@ def simulate_buy_fill(
     fills: list[Fill] = []
 
     for level_idx, level in enumerate(sorted_asks):
-        if remaining_usd <= 0:
+        if remaining_usd <= FILL_EPSILON:
             break
 
         # Limit order: skip levels above max_price
@@ -212,7 +229,7 @@ def simulate_buy_fill(
                 cost=max_cost_at_level,
                 level=level_idx + 1,
             ))
-            remaining_usd -= max_cost_at_level
+            remaining_usd = max(0.0, remaining_usd - max_cost_at_level)
         else:
             # Partial level fill — buy as many shares as remaining USD allows
             shares = remaining_usd / level.price
@@ -232,14 +249,14 @@ def simulate_buy_fill(
     total_shares = sum(f.shares for f in fills)
 
     # FOK: reject if the book could not absorb the full amount
-    is_partial = remaining_usd > 0
+    is_partial = remaining_usd > FILL_EPSILON
     if order_type == "fok" and is_partial:
         return _empty_fill_result()
 
     avg_price = total_cost / total_shares if total_shares > 0 else 0.0
     fee = _fill_fee(
+        fills=fills,
         avg_price=avg_price,
-        total_shares=total_shares,
         legacy_size=total_cost,
         fee_rate=fee_rate,
         fee_rate_bps=fee_rate_bps,
@@ -299,7 +316,8 @@ def simulate_sell_fill(
         is not given.
     fee_rate:
         ``feeSchedule.rate`` coefficient.  When set, the official curve is
-        used and the fee is charged on the share count.
+        used and the fee is charged on the share count, summed per filled
+        level since the exchange charges per match.
     order_type:
         ``"fok"`` (fill-or-kill) or ``"fak"`` (fill-and-kill).
     min_price:
@@ -321,7 +339,7 @@ def simulate_sell_fill(
     fills: list[Fill] = []
 
     for level_idx, level in enumerate(sorted_bids):
-        if remaining_shares <= 0:
+        if remaining_shares <= FILL_EPSILON:
             break
 
         # Limit order: skip levels below min_price
@@ -337,7 +355,7 @@ def simulate_sell_fill(
                 cost=cost,
                 level=level_idx + 1,
             ))
-            remaining_shares -= level.size
+            remaining_shares = max(0.0, remaining_shares - level.size)
         else:
             # Partial level fill — sell only the remaining shares
             cost = remaining_shares * level.price
@@ -357,14 +375,14 @@ def simulate_sell_fill(
     total_shares = sum(f.shares for f in fills)
 
     # FOK: reject if the book could not absorb all shares
-    is_partial = remaining_shares > 0
+    is_partial = remaining_shares > FILL_EPSILON
     if order_type == "fok" and is_partial:
         return _empty_fill_result()
 
     avg_price = total_cost / total_shares if total_shares > 0 else 0.0
     fee = _fill_fee(
+        fills=fills,
         avg_price=avg_price,
-        total_shares=total_shares,
         legacy_size=total_shares,
         fee_rate=fee_rate,
         fee_rate_bps=fee_rate_bps,

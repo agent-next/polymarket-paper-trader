@@ -369,6 +369,99 @@ class TestSellEmptyBook:
         assert result.total_shares == 0.0
 
 
+class TestFokFloatNoise:
+    """Exact-depth FOK fills must not be rejected by binary float residue."""
+
+    def test_buy_exact_depth_float_noise(self) -> None:
+        # 0.1 + 0.2 leaves a ~2.8e-17 binary residue after subtracting the
+        # two level costs; it must still count as fully filled.
+        assert (0.1 + 0.2) - 0.1 - 0.2 > 0  # residue exists in binary float
+        book = OrderBook(
+            bids=[OrderBookLevel(price=0.05, size=1.0)],
+            asks=[
+                OrderBookLevel(price=0.1, size=1.0),
+                OrderBookLevel(price=0.2, size=1.0),
+            ],
+        )
+        result = simulate_buy_fill(book, 0.1 + 0.2, 0, "fok")
+
+        assert result.filled is True
+        assert result.is_partial is False
+        assert result.total_shares == pytest.approx(2.0)
+        assert result.levels_filled == 2
+
+    def test_sell_exact_depth_float_noise(self) -> None:
+        # Same residue on the share count: 0.1 + 0.2 sold into bids of
+        # exactly 0.1 and 0.2 shares.
+        assert (0.1 + 0.2) - 0.1 - 0.2 > 0
+        book = OrderBook(
+            bids=[
+                OrderBookLevel(price=0.5, size=0.1),
+                OrderBookLevel(price=0.4, size=0.2),
+            ],
+            asks=[OrderBookLevel(price=0.9, size=1.0)],
+        )
+        result = simulate_sell_fill(book, 0.1 + 0.2, 0, "fok")
+
+        assert result.filled is True
+        assert result.is_partial is False
+        assert result.total_shares == pytest.approx(0.3)
+
+    def test_residue_does_not_consume_extra_level(self) -> None:
+        # A sub-epsilon residue must not spawn a phantom micro-fill on the
+        # next level: only the two real levels are consumed.
+        book = OrderBook(
+            bids=[OrderBookLevel(price=0.05, size=1.0)],
+            asks=[
+                OrderBookLevel(price=0.1, size=1.0),
+                OrderBookLevel(price=0.2, size=1.0),
+                OrderBookLevel(price=0.9, size=100.0),
+            ],
+        )
+        result = simulate_buy_fill(book, 0.1 + 0.2, 0, "fok")
+
+        assert result.filled is True
+        assert result.levels_filled == 2
+        assert len(result.fills) == 2
+
+    @pytest.mark.parametrize("delta,expected_filled", [
+        (5e-10, True),   # shortfall within FILL_EPSILON: tolerated as noise
+        (2e-9, False),   # shortfall beyond FILL_EPSILON: genuine rejection
+    ])
+    def test_buy_fok_deficit_around_epsilon(
+        self, delta: float, expected_filled: bool
+    ) -> None:
+        # The tolerance cuts both ways: an order exceeding book depth by
+        # less than FILL_EPSILON still fills; anything more is rejected.
+        book = OrderBook(
+            bids=[OrderBookLevel(price=0.05, size=1.0)],
+            asks=[OrderBookLevel(price=0.5, size=1.0)],
+        )
+        result = simulate_buy_fill(book, 0.5 + delta, 0, "fok")
+
+        assert result.filled is expected_filled
+        # A rejected FOK kills the whole order: nothing is consumed.
+        if not expected_filled:
+            assert result.total_shares == 0.0
+
+    @pytest.mark.parametrize("delta,expected_filled", [
+        (5e-10, True),
+        (2e-9, False),
+    ])
+    def test_sell_fok_deficit_around_epsilon(
+        self, delta: float, expected_filled: bool
+    ) -> None:
+        book = OrderBook(
+            bids=[OrderBookLevel(price=0.5, size=1.0)],
+            asks=[OrderBookLevel(price=0.9, size=1.0)],
+        )
+        result = simulate_sell_fill(book, 1.0 + delta, 0, "fok")
+
+        assert result.filled is expected_filled
+        if not expected_filled:
+            assert result.total_shares == 0.0
+
+
 # =========================================================================
 # FEE TESTS
 # =========================================================================
@@ -609,6 +702,93 @@ class TestFillSimUsesScheduleFee:
         result = simulate_buy_fill(book, 50.0, fee_rate_bps=200)
         # Legacy model charges the USD notional: 0.02 * 0.5 * 50 = 0.50
         assert result.fee == pytest.approx(0.50)
+
+
+class TestPerLevelScheduleFee:
+    """feeSchedule fees are charged per match (per level), not at the VWAP."""
+
+    def test_buy_sums_per_level(self) -> None:
+        # 10 sh @0.60 + 20 sh @0.70 = $20.00 for 30 shares (avg 0.6667).
+        # Per-level: round(10*0.07*0.6*0.4, 5) + round(20*0.07*0.7*0.3, 5)
+        #          = 0.168 + 0.294 = 0.462
+        # Avg-based (old behavior): 30*0.07*(2/3)*(1/3) = 0.46667.
+        book = OrderBook(
+            bids=[OrderBookLevel(price=0.50, size=1.0)],
+            asks=[
+                OrderBookLevel(price=0.60, size=10.0),
+                OrderBookLevel(price=0.70, size=20.0),
+            ],
+        )
+        result = simulate_buy_fill(book, 20.0, fee_rate_bps=0, fee_rate=0.07)
+
+        assert result.levels_filled == 2
+        assert result.fee == pytest.approx(0.462)
+        assert result.fee != pytest.approx(0.46667)
+
+    def test_sell_sums_per_level(self) -> None:
+        # Mirror image: 20 sh @0.70 + 10 sh @0.60 = same 0.462 per-level fee.
+        book = OrderBook(
+            bids=[
+                OrderBookLevel(price=0.70, size=20.0),
+                OrderBookLevel(price=0.60, size=10.0),
+            ],
+            asks=[OrderBookLevel(price=0.90, size=1.0)],
+        )
+        result = simulate_sell_fill(book, 30.0, fee_rate_bps=0, fee_rate=0.07)
+
+        assert result.levels_filled == 2
+        assert result.fee == pytest.approx(0.462)
+        assert result.fee != pytest.approx(0.46667)
+
+    def test_legacy_bps_stays_avg_based_buy(self) -> None:
+        # The legacy bps fallback did NOT switch to per-level summation: it
+        # still charges once at the average price on the USD notional.
+        book = OrderBook(
+            bids=[OrderBookLevel(price=0.50, size=1.0)],
+            asks=[
+                OrderBookLevel(price=0.60, size=10.0),
+                OrderBookLevel(price=0.70, size=20.0),
+            ],
+        )
+        result = simulate_buy_fill(book, 20.0, fee_rate_bps=200)
+
+        assert result.levels_filled == 2
+        assert result.fee == pytest.approx(
+            calculate_fee(200, result.avg_price, result.total_cost)
+        )
+
+    def test_legacy_bps_stays_avg_based_sell(self) -> None:
+        # Same pin on the sell path: legacy_size is the share count.
+        book = OrderBook(
+            bids=[
+                OrderBookLevel(price=0.70, size=20.0),
+                OrderBookLevel(price=0.60, size=10.0),
+            ],
+            asks=[OrderBookLevel(price=0.90, size=1.0)],
+        )
+        result = simulate_sell_fill(book, 30.0, fee_rate_bps=200)
+
+        assert result.levels_filled == 2
+        assert result.fee == pytest.approx(
+            calculate_fee(200, result.avg_price, result.total_shares)
+        )
+
+    def test_buy_partial_last_level_fee(self) -> None:
+        # $10 cuts level 2 mid-way: 10 sh @0.60 ($6) + 4/0.7 sh @0.70 ($4).
+        # The per-level fee uses the actual partial share count:
+        # round(10*0.07*0.24, 5) + round((4/0.7)*0.07*0.21, 5) = 0.252.
+        book = OrderBook(
+            bids=[OrderBookLevel(price=0.50, size=1.0)],
+            asks=[
+                OrderBookLevel(price=0.60, size=10.0),
+                OrderBookLevel(price=0.70, size=20.0),
+            ],
+        )
+        result = simulate_buy_fill(book, 10.0, fee_rate_bps=0, fee_rate=0.07)
+
+        assert result.levels_filled == 2
+        assert result.fills[1].shares == pytest.approx(4.0 / 0.7)
+        assert result.fee == pytest.approx(0.252)
 
 
 # =========================================================================
