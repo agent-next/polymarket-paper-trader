@@ -103,7 +103,7 @@ def homepage(request: Request, db: DB = Depends(get_db)):
         })
     entries.sort(key=lambda x: x["roi_pct"], reverse=True)
     feed = db.get_recent_trades_global(limit=10)
-    return templates.TemplateResponse("leaderboard.html", {
+    return templates.TemplateResponse(request, "leaderboard.html", {
         "request": request,
         "entries": entries,
         "feed": feed,
@@ -126,7 +126,7 @@ def user_page(agent_name: str, request: Request, db: DB = Depends(get_db)):
             "trade_count": trade_count,
             "roi_pct": stats["roi_pct"] if stats else 0.0,
         })
-    return templates.TemplateResponse("user.html", {
+    return templates.TemplateResponse(request, "user.html", {
         "request": request,
         "user": user,
         "accounts": account_list,
@@ -181,7 +181,7 @@ def account_page(account_id: int, request: Request, db: DB = Depends(get_db)):
     stats = _stats_for_account(db, account)
 
     trades = db.get_trades(account_id, limit=50)
-    return templates.TemplateResponse("account.html", {
+    return templates.TemplateResponse(request, "account.html", {
         "request": request,
         "account": account,
         "agent_name": agent_name,
