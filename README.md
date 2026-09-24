@@ -27,24 +27,6 @@ pm-trader stats --card                         # shareable stats card
 
 That's it. Your AI agent is now trading Polymarket with zero risk.
 
-## How it works (from the user's point of view)
-
-- **Your order walks the real book.** A buy consumes live ask levels from the lowest price upward, exactly like a real taker order. A $500 order into a thin book fills at worse prices than a $10 order — that's slippage, and you see it in basis points
-- **Fees are the official curve.** Polymarket charges takers `fee = C × rate × p × (1-p)` per match (C = shares, p = price), rounded to 5 decimals, with makers always exempt. We charge the same, per filled level, using each market's published fee schedule — not an approximation
-- **Paper cash, real discipline.** Resting buy orders reserve their cash, partial fills keep their remainder open, closed or paused markets reject trades, and limit prices are validated against tick size
-- **Resolution pays $1/share.** When a market closes, call `resolve` and winning positions pay out like the real thing
-- **Prices are never cached.** Order books and midpoints are fetched live on every trade; market metadata is cached 5 minutes
-
-## Why trust the simulation
-
-Other tools mock prices or roll dice. We simulate the actual exchange, and we test the simulation against the real thing:
-
-- **Level-by-level order book execution** against live Polymarket books
-- **Bias-tested against real market data**: our live test suite asserts that simulated fills land inside the band of prices the market actually quoted (Data API v2 price history) and that fees match the official curve exactly — run weekly against real APIs on CI
-- **Upstream-aligned**: Gamma keyset pagination, CLOB market data, Data API v2 price history — the client tracks the current official API surface, contract-verified by live probes
-- **823 tests, 100% coverage** on the core package, plus 44 end-to-end tests against the live API
-- **Multi-outcome markets** — not just YES/NO, any number of outcomes
-
 ## Install
 
 ```bash
@@ -79,6 +61,17 @@ pm-trader portfolio
 pm-trader stats
 ```
 
+## How it works — and why to trust it
+
+- **Your order walks the real book.** A buy consumes live ask levels from the lowest price upward, exactly like a real taker order — slippage is real and reported in basis points
+- **Fees follow the official per-match curve** — `fee = C × rate × p × (1-p)`, rounded to 5 decimals, makers exempt (exact spec in the [CHANGELOG](CHANGELOG.md)) — charged per filled level from each market's published fee schedule, not an approximation
+- **Paper cash, real discipline.** Resting buys reserve their cash, partial fills keep their remainder open, closed or paused markets reject trades, and limit prices are validated against tick size
+- **Resolution pays $1/share.** Call `resolve` (or `resolve --all`) when a market closes and winners pay out like the real thing
+- **Verified fidelity.** The live test suite asserts that simulated fills land inside the band of prices the market actually quoted (Data API v2 price history) and that fees match the official curve exactly — run against real APIs on CI
+- **Upstream-aligned.** The client tracks the current Gamma / CLOB / Data API surface, contract-verified by live probes
+- **Multi-outcome markets** — any number of outcomes, not just YES/NO
+- **100% coverage gate** on the core package, plus end-to-end tests against the live API
+
 ## CLI commands
 
 | Command | Description |
@@ -101,6 +94,7 @@ pm-trader stats
 | `orders cancel ID` | Cancel a limit order |
 | `orders check` | Fill limit orders if price crosses |
 | `stats [--card\|--tweet\|--plain]` | Win rate, ROI, profit, max drawdown |
+| `resolve [SLUG] [--all]` | Resolve a closed market, or all closed markets (winners get $1/share) |
 | `leaderboard` | Local account rankings |
 | `pk ACCOUNT_A ACCOUNT_B` | Battle: who's the better trader? |
 | `export trades [--format csv\|json]` | Export trade history |
@@ -199,8 +193,10 @@ pm-trader benchmark run examples.limit_grid.run
 
 ### Writing your own strategy
 
+Strategies are imported from the `examples.` package (the allowlist lives in `pm_trader/benchmark.py`), so drop your file there:
+
 ```python
-# my_strategy.py
+# examples/my_strategy.py
 from pm_trader.engine import Engine
 
 def run(engine: Engine) -> None:
@@ -213,7 +209,7 @@ def run(engine: Engine) -> None:
 ```
 
 ```bash
-pm-trader benchmark run my_strategy.run
+pm-trader benchmark run examples.my_strategy.run
 ```
 
 For backtesting with historical data:
@@ -227,14 +223,14 @@ def backtest_strategy(engine, snapshot, prices):
 
 ## Evaluate your agent: the benchmark harness
 
-The paper trader is the gym; the bundled `benchmark` package is the scoreboard. It scores any litellm model — or TypeSafe's Jev decision model — on prediction-market sets:
+The paper trader is the gym; the bundled `benchmark` package is the scoreboard:
 
 ```bash
 pip install -e "benchmark[dev]"
 cd benchmark && polymarket-benchmark run --model opencode/jev-1.13-free --market-set mini
 ```
 
-Metrics: Brier score, calibration, alpha vs the market. Run two models head-to-head to see whose judgment is actually better.
+Run two models head-to-head to see whose judgment is actually better. Market sets, scoring (Brier, calibration, alpha) and model setup: [benchmark/README.md](benchmark/README.md).
 
 ## Multi-account support
 
@@ -286,7 +282,7 @@ The paper-trader is the product; two companion packages live alongside it.
 
 | Package | Directory | What it is |
 |---------|-----------|------------|
-| `polymarket-benchmark` | [`benchmark/`](benchmark) | LLM evaluation harness — scores models on prediction-market sets (Brier, calibration, alpha). Supports any litellm model and TypeSafe's Jev decision model. |
+| `polymarket-benchmark` | [`benchmark/`](benchmark) | LLM evaluation harness — see [Evaluate your agent](#evaluate-your-agent-the-benchmark-harness) |
 | `polymarket-leaderboard-client` | [`leaderboard-client/`](leaderboard-client) | Client SDK for a compatible leaderboard server: register an agent, trade, read portfolio and stats. |
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how to work on each package and [CHANGELOG.md](CHANGELOG.md) for release history.
