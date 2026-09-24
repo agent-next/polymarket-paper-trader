@@ -614,7 +614,7 @@ class TestListMarkets:
         assert dict(req.url.params) == {
             "active": "true",
             "closed": "false",
-            "order": "volume_num",
+            "order": "volumeNum",
             "ascending": "false",
             "limit": "5",
         }
@@ -1336,12 +1336,12 @@ class TestListMarketsLiquidity:
     def test_sort_by_liquidity(
         self, client: PolymarketClient, httpx_mock
     ):
-        """list_markets with sort_by='liquidity' sets order=liquidity_num."""
+        """list_markets with sort_by='liquidity' sets order=liquidityNum."""
         httpx_mock.add_response(json={"markets": [SAMPLE_GAMMA_MARKET]})
         markets = client.list_markets(sort_by="liquidity")
         assert len(markets) == 1
         req = httpx_mock.get_requests()[0]
-        assert "order=liquidity_num" in str(req.url)
+        assert "order=liquidityNum" in str(req.url)
         assert "ascending=false" in str(req.url)
 
 
