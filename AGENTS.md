@@ -75,8 +75,9 @@ docs example was wrong.
   `vX.Y.Z` on the merged main commit → `publish.yml` (tests → PyPI → ClawHub → GitHub
   Release). Verify the tag live on PyPI and ClawHub before announcing.
 - The benchmark harness is a separate install (`polymarket-benchmark`); `pm-trader
-  benchmark run` replays trading strategies and only imports modules from the `examples.`
-  prefix (allowlist in `pm_trader/benchmark.py`).
+  benchmark run` replays trading strategies and only imports modules from the
+  `examples.` and `tests.test_benchmark.` prefixes (allowlist in
+  `pm_trader/benchmark.py`).
 - `pm-trader benchmark` (strategy replay) and `polymarket-benchmark run` (model eval) are
   different things — keep the distinction in docs and code.
 - Tests that hit the live APIs are marked `live` and skip cleanly without network; the
