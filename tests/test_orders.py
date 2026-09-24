@@ -272,3 +272,107 @@ class TestOrdersMigration:
         # Idempotent: a second pass is a no-op
         _migrate_orders_schema_if_needed(c)
         assert c.execute("SELECT COUNT(*) AS n FROM limit_orders").fetchone()["n"] == 2
+
+
+class TestOrdersMigrationAtomicity:
+    def test_failed_copy_rolls_back_completely(self):
+        """A failure mid-migration must leave the ORIGINAL table untouched.
+
+        Regression for the review finding: the non-transactional form committed
+        the RENAME first, so a failed copy stranded every row in
+        limit_orders_old with an empty live table — and a re-run saw the new
+        DDL and did nothing. Data loss, silently.
+        """
+        c = sqlite3.connect(":memory:")
+        c.row_factory = sqlite3.Row
+        c.executescript(
+            """\
+            CREATE TABLE limit_orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                market_slug TEXT NOT NULL,
+                market_condition_id TEXT NOT NULL,
+                outcome TEXT NOT NULL CHECK (length(outcome) > 0),
+                side TEXT NOT NULL CHECK (side IN ('buy', 'sell')),
+                amount REAL NOT NULL,
+                limit_price REAL NOT NULL,
+                order_type TEXT NOT NULL CHECK (order_type IN ('gtc', 'gtd')),
+                expires_at TEXT,
+                status TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                filled_at TEXT
+            );
+            """
+        )
+        # A status the NEW schema's CHECK rejects — the copy INSERT will fail
+        # on it (the relaxed old CHECK lets us stage the corruption; the point
+        # is what the migration does when the copy blows up mid-flight).
+        c.execute(
+            """INSERT INTO limit_orders
+               (market_slug, market_condition_id, outcome, side, amount,
+                limit_price, order_type, status, created_at)
+               VALUES ('m', '0x1', 'yes', 'buy', 100.0, 0.60, 'gtc',
+                       'bogus', '2026-09-23T00:00:00Z')"""
+        )
+
+        with pytest.raises(sqlite3.IntegrityError):
+            _migrate_orders_schema_if_needed(c)
+
+        # ROLLBACK restored the original single-row table, original schema.
+        rows = c.execute("SELECT * FROM limit_orders").fetchall()
+        assert len(rows) == 1
+        assert rows[0]["status"] == "bogus"
+        assert rows[0]["amount"] == 100.0
+        leftovers = [
+            r["name"] for r in c.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        ]
+        assert "limit_orders_old" not in leftovers
+        ddl = c.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'limit_orders'"
+        ).fetchone()["sql"]
+        assert "remaining_amount" not in ddl
+
+    def test_rollback_failure_still_raises_original(self):
+        """Even when ROLLBACK itself fails, the original error propagates."""
+        c = sqlite3.connect(":memory:")
+        c.row_factory = sqlite3.Row
+        c.executescript(
+            """\
+            CREATE TABLE limit_orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                market_slug TEXT NOT NULL,
+                market_condition_id TEXT NOT NULL,
+                outcome TEXT NOT NULL CHECK (length(outcome) > 0),
+                side TEXT NOT NULL CHECK (side IN ('buy', 'sell')),
+                amount REAL NOT NULL,
+                limit_price REAL NOT NULL,
+                order_type TEXT NOT NULL CHECK (order_type IN ('gtc', 'gtd')),
+                expires_at TEXT,
+                status TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                filled_at TEXT
+            );
+            INSERT INTO limit_orders
+                (market_slug, market_condition_id, outcome, side, amount,
+                 limit_price, order_type, status, created_at)
+                VALUES ('m', '0x1', 'yes', 'buy', 5.0, 0.50, 'gtc',
+                        'bogus', '2026-09-23T00:00:00Z');
+            """
+        )
+
+        class NoRollbackConn:
+            def __init__(self, inner):
+                self._inner = inner
+
+            def execute(self, sql, *a):
+                if sql.strip().upper().startswith("ROLLBACK"):
+                    raise sqlite3.OperationalError("cannot rollback")
+                return self._inner.execute(sql, *a)
+
+            def executescript(self, script):
+                # Delegate verbatim — one script, embedded BEGIN/COMMIT preserved.
+                return self._inner.executescript(script)
+
+        with pytest.raises(sqlite3.IntegrityError):
+            _migrate_orders_schema_if_needed(NoRollbackConn(c))

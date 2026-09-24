@@ -88,10 +88,19 @@ def _migrate_orders_schema_if_needed(conn: sqlite3.Connection) -> None:
     ddl = row["sql"]
     if "remaining_amount" in ddl and "partially_filled" in ddl:
         return
-    conn.execute("ALTER TABLE limit_orders RENAME TO limit_orders_old")
-    conn.executescript(ORDERS_SCHEMA)
-    conn.execute(
-        """\
+    # Atomic rebuild: the whole rename/rebuild/copy runs inside ONE explicit
+    # transaction (executescript alone would commit the RENAME first — a failed
+    # copy then strands every row in limit_orders_old with an empty live table,
+    # and a re-run sees the new DDL and does nothing). On any failure the
+    # ROLLBACK restores the original table untouched (review finding: verified
+    # by execution — the non-transactional form lost all rows).
+    try:
+        conn.executescript(
+            "BEGIN IMMEDIATE;\n"
+            "ALTER TABLE limit_orders RENAME TO limit_orders_old;\n"
+            + ORDERS_SCHEMA
+            + ";\n"
+            + """\
         INSERT INTO limit_orders (
             id, market_slug, market_condition_id, outcome, side,
             amount, remaining_amount, limit_price, order_type,
@@ -104,10 +113,17 @@ def _migrate_orders_schema_if_needed(conn: sqlite3.Connection) -> None:
                limit_price, order_type,
                expires_at, status, created_at, filled_at
         FROM limit_orders_old
+        ;
+        DROP TABLE limit_orders_old;
+        COMMIT;
         """
-    )
-    conn.execute("DROP TABLE limit_orders_old")
-    conn.commit()
+        )
+    except Exception:
+        try:
+            conn.execute("ROLLBACK")
+        except Exception:
+            pass  # no transaction open (failure before BEGIN took effect)
+        raise
 
 
 def create_order(
@@ -237,6 +253,15 @@ def expire_orders(conn: sqlite3.Connection) -> list[LimitOrder]:
             (now,),
         )
         conn.commit()
+        # Re-read: the pre-UPDATE rows would report their stale status
+        # (e.g. partially_filled) alongside action=expired (review finding).
+        rows = conn.execute(
+            """\
+            SELECT * FROM limit_orders
+            WHERE order_type = 'gtd' AND expires_at <= ? AND status = 'expired'
+            """,
+            (now,),
+        ).fetchall()
 
     return [_row_to_order(r) for r in rows]
 
