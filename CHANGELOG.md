@@ -2,7 +2,7 @@
 
 All notable changes to `polymarket-paper-trader` are documented here.
 
-## [Unreleased]
+## [0.3.4] - 2026-09-24
 
 ### Added
 - **Price history via Data API v2**: `PolymarketClient.get_price_history(token_id, *, interval, start, end, bucket_seconds, as_of, limit)` fetches an outcome token's historical price series from `GET https://data-api.polymarket.com/v2/prices-history`, returning oldest-first points (`timestamp`, `price`, `resolution_seconds`) with automatic cursor pagination (`pagination.next_cursor` followed until exhausted or `limit` reached; a replayed cursor is never re-followed). Exactly one window form per request: `interval` (`1m|1h|6h|1d|1w|max|all`), `start`/`end` epoch seconds (capped at 15 days), or `as_of`; `bucket_seconds` requests a specific grain and `resolution_seconds` on each point reports the grain actually served. Never cached, like all price data.
