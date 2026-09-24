@@ -14,8 +14,11 @@ from pm_trader.orders import (
     create_order,
     expire_orders,
     get_pending_orders,
+    get_reserved_buy_notional,
     init_orders_schema,
+    mark_filled,
     mark_partially_filled,
+    reject_order,
     should_fill,
     LimitOrder,
 )
@@ -102,6 +105,32 @@ class TestGetPendingOrders:
         assert pending[0].id == 1
         assert pending[0].status == "partially_filled"
         assert pending[0].remaining_amount == 40.0
+
+
+class TestReservedBuyNotional:
+    def test_empty_table_returns_zero(self, conn):
+        assert get_reserved_buy_notional(conn) == 0.0
+
+    def test_sums_open_buys(self, conn):
+        """pending 50 + partially_filled 30 -> 80.0 reserved."""
+        _create(conn, amount=50.0)
+        _create(conn, amount=100.0)
+        mark_partially_filled(conn, 2, 30.0)
+        assert get_reserved_buy_notional(conn) == pytest.approx(80.0)
+
+    def test_ignores_terminal_and_sells(self, conn):
+        """filled/cancelled/expired/rejected buys and open sells reserve 0."""
+        _create(conn, amount=10.0)
+        cancel_order(conn, 1)
+        _create(conn, amount=20.0)
+        mark_filled(conn, 2)
+        past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        _create(conn, amount=30.0, order_type="gtd", expires_at=past)
+        expire_orders(conn)
+        _create(conn, amount=40.0)
+        reject_order(conn, 4)
+        _create(conn, amount=50.0, side="sell")  # open sell: needs shares, not cash
+        assert get_reserved_buy_notional(conn) == 0.0
 
 
 class TestCancelOrder:

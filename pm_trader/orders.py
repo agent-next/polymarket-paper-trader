@@ -165,6 +165,24 @@ def get_pending_orders(conn: sqlite3.Connection) -> list[LimitOrder]:
     return [_row_to_order(r) for r in rows]
 
 
+def get_reserved_buy_notional(conn: sqlite3.Connection) -> float:
+    """Return the open buy orders' total remaining USD (the cash reserve).
+
+    A resting buy holds ``remaining_amount`` against the account's cash. No
+    separate reservation ledger is needed: cancel/expire/reject flip the
+    status and fills shrink ``remaining_amount``, so each row simply leaves
+    (or shrinks out of) this SUM as its lifecycle progresses.
+    """
+    row = conn.execute(
+        """\
+        SELECT COALESCE(SUM(remaining_amount), 0.0) AS reserved
+        FROM limit_orders
+        WHERE side = 'buy' AND status IN ('pending', 'partially_filled')
+        """
+    ).fetchone()
+    return float(row["reserved"])
+
+
 def get_order(conn: sqlite3.Connection, order_id: int) -> LimitOrder | None:
     """Return a specific order, or None."""
     return _get_order(conn, order_id)
