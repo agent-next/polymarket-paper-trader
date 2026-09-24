@@ -224,6 +224,7 @@ class FillResult:
     levels_filled: int
     is_partial: bool
     fills: list[Fill] = field(default_factory=list)
+    slippage_bps_midpoint: float = 0.0
 
 
 # ---------------------------------------------------------------------------

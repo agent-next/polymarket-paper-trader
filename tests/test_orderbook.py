@@ -11,6 +11,8 @@ import pytest
 
 from pm_trader.models import OrderBook, OrderBookLevel
 from pm_trader.orderbook import (
+    _best_ask,
+    _best_bid,
     calculate_fee,
     calculate_fee_schedule,
     simulate_buy_fill,
@@ -212,28 +214,33 @@ class TestBuyEmptyBook:
 
 
 class TestBuySlippageCalculation:
-    """Verify slippage_bps is correct relative to midpoint."""
+    """Verify slippage metrics vs best quote and midpoint."""
 
     def test_single_level_slippage(self, multi_level_book: OrderBook) -> None:
-        # Midpoint = (0.64 + 0.66) / 2 = 0.65
-        # Single-level fill at 0.66 -> slippage = (0.66 - 0.65) / 0.65 * 10000
-        # = 0.01 / 0.65 * 10000 = 153.846...
+        # $50 fills entirely at best ask 0.66 (level size 80).
+        # slippage_bps is vs the touch: (0.66 - 0.66) / 0.66 * 10000 = 0
+        # slippage_bps_midpoint keeps the old midpoint basis:
+        # midpoint = (0.64 + 0.66) / 2 = 0.65 -> (0.66 - 0.65) / 0.65 * 10000
         result = simulate_buy_fill(multi_level_book, 50.0, fee_rate_bps=0)
 
+        assert result.slippage_bps == pytest.approx(0.0)
+
         midpoint = 0.65
-        expected_slippage = (0.66 - midpoint) / midpoint * 10_000
-        assert result.slippage_bps == pytest.approx(expected_slippage)
+        expected_midpoint = (0.66 - midpoint) / midpoint * 10_000
+        assert result.slippage_bps_midpoint == pytest.approx(expected_midpoint)
+        assert result.slippage_bps_midpoint > 0
 
     def test_multi_level_slippage(self, multi_level_book: OrderBook) -> None:
         # $100 buy: avg_price = 100 / (80 + 47.20/0.67) = 0.66468...
-        # Midpoint = 0.65
-        # slippage = (avg_price - 0.65) / 0.65 * 10000
+        # Best ask = 0.66, midpoint = 0.65 -> the two metrics must differ.
         result = simulate_buy_fill(multi_level_book, 100.0, fee_rate_bps=0)
 
-        midpoint = 0.65
-        expected_slippage = (result.avg_price - midpoint) / midpoint * 10_000
-        assert result.slippage_bps == pytest.approx(expected_slippage)
+        expected_quote = (result.avg_price - 0.66) / 0.66 * 10_000
+        expected_midpoint = (result.avg_price - 0.65) / 0.65 * 10_000
+        assert result.slippage_bps == pytest.approx(expected_quote)
+        assert result.slippage_bps_midpoint == pytest.approx(expected_midpoint)
         assert result.slippage_bps > 0  # buying pushes price up
+        assert result.slippage_bps < result.slippage_bps_midpoint
 
 
 # =========================================================================
@@ -299,14 +306,22 @@ class TestSellMultiLevelFill:
         assert result.fills[1].shares == pytest.approx(50.0)
         assert result.fills[1].cost == pytest.approx(31.50)
 
-    def test_sell_slippage_is_negative(self, multi_level_book: OrderBook) -> None:
-        # Selling below midpoint (0.65) means negative slippage
+    def test_sell_slippage_vs_quote_and_midpoint(
+        self, multi_level_book: OrderBook,
+    ) -> None:
+        # Sell 200 shares -> avg 0.6375, best_bid 0.64, midpoint 0.65.
+        # slippage_bps vs the touch: (0.64 - 0.6375) / 0.64 * 10000 = +39.0625
+        # (positive = worse than the touch on both sides).
+        # slippage_bps_midpoint keeps the old basis and stays negative.
         result = simulate_sell_fill(multi_level_book, 200.0, fee_rate_bps=0)
 
-        midpoint = 0.65
-        expected_slippage = (0.6375 - midpoint) / midpoint * 10_000
-        assert result.slippage_bps == pytest.approx(expected_slippage)
-        assert result.slippage_bps < 0  # selling pushes price down
+        expected_quote = (0.64 - 0.6375) / 0.64 * 10_000
+        assert result.slippage_bps == pytest.approx(expected_quote)
+        assert result.slippage_bps > 0
+
+        expected_midpoint = (0.6375 - 0.65) / 0.65 * 10_000
+        assert result.slippage_bps_midpoint == pytest.approx(expected_midpoint)
+        assert result.slippage_bps_midpoint < 0
 
 
 class TestSellFokInsufficientLiquidity:
@@ -733,8 +748,9 @@ class TestBidsOnlyBook:
         result = simulate_sell_fill(book, 50.0, fee_rate_bps=0)
         assert result.filled is True
         assert result.total_shares == pytest.approx(50.0)
-        # Slippage is 0.0 because no midpoint can be calculated
+        # Slippage is 0.0: filled at the touch and no midpoint can be calculated
         assert result.slippage_bps == pytest.approx(0.0)
+        assert result.slippage_bps_midpoint == pytest.approx(0.0)
 
 
 class TestAsksOnlyBook:
@@ -756,7 +772,97 @@ class TestAsksOnlyBook:
         result = simulate_buy_fill(book, 50.0, fee_rate_bps=0)
         assert result.filled is True
         assert result.total_shares == pytest.approx(50.0 / 0.66)
-        # Slippage is 0.0 because no midpoint can be calculated
+        # Slippage is 0.0: filled at the touch and no midpoint can be calculated
+        assert result.slippage_bps == pytest.approx(0.0)
+        assert result.slippage_bps_midpoint == pytest.approx(0.0)
+
+
+class TestBestQuoteHelpers:
+    """_best_ask / _best_bid return the touch price or None on empty sides."""
+
+    def test_best_ask_empty(self) -> None:
+        assert _best_ask(OrderBook(asks=[], bids=[])) is None
+
+    def test_best_bid_empty(self) -> None:
+        assert _best_bid(OrderBook(bids=[], asks=[])) is None
+
+    def test_best_ask_is_lowest(self) -> None:
+        book = OrderBook(
+            bids=[],
+            asks=[
+                OrderBookLevel(price=0.70, size=100.0),
+                OrderBookLevel(price=0.60, size=50.0),
+                OrderBookLevel(price=0.65, size=80.0),
+            ],
+        )
+        assert _best_ask(book) == pytest.approx(0.60)
+
+    def test_best_bid_is_highest(self) -> None:
+        book = OrderBook(
+            bids=[
+                OrderBookLevel(price=0.60, size=100.0),
+                OrderBookLevel(price=0.64, size=50.0),
+                OrderBookLevel(price=0.62, size=80.0),
+            ],
+            asks=[],
+        )
+        assert _best_bid(book) == pytest.approx(0.64)
+
+
+class TestSlippageQuoteVsMidpointDivergence:
+    """The two metrics must diverge when book shape is asymmetric."""
+
+    def test_asymmetric_book_buy(self) -> None:
+        # Crossed book is intentional: best ask 0.60 sits below the lone bid
+        # 0.70, giving midpoint = (0.70 + 0.60) / 2 = 0.65 exactly.
+        # $65 consumes both ask levels fully (50*0.60 + 50*0.70 = 65),
+        # avg_price = 0.65.
+        book = OrderBook(
+            bids=[OrderBookLevel(price=0.70, size=100.0)],
+            asks=[
+                OrderBookLevel(price=0.60, size=50.0),
+                OrderBookLevel(price=0.70, size=50.0),
+            ],
+        )
+        result = simulate_buy_fill(book, 65.0, fee_rate_bps=0)
+
+        assert result.filled is True
+        assert result.avg_price == pytest.approx(0.65)
+        # vs touch: (0.65 - 0.60) / 0.60 * 10000 = 833.33...
+        assert result.slippage_bps == pytest.approx(
+            (0.65 - 0.60) / 0.60 * 10_000
+        )
+        # vs midpoint: (0.65 - 0.65) / 0.65 * 10000 = 0 (float noise ~1e-12)
+        assert result.slippage_bps_midpoint == pytest.approx(0.0, abs=1e-9)
+        # The metrics MUST differ on this book.
+        assert result.slippage_bps != pytest.approx(result.slippage_bps_midpoint)
+
+
+class TestZeroPriceSlippageEdges:
+    """A zero-price touch falls back to 0.0 quote slippage."""
+
+    def test_buy_zero_price_ask(self) -> None:
+        # Ask priced at 0.0 costs nothing; FAK fills it, then best_ask=0.0
+        # is falsy -> the else branch sets slippage_bps = 0.0.
+        book = OrderBook(
+            bids=[OrderBookLevel(price=0.01, size=100.0)],
+            asks=[OrderBookLevel(price=0.0, size=50.0)],
+        )
+        result = simulate_buy_fill(book, 1.0, fee_rate_bps=0, order_type="fak")
+
+        assert result.is_partial is True
+        assert result.slippage_bps == pytest.approx(0.0)
+
+    def test_sell_zero_price_bid(self) -> None:
+        # Bid priced at 0.0: the fill proceeds but best_bid=0.0 is falsy
+        # -> the else branch sets slippage_bps = 0.0.
+        book = OrderBook(
+            bids=[OrderBookLevel(price=0.0, size=100.0)],
+            asks=[OrderBookLevel(price=0.99, size=100.0)],
+        )
+        result = simulate_sell_fill(book, 50.0, fee_rate_bps=0)
+
+        assert result.filled is True
         assert result.slippage_bps == pytest.approx(0.0)
 
 
