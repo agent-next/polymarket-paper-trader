@@ -2,7 +2,7 @@
 
 All notable changes to `polymarket-paper-trader` are documented here.
 
-## [Unreleased]
+## [0.3.2] - 2026-09-24
 
 ### Added
 - **Cash reservation for open buy limit orders.** A resting buy holds its `remaining_amount` against cash: `place_limit_order` (buy side) now rejects with `INSUFFICIENT_BALANCE` when `amount` plus a conservative fee upper bound exceeds `available_cash` (cash minus all open buys' `remaining_amount`), checked after tick validation and before any order row is created. The fee bound is `amount × feeSchedule.rate` on schedule markets (the worst case of the official curve for a USD-sized buy: `fee = C·rate·p·(1-p) = amount·rate·(1-p)`, maximized as `p → 0`) and `(bps/10_000) × 0.5 × amount` floored at `0.0001` on legacy-fee markets; zero-fee markets bound to 0, so the gate degenerates to the pure notional. Cancel, expire, fill, and partial fill release or shrink the reservation automatically via the order lifecycle — no separate ledger. Previously a $1M resting buy could be placed on a $10k account.
