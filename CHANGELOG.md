@@ -10,6 +10,8 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ### Fixed
 - **Gamma string booleans parsed as `True`**: `active`, `closed`, `acceptingOrders`, and `negRisk` arrive as strings (`"false"`) from the live Gamma API; `bool("false")` is `True`, so a market reporting `active="false"` passed the old closed-only gate. Parsing is now string-aware (`_to_bool`), case-insensitive, with `None` falling back to the caller default. `Market` gains `accepting_orders` (default `True`) and `neg_risk` (default `False`), exposed additively on the MCP wire payloads.
+- **Win rate now uses FIFO lot accounting.** A sell's realized entry cost is drawn from the oldest open lots in that (market, outcome) at a fee-inclusive `cost_per_share = (amount_usd + fee) / shares`, matched in chronological order — replacing the fee-exclusive weighted-average entry.
+- **Sharpe ratio and max drawdown now run on a daily equity curve** — cash plus open positions marked at their last traded price — computed for every calendar day from first to last trade, with zero-trade days carried forward. Replaces the per-trade cashflow / traded-days-only series; risk-free rate stays 0.
 
 ## [0.3.0] - 2026-09-23
 
