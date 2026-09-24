@@ -2,7 +2,7 @@
 
 All notable changes to `polymarket-paper-trader` are documented here.
 
-## [Unreleased]
+## [0.3.1] - 2026-09-24
 
 ### Changed
 - **Tradability gates**: `buy`, `sell`, and `place_limit_order` now reject markets that are closed, not active, or not accepting orders (`check_orders` permanently rejects resting orders in such markets instead of retrying them forever). Limit prices are validated against the market's tick size (`TICK_SIZE_VIOLATION`) before any order row is created; markets reporting no tick size fall back to the cached CLOB `/tick-size` endpoint. `sell` now enforces the $1 minimum gross notional (shares × best bid).
