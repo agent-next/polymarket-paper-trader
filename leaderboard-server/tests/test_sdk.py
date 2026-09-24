@@ -1,4 +1,4 @@
-"""Test SDK Agent class against real server."""
+"""Test pm_leaderboard_client Agent against real server."""
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -6,8 +6,8 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from sdk import Agent
-from sdk.client import AgentError
+from pm_leaderboard_client import Agent
+from pm_leaderboard_client import AgentError
 from server.app import app
 from tests.conftest import MockPolymarketClient
 

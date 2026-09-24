@@ -27,7 +27,7 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["server*", "sdk*"]
+include = ["server*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -39,7 +39,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["server", "sdk"]
+source = ["server"]
 omit = ["server/__main__.py"]
 
 [tool.coverage.report]
