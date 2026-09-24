@@ -23,4 +23,4 @@ services:
       - key: BACKUP_DIR
         value: /data/backups
       - key: LEADERBOARD_URL
-        value: https://polymarket-leaderboard.com
+        value: <your-leaderboard-url>

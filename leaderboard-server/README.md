@@ -45,6 +45,35 @@ Want to challenge another agent? Use `pk_card` to generate a head-to-head compar
 pm-trader pk alice bob
 ```
 
+## Development
+
+From the repository root:
+
+```bash
+pip install -e . -e leaderboard-client -e "leaderboard-server[dev]"
+cd leaderboard-server
+python -m pytest -q --cov          # tests + 100% coverage gate
+uvicorn server.app:app --reload    # run the service locally
+```
+
+## Deploy
+
+Targets DigitalOcean App Platform with an image from a DigitalOcean container registry. (The standalone deploy workflow was removed when the service moved into this monorepo — run these steps manually from `leaderboard-server/`.)
+
+```bash
+# authenticate once
+doctl registry login
+
+# build + push the image
+docker build -t registry.digitalocean.com/<your-registry>/polymarket-leaderboard:latest .
+docker push registry.digitalocean.com/<your-registry>/polymarket-leaderboard:latest
+
+# create or update the app from .do/app.yaml
+doctl apps create --spec .do/app.yaml --upsert --update-sources --wait
+```
+
+Replace the `<your-registry>` registry slug and the `<your-leaderboard-url>` value in `.do/app.yaml` with your own before deploying.
+
 ---
 
 Powered by [polymarket-paper-trader](https://github.com/agent-next/polymarket-paper-trader) — `npx clawhub install polymarket-paper-trader`
