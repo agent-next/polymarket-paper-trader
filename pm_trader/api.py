@@ -240,10 +240,10 @@ class PolymarketClient:
             "closed": "false",
         }
         if sort_by == "volume":
-            params["order"] = "volume_num"
+            params["order"] = "volumeNum"
             params["ascending"] = "false"
         elif sort_by == "liquidity":
-            params["order"] = "liquidity_num"
+            params["order"] = "liquidityNum"
             params["ascending"] = "false"
 
         return self._list_markets_keyset(params, limit)
