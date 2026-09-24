@@ -107,7 +107,7 @@ def init_account(balance: float = 10_000.0, account: str = "default") -> str:
 
 @mcp.tool()
 def get_balance(account: str = "default") -> str:
-    """Get current account balance, positions value, and P&L."""
+    """Get current account balance (cash, reserved/available cash), positions value, and P&L."""
     try:
         engine = _get_engine(account)
         bal = engine.get_balance()

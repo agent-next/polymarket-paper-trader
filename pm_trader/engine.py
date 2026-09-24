@@ -492,12 +492,20 @@ class Engine:
         return max(0.0, self._require_account().cash - self._reserved_buy_notional())
 
     def get_balance(self) -> dict:
-        """Return cash, positions value, and total account value."""
+        """Return cash, reserved/available cash, positions value, and total.
+
+        ``reserved_cash`` is the notional held by open buy limit orders; it is
+        a SUBSET of ``cash``, not a separate pool — ``total_value`` and
+        ``pnl`` are unchanged by it.
+        """
         account = self._require_account()
         portfolio = self.get_portfolio()
         positions_value = sum(p["current_value"] for p in portfolio)
+        reserved = self._reserved_buy_notional()
         return {
             "cash": account.cash,
+            "reserved_cash": reserved,
+            "available_cash": max(0.0, account.cash - reserved),
             "starting_balance": account.starting_balance,
             "positions_value": positions_value,
             "total_value": account.cash + positions_value,

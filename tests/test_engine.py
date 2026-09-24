@@ -1520,3 +1520,79 @@ class TestEstimateBuyFee:
         assert actions[second["id"]] == "rejected"
         rejected = next(r for r in results if r["order"]["id"] == second["id"])
         assert "Insufficient balance" in rejected["reason"]
+
+
+# ---------------------------------------------------------------------------
+# Balance surface: reserved / available cash
+# ---------------------------------------------------------------------------
+
+
+class TestBalanceReservedKeys:
+    def test_balance_reports_reserved_and_available(
+        self, initialized_engine: Engine,
+    ):
+        _mock_api(initialized_engine)  # zero-fee market
+
+        clean = initialized_engine.get_balance()
+        assert clean["reserved_cash"] == 0.0
+        assert clean["available_cash"] == pytest.approx(clean["cash"])
+
+        initialized_engine.place_limit_order("btc", "yes", "buy", 100.0, 0.55)
+        bal = initialized_engine.get_balance()
+        assert bal["reserved_cash"] == pytest.approx(100.0)
+        assert bal["available_cash"] == pytest.approx(bal["cash"] - 100.0)
+        # Reserved cash is a subset of cash: total_value and pnl are unchanged
+        assert bal["total_value"] == pytest.approx(
+            bal["cash"] + bal["positions_value"]
+        )
+        assert bal["pnl"] == pytest.approx(
+            bal["total_value"] - bal["starting_balance"]
+        )
+
+    def test_partial_fill_re_reserves_remainder(self, initialized_engine: Engine):
+        """After a partial fill only the resting remainder stays reserved."""
+        _mock_api(initialized_engine)
+        initialized_engine.place_limit_order("btc", "yes", "buy", 100.0, 0.55)
+
+        # Only $40 of ask depth within the limit (0.50 x 80 shares)
+        initialized_engine.api.get_order_book = MagicMock(
+            return_value=_make_book(bids=[(0.64, 500)], asks=[(0.50, 80)])
+        )
+        results = initialized_engine.check_orders()
+        assert [r["action"] for r in results] == ["partially_filled"]
+
+        bal = initialized_engine.get_balance()
+        assert bal["reserved_cash"] == pytest.approx(60.0)
+
+    def test_marketable_full_fill_leaves_no_reservation(
+        self, initialized_engine: Engine,
+    ):
+        _mock_api(initialized_engine)  # zero-fee market
+        cash_before = initialized_engine.get_account().cash
+
+        placed = initialized_engine.place_limit_order(
+            "btc", "yes", "buy", 100.0, 0.70,  # crosses (ask 0.66): fills now
+        )
+        assert placed["status"] == "filled"
+
+        bal = initialized_engine.get_balance()
+        assert bal["reserved_cash"] == 0.0
+        assert bal["cash"] == pytest.approx(cash_before - 100.0)
+
+    def test_marketable_partial_fill_reserves_remainder(
+        self, initialized_engine: Engine,
+    ):
+        """A crossing buy that only partly fills reserves what still rests."""
+        _mock_api(initialized_engine)
+        # $33 of ask depth (0.66 x 50) under a 0.70 limit
+        initialized_engine.api.get_order_book = MagicMock(
+            return_value=_make_book(bids=[(0.64, 500)], asks=[(0.66, 50)])
+        )
+
+        placed = initialized_engine.place_limit_order(
+            "btc", "yes", "buy", 100.0, 0.70,
+        )
+        assert placed["status"] == "partially_filled"
+
+        bal = initialized_engine.get_balance()
+        assert bal["reserved_cash"] == pytest.approx(67.0)

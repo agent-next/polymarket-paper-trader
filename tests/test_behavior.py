@@ -1026,3 +1026,63 @@ class TestGTDExpiryTiming:
         expired = [r for r in results if r["action"] == "expired"]
         assert len(expired) == 0
         assert len(acct.get_pending_orders()) == 1
+
+
+# ---------------------------------------------------------------------------
+# Scenario 17: Cash reservation workflow
+# ---------------------------------------------------------------------------
+
+
+class TestCashReservationWorkflow:
+    """An agent cannot overcommit cash with resting buys, and a balance read
+    shows what is locked."""
+
+    def test_overcommit_workflow(self, acct):
+        """place ok buy -> overcommit rejected -> cancel releases -> retry ok,
+        with the balance keys visible at every step."""
+        _mock(acct, book=_book(asks=[(0.66, 5000)], bids=[(0.64, 5000)]))
+        acct.db.update_cash(100.0)  # craft a small account
+
+        # 1. A 60 USD resting buy is affordable and reserves its notional
+        placed = acct.place_limit_order("test-market", "yes", "buy", 60.0, 0.55)
+        assert placed["status"] == "pending"
+        bal = acct.get_balance()
+        assert bal["reserved_cash"] == pytest.approx(60.0)
+        assert bal["available_cash"] == pytest.approx(40.0)
+
+        # 2. A second 60 USD buy overcommits the 40 remaining: rejected, no row
+        with pytest.raises(InsufficientBalanceError):
+            acct.place_limit_order("test-market", "yes", "buy", 60.0, 0.50)
+        assert len(acct.get_pending_orders()) == 1
+
+        # 3. Cancelling releases the reservation
+        assert acct.cancel_limit_order(placed["id"]) is not None
+        bal = acct.get_balance()
+        assert bal["reserved_cash"] == pytest.approx(0.0)
+        assert bal["available_cash"] == pytest.approx(100.0)
+
+        # 4. The previously rejected placement now succeeds
+        retried = acct.place_limit_order("test-market", "yes", "buy", 60.0, 0.50)
+        assert retried["status"] == "pending"
+        bal = acct.get_balance()
+        assert bal["reserved_cash"] == pytest.approx(60.0)
+        assert bal["available_cash"] == pytest.approx(40.0)
+
+    def test_stats_not_double_counting_reserved_cash(self, acct):
+        """Reserved cash is a subset of cash: analytics totals are unchanged
+        while orders rest (compute_stats keeps cash + positions_value)."""
+        from pm_trader.analytics import compute_stats
+
+        _mock(acct, book=_book(asks=[(0.66, 5000)], bids=[(0.64, 5000)]))
+        acct.place_limit_order("test-market", "yes", "buy", 100.0, 0.55)
+
+        account = acct.get_account()
+        positions_value = sum(
+            p["current_value"] for p in acct.get_portfolio()
+        )
+        stats = compute_stats(acct.db.get_trades(limit=1000), account, positions_value)
+        assert stats["total_value"] == pytest.approx(account.cash + positions_value)
+        assert stats["pnl"] == pytest.approx(
+            account.cash + positions_value - account.starting_balance
+        )
+        assert stats["total_trades"] == 0  # a resting order is not a trade
