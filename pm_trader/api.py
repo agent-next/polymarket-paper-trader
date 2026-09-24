@@ -381,7 +381,7 @@ def _parse_clob_market(data: dict) -> Market:
         accepting_orders=_to_bool(data.get("accepting_orders", True)),
         neg_risk=_to_bool(data.get("neg_risk", False)),
         end_date=data.get("end_date_iso", ""),
-        tick_size=float(data.get("mts", data.get("minimum_tick_size", 0.01)) or 0.01),
+        tick_size=float(data.get("mts", data.get("minimum_tick_size")) or 0),
         min_order_size=float(data.get("mos", 0) or 0),
         maker_base_fee_bps=int(data.get("mbf", 0) or 0),
         taker_base_fee_bps=int(data.get("tbf", 0) or 0),
@@ -461,10 +461,13 @@ def _parse_market(data: dict) -> Market:
             return val.lower() == "true"
         return bool(val)
 
-    # tick size: Gamma uses orderPriceMinTickSize
+    # tick size: Gamma uses orderPriceMinTickSize. Absent/0/None stays 0.0 —
+    # "always read the active value from the market": place_limit_order then
+    # consults the CLOB /tick-size endpoint instead of assuming 0.01
+    # (coercing to a default here made that fallback unreachable — review finding).
     tick_size_raw = data.get("orderPriceMinTickSize",
-                             data.get("minimum_tick_size", 0.01))
-    tick_size = float(tick_size_raw) if tick_size_raw else 0.01
+                             data.get("minimum_tick_size"))
+    tick_size = float(tick_size_raw) if tick_size_raw else 0.0
 
     # feeSchedule: nested fee metadata (rate is a coefficient, not bps)
     fs_raw = data.get("feeSchedule")

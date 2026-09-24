@@ -184,7 +184,7 @@ class TestParseMarket:
         assert market.slug == ""
         assert market.volume == 0.0
         assert market.outcome_prices == [0.0, 0.0]
-        assert market.tick_size == 0.01
+        assert market.tick_size == 0.0  # absent -> 0.0; placement consults CLOB /tick-size
         assert market.accepting_orders is True
         assert market.neg_risk is False
 
@@ -298,7 +298,7 @@ class TestParseClobMarket:
 
     def test_abbreviated_missing_optional_fields_default(self):
         market = _parse_clob_market({"c": "0x1", "t": [{"t": "tok", "o": "Yes"}]})
-        assert market.tick_size == 0.01
+        assert market.tick_size == 0.0  # absent -> 0.0; placement consults CLOB /tick-size
         assert market.min_order_size == 0.0
         assert market.maker_base_fee_bps == 0
         assert market.taker_base_fee_bps == 0

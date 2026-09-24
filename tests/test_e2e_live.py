@@ -552,7 +552,9 @@ class TestFeeSimulation:
             best_bid = max((lvl.price for lvl in book.bids), default=0.0)
             if best_bid <= 0:
                 pytest.skip("No valid best bid for sell")
-            min_sell_qty = 1.0 / best_bid  # MIN_ORDER_USD == 1.0
+            # MIN_ORDER_USD == 1.0; the (1 + 1e-6) nudge clears float noise —
+            # (1/0.09)*0.09 is 0.99999... and the engine gate is strict (<)
+            min_sell_qty = (1.0 / best_bid) * (1 + 1e-6)
             if pos.shares < min_sell_qty:
                 pytest.skip("Position too small to satisfy minimum sell notional")
             target_qty = min(pos.shares / 4, 5.0)
