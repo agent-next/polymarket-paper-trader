@@ -376,3 +376,17 @@ class TestOrdersMigrationAtomicity:
 
         with pytest.raises(sqlite3.IntegrityError):
             _migrate_orders_schema_if_needed(NoRollbackConn(c))
+
+    def test_expire_reread_only_touched_rows(self, conn):
+        """A second expire_orders call must not re-report previously expired
+        GTDs as newly expired (review finding: predicate re-read was wider
+        than the UPDATE)."""
+        past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        _create(conn, order_type="gtd", expires_at=past)
+        first = expire_orders(conn)
+        assert [o.id for o in first] == [1]
+
+        _create(conn, order_type="gtd", expires_at=past)  # id 2, also past
+        second = expire_orders(conn)
+        assert [o.id for o in second] == [2]
+        assert all(o.status == "expired" for o in second)

@@ -253,14 +253,15 @@ def expire_orders(conn: sqlite3.Connection) -> list[LimitOrder]:
             (now,),
         )
         conn.commit()
-        # Re-read: the pre-UPDATE rows would report their stale status
-        # (e.g. partially_filled) alongside action=expired (review finding).
+        # Re-read ONLY the rows this UPDATE touched: the pre-UPDATE rows would
+        # report a stale status, and re-reading by predicate would also drag in
+        # every PREVIOUSLY expired GTD again (duplicate action=expired events
+        # on every call — review finding).
+        ids = [r["id"] for r in rows]
+        placeholders = ",".join("?" * len(ids))
         rows = conn.execute(
-            """\
-            SELECT * FROM limit_orders
-            WHERE order_type = 'gtd' AND expires_at <= ? AND status = 'expired'
-            """,
-            (now,),
+            f"SELECT * FROM limit_orders WHERE id IN ({placeholders})",
+            ids,
         ).fetchall()
 
     return [_row_to_order(r) for r in rows]
