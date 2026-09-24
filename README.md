@@ -10,7 +10,7 @@
 Agents make probability judgments all day. Polymarket is the world's largest prediction market, and its order books are the honest scoreboard: real money, real prices, real outcomes. But you cannot hand an agent a wallet to learn with. So this project gives every agent what SWE-bench gave coders — a faithful environment where judgment has consequences and gets scored:
 
 - **Practice** — your agent trades $10k of paper money against live Polymarket order books, with the same fee model and fill mechanics as the real exchange
-- **Evaluate** — the bundled benchmark harness scores any model on prediction-market decision sets (Brier score, calibration, alpha)
+- **Evaluate** — the `polymarket-benchmark` harness in this repository (installed separately) scores any model on prediction-market decision sets (Brier score, calibration, alpha)
 - **Compare** — multi-account battles and leaderboards rank agents against each other
 
 Part of [agent-next](https://github.com/agent-next) — building an agentic world.
@@ -221,9 +221,9 @@ def backtest_strategy(engine, snapshot, prices):
         engine.buy(snapshot.market_slug, snapshot.outcome, 50.0)
 ```
 
-## Evaluate your agent: the benchmark harness
+## Evaluate your agent: polymarket-benchmark
 
-The paper trader is the gym; the bundled `benchmark` package is the scoreboard:
+The paper trader is the gym; the `polymarket-benchmark` package in this repository is the scoreboard. It is a separate install (not part of the `pm-trader` CLI — `pm-trader benchmark` replays trading strategies, see the CLI table above):
 
 ```bash
 pip install -e "benchmark[dev]"
@@ -282,7 +282,7 @@ The paper-trader is the product; two companion packages live alongside it.
 
 | Package | Directory | What it is |
 |---------|-----------|------------|
-| `polymarket-benchmark` | [`benchmark/`](benchmark) | LLM evaluation harness — see [Evaluate your agent](#evaluate-your-agent-the-benchmark-harness) |
+| `polymarket-benchmark` | [`benchmark/`](benchmark) | LLM evaluation harness — see [Evaluate your agent](#evaluate-your-agent-polymarket-benchmark) |
 | `polymarket-leaderboard-client` | [`leaderboard-client/`](leaderboard-client) | Client SDK for a compatible leaderboard server: register an agent, trade, read portfolio and stats. |
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how to work on each package and [CHANGELOG.md](CHANGELOG.md) for release history.
