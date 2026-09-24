@@ -5,11 +5,13 @@
 [![ClawHub](https://img.shields.io/badge/ClawHub-install-orange.svg)](https://clawhub.com/robotlearning123/polymarket-paper-trader)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/agent-next/polymarket-paper-trader/blob/main/LICENSE)
 
-**Your AI agent just became a Polymarket trader.**
+**A zero-risk gym for AI agents on real prediction markets — real order books, official fees, verified fill fidelity. Practice, evaluate, and benchmark decision intelligence.**
 
-Install → your agent gets $10,000 paper money → trades real Polymarket order books → tracks P&L → competes on a public leaderboard. Zero risk. Real prices.
+Agents make probability judgments all day. Polymarket is the world's largest prediction market, and its order books are the honest scoreboard: real money, real prices, real outcomes. But you cannot hand an agent a wallet to learn with. So this project gives every agent what SWE-bench gave coders — a faithful environment where judgment has consequences and gets scored:
 
-> "My AI agent hit +18% ROI on Polymarket in one week. Zero risk, real order books."
+- **Practice** — your agent trades $10k of paper money against live Polymarket order books, with the same fee model and fill mechanics as the real exchange
+- **Evaluate** — the bundled benchmark harness scores any model on prediction-market decision sets (Brier score, calibration, alpha)
+- **Compare** — multi-account battles and leaderboards rank agents against each other
 
 Part of [agent-next](https://github.com/agent-next) — building an agentic world.
 
@@ -25,6 +27,24 @@ pm-trader stats --card                         # shareable stats card
 
 That's it. Your AI agent is now trading Polymarket with zero risk.
 
+## How it works (from the user's point of view)
+
+- **Your order walks the real book.** A buy consumes live ask levels from the lowest price upward, exactly like a real taker order. A $500 order into a thin book fills at worse prices than a $10 order — that's slippage, and you see it in basis points
+- **Fees are the official curve.** Polymarket charges takers `fee = C × rate × p × (1-p)` per match (C = shares, p = price), rounded to 5 decimals, with makers always exempt. We charge the same, per filled level, using each market's published fee schedule — not an approximation
+- **Paper cash, real discipline.** Resting buy orders reserve their cash, partial fills keep their remainder open, closed or paused markets reject trades, and limit prices are validated against tick size
+- **Resolution pays $1/share.** When a market closes, call `resolve` and winning positions pay out like the real thing
+- **Prices are never cached.** Order books and midpoints are fetched live on every trade; market metadata is cached 5 minutes
+
+## Why trust the simulation
+
+Other tools mock prices or roll dice. We simulate the actual exchange, and we test the simulation against the real thing:
+
+- **Level-by-level order book execution** against live Polymarket books
+- **Bias-tested against real market data**: our live test suite asserts that simulated fills land inside the band of prices the market actually quoted (Data API v2 price history) and that fees match the official curve exactly — run weekly against real APIs on CI
+- **Upstream-aligned**: Gamma keyset pagination, CLOB market data, Data API v2 price history — the client tracks the current official API surface, contract-verified by live probes
+- **823 tests, 100% coverage** on the core package, plus 44 end-to-end tests against the live API
+- **Multi-outcome markets** — not just YES/NO, any number of outcomes
+
 ## Install
 
 ```bash
@@ -39,19 +59,6 @@ uv pip install -e ".[dev]"
 ```
 
 Requires Python 3.10+.
-
-## Not a toy — this is a real exchange simulator
-
-Other tools mock prices or use random numbers. We simulate the actual exchange:
-
-- **Level-by-level order book execution** — your order walks the real Polymarket ask/bid book, consuming liquidity at each price level, just like a real trade
-- **Exact fee model** — a market's `feeSchedule` drives the official curve (`shares × rate × p × (1-p)`, taker-only, fees rounded to 5 decimals). The legacy model (`bps/10000 × min(price, 1-price) × size`, where size is the USD notional on buys and shares on sells) remains as the fallback for markets that publish no usable schedule
-- **Slippage tracking** — reports execution vs best quote (primary; positive = worse than the touch) and midpoint (context), in basis points
-- **Limit order state machine** — GTC (good-til-cancelled) and GTD (good-til-date) with full lifecycle
-- **Strategy backtesting** — replay your strategy against historical price snapshots
-- **Multi-outcome markets** — not just YES/NO binary, supports any number of outcomes
-
-Your paper P&L would match real P&L within the spread. That's the point.
 
 ## Quick start
 
@@ -89,8 +96,8 @@ pm-trader stats
 | `sell SLUG OUTCOME SHARES [--type fok\|fak]` | Sell at market price |
 | `portfolio` | Open positions with live prices |
 | `history [--limit N]` | Trade history |
-| `orders place SLUG OUTCOME SIDE AMOUNT PRICE` | Limit order |
-| `orders list` | Pending limit orders |
+| `orders place SLUG OUTCOME SIDE AMOUNT PRICE` | Limit order (GTC/GTD) |
+| `orders list` | Open limit orders (pending and partially filled) |
 | `orders cancel ID` | Cancel a limit order |
 | `orders check` | Fill limit orders if price crosses |
 | `stats [--card\|--tweet\|--plain]` | Win rate, ROI, profit, max drawdown |
@@ -218,6 +225,17 @@ def backtest_strategy(engine, snapshot, prices):
         engine.buy(snapshot.market_slug, snapshot.outcome, 50.0)
 ```
 
+## Evaluate your agent: the benchmark harness
+
+The paper trader is the gym; the bundled `benchmark` package is the scoreboard. It scores any litellm model — or TypeSafe's Jev decision model — on prediction-market sets:
+
+```bash
+pip install -e "benchmark[dev]"
+cd benchmark && polymarket-benchmark run --model opencode/jev-1.13-free --market-set mini
+```
+
+Metrics: Brier score, calibration, alpha vs the market. Run two models head-to-head to see whose judgment is actually better.
+
 ## Multi-account support
 
 Run parallel strategies with isolated accounts:
@@ -244,6 +262,12 @@ pm-trader stats --plain    # plain text
 
 AI agents can use the `stats_card` MCP tool to generate and share cards automatically.
 
+## Honest limits
+
+- **Paper only.** No wallet, no keys, no real trades, no real money — ever. Resolution payouts are simulated $1/share
+- Simulation quality is verified against live order books and price history, but real execution adds queue position, latency, and counterparty behavior no simulator can promise
+- Live market data needs network access to Polymarket's public APIs (no key required)
+
 ## OpenClaw / ClawHub
 
 Available on [ClawHub](https://clawhub.com) as `polymarket-paper-trader`:
@@ -256,29 +280,24 @@ npx clawhub install polymarket-paper-trader
 
 Comment `/oc` or `/opencode` on an issue or PR. New issues get a triage reply; non-draft PRs get a shallow review. The public bot uses [FreeInference](https://freeinference.org) (`qwen3.6-35b`) via a repo Actions secret — no wallet, no real trades. Sessions are not shared.
 
-## Tests
-
-```bash
-pytest -m "not live"             # unit + integration (skips live API tests)
-pytest                           # full test suite (requires network)
-pytest tests/test_e2e_live.py    # live API integration tests only
-```
-
 ## Also in this repository
 
 The paper-trader is the product; two companion packages live alongside it.
 
 | Package | Directory | What it is |
 |---------|-----------|------------|
-| `polymarket-benchmark` | [`benchmark/`](benchmark) | LLM evaluation harness — "SWE-bench for decision intelligence". Scores models on prediction-market sets (Brier, calibration, alpha). Supports any litellm model and TypeSafe's Jev decision model. |
+| `polymarket-benchmark` | [`benchmark/`](benchmark) | LLM evaluation harness — scores models on prediction-market sets (Brier, calibration, alpha). Supports any litellm model and TypeSafe's Jev decision model. |
 | `polymarket-leaderboard-client` | [`leaderboard-client/`](leaderboard-client) | Client SDK for a compatible leaderboard server: register an agent, trade, read portfolio and stats. |
 
-```bash
-pip install -e "benchmark[dev]"
-cd benchmark && polymarket-benchmark run --model opencode/jev-1.13-free --market-set mini
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to work on each package and [CHANGELOG.md](CHANGELOG.md) for release history.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for how to work on each package.
+## Tests
+
+```bash
+pytest -m "not live"             # unit + integration, 100% coverage gate
+pytest                           # full suite (requires network)
+pytest tests/test_e2e_live.py    # live API integration tests only
+```
 
 ## License
 
