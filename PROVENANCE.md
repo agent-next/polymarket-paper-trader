@@ -1,18 +1,16 @@
 # Provenance
 
-This repository absorbs code that originated in other (private) repositories.
-This file records where each imported subtree came from.
+Where imported subtrees in this repository came from.
 
 ## leaderboard-server/ (imported 2026-09-24, merge `67e2dda`)
 
-- **Source repo:** `agent-next/polymarket-platform` (private monorepo)
-- **Source commit:** `54dd0fb`
-- **Source path:** `packages/pm_leaderboard` -> `leaderboard-server/`
-- **Method:** `git filter-repo` subtree extraction + unrelated-histories merge.
-  The org-specific container-registry slug was rewritten to the
-  `<your-registry>` placeholder during the rewrite, so history carries no
-  private registry names.
-- **Secrets:** all 42 imported commits scanned with gitleaks — no leaks.
-- **Earlier origins:** the service began in `agent-next/polymarket-leaderboard`
-  (`a88c876`); the benchmark harness began in `agent-next/polymarket-benchmark`
-  (`29bf237`) and was imported earlier into `benchmark/` via PR #24.
+- Developed in a separate, now-retired agent-next repository and imported with its full
+  git history (`git filter-repo` subtree rewrite + unrelated-histories merge), so
+  `git log -- leaderboard-server/` shows the original commits and authors.
+- An org-specific container-registry name was replaced by the `<your-registry>`
+  placeholder throughout the imported history.
+- All 42 imported commits were scanned with gitleaks before import: no leaks.
+
+## benchmark/ and leaderboard-client/ (imported 2026-09-22, PR #24)
+
+- Moved in from retired agent-next repositories; see PR #24.
