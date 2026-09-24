@@ -34,6 +34,7 @@ from pm_trader.orders import (
     expire_orders,
     get_order,
     get_pending_orders,
+    get_reserved_buy_notional,
     init_orders_schema,
     mark_filled,
     mark_partially_filled,
@@ -179,6 +180,30 @@ class Engine:
             return None, self.api.get_fee_rate(token_id)
         return rate, round(rate * 10_000)
 
+    def _estimate_buy_fee(
+        self, market: Market, token_id: str, amount: float,
+    ) -> float:
+        """Conservative per-order UPPER BOUND on the taker fee for a USD buy.
+
+        Used only by the placement reservation gate: a (possibly marketable)
+        limit's actual fee depends on the realized average price, which is
+        unknown at placement.
+
+        Schedule path: a USD-sized buy receives ``C = amount / p`` shares, so
+        the official curve collapses to ``fee = C·rate·p·(1-p) = amount·rate·(1-p)``
+        — the worst case over fill prices is ``amount * rate`` (deep-low fills
+        are the expensive case). Legacy path: the legacy fee base for buys IS
+        the USD notional, so the ``p = 0.5`` worst case of ``min(p, 1-p)``
+        gives ``0.5 * amount``, floored at ``calculate_fee``'s 0.0001 minimum.
+        """
+        rate = _resolve_fee_rate(market)
+        if rate is not None:
+            return amount * rate
+        bps = self.api.get_fee_rate(token_id)
+        if bps <= 0:
+            return 0.0
+        return max((bps / 10_000) * 0.5 * amount, 0.0001)
+
     # ------------------------------------------------------------------
     # BUY — spend USD, receive shares
     # ------------------------------------------------------------------
@@ -221,11 +246,14 @@ class Engine:
                 "Insufficient liquidity in order book (FOK rejected)"
             )
 
-        # Check cash: need total_cost + fee
+        # Check cash: need total_cost + fee. Compare against AVAILABLE cash —
+        # open buy limit orders reserve their remaining_amount, and a market
+        # order must not spend that reserve.
         total_outflow = fill.total_cost + fill.fee
-        if total_outflow > account.cash:
+        available_cash = self._available_cash()
+        if total_outflow > available_cash:
             raise InsufficientBalanceError(
-                required=total_outflow, available=account.cash
+                required=total_outflow, available=available_cash
             )
 
         # Update cash
@@ -455,6 +483,14 @@ class Engine:
     # Balance
     # ------------------------------------------------------------------
 
+    def _reserved_buy_notional(self) -> float:
+        """Cash held in reserve by open buy limit orders."""
+        return get_reserved_buy_notional(self.db.conn)
+
+    def _available_cash(self) -> float:
+        """Cash not reserved by open buy limit orders (clamped at 0)."""
+        return max(0.0, self._require_account().cash - self._reserved_buy_notional())
+
     def get_balance(self) -> dict:
         """Return cash, positions value, and total account value."""
         account = self._require_account()
@@ -508,13 +544,35 @@ class Engine:
         outcome = self._validate_outcome(outcome, market)
         self._require_market_tradable(market)
 
+        # Resolve the outcome's token id once: the tick fallback and the
+        # reservation gate below both need it (pure lookup — the outcome was
+        # already validated against the market above).
+        token_id = market.get_token_id(outcome)
+
         # Validate the price against the market tick grid BEFORE creating any
         # row: a violation must leave no order behind. Markets reporting no
         # tick size fall back to the cached CLOB /tick-size endpoint.
         tick_size = market.tick_size
         if tick_size <= 0:
-            tick_size = self.api.get_tick_size(market.get_token_id(outcome))
+            tick_size = self.api.get_tick_size(token_id)
         self._validate_tick_size(limit_price, tick_size)
+
+        # Reservation gate (buy only): a resting buy must be fully affordable
+        # at placement — amount plus a conservative fee upper bound, against
+        # cash not already reserved by other open buys. Marketable limits must
+        # therefore cover the full amount + fee estimate to place at all; the
+        # fill itself passes _execute_limit_buy's fill-time check because its
+        # actual cost + fee <= amount + fee estimate. Checked AFTER tick
+        # validation and BEFORE create_order: a rejected placement leaves no
+        # order behind (same philosophy as the tick gate above).
+        if side == "buy":
+            fee_estimate = self._estimate_buy_fee(market, token_id, amount)
+            required = amount + fee_estimate
+            available_cash = self._available_cash()
+            if required > available_cash:
+                raise InsufficientBalanceError(
+                    required=required, available=available_cash
+                )
 
         order = create_order(
             self.db.conn,

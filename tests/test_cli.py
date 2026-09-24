@@ -584,6 +584,7 @@ class TestOrderCommands:
         _invoke(runner, ["init"], data_dir)
         mock_instance = MockClient.return_value
         mock_instance.get_market.return_value = SAMPLE_MARKET
+        mock_instance.get_fee_rate.return_value = 0
         result = _invoke(
             runner,
             ["orders", "place", "will-bitcoin-hit-100k", "yes", "buy", "100", "0.55"],
@@ -627,6 +628,7 @@ class TestOrderCommands:
         _invoke(runner, ["init"], data_dir)
         mock_instance = MockClient.return_value
         mock_instance.get_market.return_value = SAMPLE_MARKET
+        mock_instance.get_fee_rate.return_value = 0
         _invoke(
             runner,
             ["orders", "place", "will-bitcoin-hit-100k", "yes", "buy", "100", "0.55"],
@@ -754,6 +756,7 @@ class TestOrderCommandErrors:
         _invoke(runner, ["init"], data_dir)
         mock_instance = MockClient.return_value
         mock_instance.get_market.return_value = SAMPLE_MARKET
+        mock_instance.get_fee_rate.return_value = 0
         result = _invoke(
             runner,
             ["orders", "place", "will-bitcoin-hit-100k", "yes", "buy",
@@ -769,6 +772,7 @@ class TestOrderCommandErrors:
         _invoke(runner, ["init"], data_dir)
         mock_instance = MockClient.return_value
         mock_instance.get_market.return_value = SAMPLE_MARKET
+        mock_instance.get_fee_rate.return_value = 0
         _invoke(
             runner,
             ["orders", "place", "will-bitcoin-hit-100k", "yes", "buy", "100", "0.55"],

@@ -1342,3 +1342,181 @@ class TestMakerFillFees:
         assert trades[0].fee == pytest.approx(
             trades[0].shares * 0.07 * trades[0].avg_price * (1 - trades[0].avg_price)
         )
+
+
+# ---------------------------------------------------------------------------
+# Cash reservation for open buy limit orders
+# ---------------------------------------------------------------------------
+
+
+class TestCashReservation:
+    """A resting buy reserves amount (+ fee bound) against available cash."""
+
+    def test_place_limit_buy_overcommit_rejected(self, initialized_engine: Engine):
+        """A resting buy larger than the account cannot be placed at all."""
+        _mock_api(initialized_engine, market=_schedule_market(**CRYPTO_SCHEDULE))
+        initialized_engine.db.update_cash(100.0)
+
+        count_before = initialized_engine.db.conn.execute(
+            "SELECT COUNT(*) AS n FROM limit_orders"
+        ).fetchone()["n"]
+        with pytest.raises(InsufficientBalanceError) as exc:
+            initialized_engine.place_limit_order("btc", "yes", "buy", 100.0, 0.55)
+        assert exc.value.required == pytest.approx(107.0)  # 100 + 0.07*100 bound
+        assert exc.value.available == pytest.approx(100.0)
+
+        # Rejection leaves no order behind
+        assert initialized_engine.get_pending_orders() == []
+        count_after = initialized_engine.db.conn.execute(
+            "SELECT COUNT(*) AS n FROM limit_orders"
+        ).fetchone()["n"]
+        assert count_after == count_before
+
+    def test_place_limit_buy_second_overcommit_rejected(
+        self, initialized_engine: Engine,
+    ):
+        """A second buy competing for the same cash is rejected."""
+        _mock_api(initialized_engine)  # zero-fee market: reserve == amount
+        initialized_engine.db.update_cash(100.0)
+
+        placed = initialized_engine.place_limit_order(
+            "btc", "yes", "buy", 50.0, 0.55,
+        )
+        assert placed["status"] == "pending"
+
+        with pytest.raises(InsufficientBalanceError) as exc:
+            initialized_engine.place_limit_order("btc", "yes", "buy", 60.0, 0.50)
+        assert exc.value.available == pytest.approx(50.0)
+
+        # The first order is untouched and still pending
+        assert [o["id"] for o in initialized_engine.get_pending_orders()] == [
+            placed["id"]
+        ]
+
+    def test_cancel_releases_reservation(self, initialized_engine: Engine):
+        """Cancelling the resting buy frees its cash for a new placement."""
+        _mock_api(initialized_engine)
+        initialized_engine.db.update_cash(100.0)
+
+        first = initialized_engine.place_limit_order(
+            "btc", "yes", "buy", 50.0, 0.55,
+        )
+        with pytest.raises(InsufficientBalanceError):
+            initialized_engine.place_limit_order("btc", "yes", "buy", 60.0, 0.50)
+
+        assert initialized_engine.cancel_limit_order(first["id"]) is not None
+        released = initialized_engine.place_limit_order(
+            "btc", "yes", "buy", 60.0, 0.50,
+        )
+        assert released["status"] == "pending"
+
+    def test_available_cash_clamps_at_zero(self, initialized_engine: Engine):
+        """cash < reserved must not report a negative available cash."""
+        _mock_api(initialized_engine)
+        initialized_engine.place_limit_order("btc", "yes", "buy", 100.0, 0.55)
+        assert initialized_engine._reserved_buy_notional() == pytest.approx(100.0)
+
+        initialized_engine.db.update_cash(10.0)  # craft cash < reserved
+        assert initialized_engine._available_cash() == 0.0
+        assert initialized_engine._reserved_buy_notional() == pytest.approx(100.0)
+
+    def test_tick_violation_precedence_over_balance(
+        self, initialized_engine: Engine,
+    ):
+        """An off-grid price fails tick validation before the balance gate."""
+        _mock_api(initialized_engine, market=_schedule_market(**CRYPTO_SCHEDULE))
+        initialized_engine.db.update_cash(100.0)
+
+        with pytest.raises(TickSizeViolationError):
+            initialized_engine.place_limit_order("btc", "yes", "buy", 100.0, 0.555)
+        assert initialized_engine.get_pending_orders() == []
+
+    def test_maker_exempt_market_still_reserves_taker_bound(
+        self, initialized_engine: Engine,
+    ):
+        """In a takerOnly market a RESTING fill would pay no fee, but the
+        placement cannot know whether the order will rest or cross — so the
+        taker bound (amount x rate) is required either way (conservative)."""
+        _mock_api(initialized_engine, market=_schedule_market(**CRYPTO_SCHEDULE))
+        initialized_engine.db.update_cash(106.99)
+
+        with pytest.raises(InsufficientBalanceError) as exc:
+            initialized_engine.place_limit_order("btc", "yes", "buy", 100.0, 0.55)
+        assert exc.value.required == pytest.approx(107.0)
+
+    def test_market_buy_cannot_spend_reserved_cash(
+        self, initialized_engine: Engine,
+    ):
+        """A market order is checked against available, not raw, cash."""
+        deep_book = _make_book(
+            bids=[(0.64, 100_000)], asks=[(0.66, 100_000)],
+        )
+        _mock_api(initialized_engine, book=deep_book)  # zero-fee market
+        initialized_engine.place_limit_order("btc", "yes", "buy", 5000.0, 0.55)
+
+        with pytest.raises(InsufficientBalanceError) as exc:
+            initialized_engine.buy("btc", "yes", 9000.0)
+        assert exc.value.available == pytest.approx(5000.0)
+
+
+class TestEstimateBuyFee:
+    """Unit tests for the placement-time fee upper bound."""
+
+    def test_schedule_bound(self, initialized_engine: Engine):
+        """With a usable feeSchedule the bound is amount * rate."""
+        market = _schedule_market(**CRYPTO_SCHEDULE)
+        assert initialized_engine._estimate_buy_fee(
+            market, "tok_yes", 100.0,
+        ) == pytest.approx(7.0)
+
+    def test_legacy_worst_case(self, initialized_engine: Engine):
+        """Legacy path: p=0.5 worst case of min(p, 1-p) on the USD notional."""
+        _mock_api(initialized_engine, fee_rate=200)
+        assert initialized_engine._estimate_buy_fee(
+            SAMPLE_MARKET, "tok_yes", 100.0,
+        ) == pytest.approx(1.0)  # 0.02 * 0.5 * 100
+
+    def test_legacy_minimum_floor(self, initialized_engine: Engine):
+        """Tiny legacy fees are floored at calculate_fee's 0.0001 minimum."""
+        _mock_api(initialized_engine, fee_rate=1)
+        assert initialized_engine._estimate_buy_fee(
+            SAMPLE_MARKET, "tok_yes", 0.5,
+        ) == pytest.approx(0.0001)
+
+    def test_zero_bps_is_zero(self, initialized_engine: Engine):
+        """Fee-free legacy markets bound to 0: the gate degenerates to notional."""
+        _mock_api(initialized_engine, fee_rate=0)
+        assert initialized_engine._estimate_buy_fee(
+            SAMPLE_MARKET, "tok_yes", 100.0,
+        ) == 0.0
+
+    def test_fill_time_cash_guard_rejects_fee_slack_exhaustion(
+        self, initialized_engine: Engine,
+    ):
+        """The fill-time raw-cash check in _execute_limit_buy stays the final
+        guard: two resting buys whose worst-case fees together exceed the cash
+        (the placement gate reserves remaining_amount only) fill one and
+        permanently reject the other, instead of going negative."""
+        schedule = {"rate": 0.07, "exponent": 1, "takerOnly": False}
+        _mock_api(initialized_engine, market=_schedule_market(**schedule))
+        initialized_engine.db.update_cash(213.0)
+
+        first = initialized_engine.place_limit_order(
+            "btc", "yes", "buy", 100.0, 0.55,
+        )
+        second = initialized_engine.place_limit_order(
+            "btc", "yes", "buy", 100.0, 0.50,
+        )
+
+        # Deep-low ask (0.01): each fill costs 100 + 6.93 worst-case fee.
+        deep_low_book = _make_book(
+            bids=[(0.64, 100_000)], asks=[(0.01, 100_000)],
+        )
+        initialized_engine.api.get_order_book = MagicMock(return_value=deep_low_book)
+
+        results = initialized_engine.check_orders()
+        actions = {r["order"]["id"]: r["action"] for r in results}
+        assert actions[first["id"]] == "filled"
+        assert actions[second["id"]] == "rejected"
+        rejected = next(r for r in results if r["order"]["id"] == second["id"])
+        assert "Insufficient balance" in rejected["reason"]
