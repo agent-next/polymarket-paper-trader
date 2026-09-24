@@ -24,6 +24,7 @@ from pm_trader.models import (
 
 GAMMA_BASE = "https://gamma-api.polymarket.com"
 CLOB_BASE = "https://clob.polymarket.com"
+DATA_API_BASE = "https://data-api.polymarket.com"
 
 CACHE_TTL_SECONDS = 300  # 5 minutes for market metadata
 
@@ -99,6 +100,21 @@ class PolymarketClient:
             ) from e
         except httpx.RequestError as e:
             raise ApiError(f"CLOB API request failed: {e}") from e
+
+    def _data_get(self, path: str, params: dict | None = None) -> dict | list:
+        """Make a GET request to the Data API (v2)."""
+        url = f"{DATA_API_BASE}{path}"
+        try:
+            resp = self._http.get(url, params=params)
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPStatusError as e:
+            raise ApiError(
+                f"Data API error: {e.response.status_code} {e.response.text[:200]}",
+                status_code=e.response.status_code,
+            ) from e
+        except httpx.RequestError as e:
+            raise ApiError(f"Data API request failed: {e}") from e
 
     # ------------------------------------------------------------------
     # Market resolution (slug or condition_id → Market)
@@ -357,6 +373,69 @@ class PolymarketClient:
         return tick
 
     # ------------------------------------------------------------------
+    # Data API v2 — historical prices
+    # ------------------------------------------------------------------
+
+    def get_price_history(
+        self,
+        token_id: str,
+        *,
+        interval: str | None = None,
+        start: int | None = None,
+        end: int | None = None,
+        bucket_seconds: int | None = None,
+        as_of: int | None = None,
+        limit: int = 5_000,
+    ) -> list[dict]:
+        """Fetch a token's price history (Data API v2).  NEVER cached.
+
+        Exactly one window form per request: ``interval`` (one of
+        ``1m|1h|6h|1d|1w|max|all``), ``start``/``end`` epoch seconds
+        (explicit windows cap at 15 days), or ``as_of``.  ``bucket_seconds``
+        requests a specific grain; omitted, the server picks one that can
+        serve the window.  Points are returned oldest-first, each
+        ``{"timestamp": int, "price": float, "resolution_seconds": int}``,
+        following ``pagination.next_cursor`` until the series is exhausted
+        or ``limit`` points are collected.
+        """
+        if limit <= 0:
+            return []
+        params: dict = {"token_id": token_id}
+        if interval is not None:
+            params["interval"] = interval
+        if start is not None:
+            params["start"] = start
+        if end is not None:
+            params["end"] = end
+        if bucket_seconds is not None:
+            params["bucket_seconds"] = bucket_seconds
+        if as_of is not None:
+            params["as_of"] = as_of
+
+        points: list[dict] = []
+        seen_cursors: set[str] = set()
+        cursor: str | None = None
+        while True:
+            page_params = {**params, "limit": min(limit - len(points), 10_000)}
+            if cursor is not None:
+                page_params["cursor"] = cursor
+            rows, cursor = _split_price_history_page(
+                self._data_get("/v2/prices-history", params=page_params)
+            )
+            for row in rows:
+                points.append({
+                    "timestamp": int(row.get("timestamp", 0) or 0),
+                    "price": float(row.get("price", 0.0) or 0.0),
+                    "resolution_seconds": int(row.get("resolution_seconds", 0) or 0),
+                })
+            # next_cursor is followed until absent — a cursor already seen is
+            # never re-followed (same replay guard as the keyset pager).
+            if cursor is None or cursor in seen_cursors or len(points) >= limit:
+                break
+            seen_cursors.add(cursor)
+        return points[:limit]
+
+    # ------------------------------------------------------------------
     # Convenience: get everything needed for a trade
     # ------------------------------------------------------------------
 
@@ -601,3 +680,25 @@ def _parse_order_book(data: dict) -> OrderBook:
         ))
 
     return OrderBook(bids=bids, asks=asks)
+
+
+def _split_price_history_page(data: object) -> tuple[list, str | None]:
+    """Split a /v2/prices-history response into (rows, next_cursor).
+
+    The v2 envelope is ``{"data": [...], "pagination": {...}}``; a
+    documented miss is ``data: null`` (no rows), and pagination may be
+    absent — both degrade to a single empty/terminal page.  Paging stops
+    when ``next_cursor`` is missing, null or empty.
+    """
+    if not isinstance(data, dict):
+        return [], None
+    rows = data.get("data")
+    if not isinstance(rows, list):
+        rows = []
+    cursor = None
+    pagination = data.get("pagination")
+    if isinstance(pagination, dict):
+        raw = pagination.get("next_cursor")
+        if isinstance(raw, str) and raw:
+            cursor = raw
+    return rows, cursor

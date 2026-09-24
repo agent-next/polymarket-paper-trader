@@ -13,6 +13,7 @@ import pytest
 from pm_trader.api import (
     CACHE_TTL_SECONDS,
     CLOB_BASE,
+    DATA_API_BASE,
     GAMMA_BASE,
     PolymarketClient,
     _parse_clob_market,
@@ -846,6 +847,206 @@ class TestClobEndpoints:
         with pytest.raises(ApiError) as exc_info:
             client.get_order_book("bad")
         assert exc_info.value.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# get_price_history tests (Data API v2)
+# ---------------------------------------------------------------------------
+
+def _history_page(rows, next_cursor=None):
+    """Build a /v2/prices-history response envelope."""
+    page = {"data": rows, "pagination": {"limit": len(rows), "offset": 0,
+                                         "has_more": next_cursor is not None}}
+    if next_cursor is not None:
+        page["pagination"]["next_cursor"] = next_cursor
+    return page
+
+
+class TestGetPriceHistory:
+    PH_URL = DATA_API_BASE + "/v2/prices-history"
+
+    def test_single_page(self, client: PolymarketClient, httpx_mock):
+        httpx_mock.add_response(
+            url=httpx.URL(self.PH_URL, params={"token_id": "tok_yes",
+                                               "interval": "1d", "limit": 5000}),
+            json=_history_page([
+                {"timestamp": 1790000000, "price": "0.55", "resolution_seconds": 60},
+                {"timestamp": 1790000060, "price": 0.56, "resolution_seconds": 60},
+            ]),
+        )
+        points = client.get_price_history("tok_yes", interval="1d")
+        assert points == [
+            {"timestamp": 1790000000, "price": 0.55, "resolution_seconds": 60},
+            {"timestamp": 1790000060, "price": 0.56, "resolution_seconds": 60},
+        ]
+        # String prices are coerced to float
+        assert isinstance(points[0]["price"], float)
+        assert len(httpx_mock.get_requests()) == 1
+
+    def test_follows_cursor_across_pages(self, client: PolymarketClient,
+                                         httpx_mock):
+        httpx_mock.add_response(
+            url=httpx.URL(self.PH_URL, params={"token_id": "tok_yes",
+                                               "limit": 5000}),
+            json=_history_page(
+                [{"timestamp": 1, "price": 0.4, "resolution_seconds": 60}],
+                next_cursor="cur1",
+            ),
+        )
+        httpx_mock.add_response(
+            url=httpx.URL(self.PH_URL, params={"token_id": "tok_yes",
+                                               "limit": 4999, "cursor": "cur1"}),
+            json=_history_page(
+                [{"timestamp": 2, "price": 0.6, "resolution_seconds": 60}],
+            ),
+        )
+        points = client.get_price_history("tok_yes")
+        assert [p["timestamp"] for p in points] == [1, 2]
+        assert len(httpx_mock.get_requests()) == 2
+
+    def test_data_null_is_empty(self, client: PolymarketClient, httpx_mock):
+        httpx_mock.add_response(
+            url=httpx.URL(self.PH_URL, params={"token_id": "tok_yes",
+                                               "limit": 5000}),
+            json={"data": None, "pagination": {"has_more": False}},
+        )
+        assert client.get_price_history("tok_yes") == []
+
+    def test_missing_pagination_stops(self, client: PolymarketClient,
+                                      httpx_mock):
+        httpx_mock.add_response(
+            url=httpx.URL(self.PH_URL, params={"token_id": "tok_yes",
+                                               "limit": 5000}),
+            json={"data": [{"timestamp": 1, "price": 0.5,
+                            "resolution_seconds": 60}]},
+        )
+        points = client.get_price_history("tok_yes")
+        assert len(points) == 1
+        assert len(httpx_mock.get_requests()) == 1
+
+    def test_limit_stops_paging(self, client: PolymarketClient, httpx_mock):
+        httpx_mock.add_response(
+            url=httpx.URL(self.PH_URL, params={"token_id": "tok_yes",
+                                               "limit": 2}),
+            json=_history_page(
+                [{"timestamp": 1, "price": 0.5, "resolution_seconds": 60},
+                 {"timestamp": 2, "price": 0.5, "resolution_seconds": 60}],
+                next_cursor="cur1",
+            ),
+        )
+        points = client.get_price_history("tok_yes", limit=2)
+        assert len(points) == 2
+        # Limit reached: next_cursor is not followed
+        assert len(httpx_mock.get_requests()) == 1
+
+    def test_limit_over_large_page_truncates(self, client: PolymarketClient,
+                                             httpx_mock):
+        # Defensive: a page that returns MORE rows than asked is truncated
+        rows = [{"timestamp": i, "price": 0.5, "resolution_seconds": 60}
+                for i in range(5)]
+        httpx_mock.add_response(
+            url=httpx.URL(self.PH_URL, params={"token_id": "tok_yes",
+                                               "limit": 3}),
+            json=_history_page(rows),
+        )
+        assert len(client.get_price_history("tok_yes", limit=3)) == 3
+
+    def test_non_positive_limit_no_request(self, client: PolymarketClient):
+        assert client.get_price_history("tok_yes", limit=0) == []
+
+    def test_replayed_cursor_not_refollowed(self, client: PolymarketClient,
+                                            httpx_mock):
+        # Page 2 replays page 1's cursor forever — the loop must stop.
+        replay = _history_page(
+            [{"timestamp": 1, "price": 0.5, "resolution_seconds": 60}],
+            next_cursor="same",
+        )
+        httpx_mock.add_response(
+            url=httpx.URL(self.PH_URL, params={"token_id": "tok_yes",
+                                               "limit": 5000}),
+            json=replay,
+        )
+        httpx_mock.add_response(
+            url=httpx.URL(self.PH_URL, params={"token_id": "tok_yes",
+                                               "limit": 4999, "cursor": "same"}),
+            json=replay,
+        )
+        points = client.get_price_history("tok_yes")
+        assert len(points) == 2
+        assert len(httpx_mock.get_requests()) == 2
+
+    def test_window_params_passed_through(self, client: PolymarketClient,
+                                          httpx_mock):
+        httpx_mock.add_response(
+            url=httpx.URL(self.PH_URL, params={
+                "token_id": "tok_yes", "start": 1000, "end": 2000,
+                "bucket_seconds": 300, "limit": 5000,
+            }),
+            json=_history_page([]),
+        )
+        assert client.get_price_history("tok_yes", start=1000, end=2000,
+                                        bucket_seconds=300) == []
+
+    def test_as_of_point_in_time(self, client: PolymarketClient, httpx_mock):
+        httpx_mock.add_response(
+            url=httpx.URL(self.PH_URL, params={"token_id": "tok_yes",
+                                               "as_of": 1790000000,
+                                               "limit": 5000}),
+            json=_history_page(
+                [{"timestamp": 1790000000, "price": 0.61,
+                  "resolution_seconds": 0}],
+            ),
+        )
+        points = client.get_price_history("tok_yes", as_of=1790000000)
+        assert points == [{"timestamp": 1790000000, "price": 0.61,
+                           "resolution_seconds": 0}]
+
+    def test_data_api_error(self, client: PolymarketClient, httpx_mock):
+        httpx_mock.add_response(
+            url=httpx.URL(self.PH_URL, params={"token_id": "bad",
+                                               "limit": 5000}),
+            status_code=400,
+            json={"error": "interval must be one of max, all, 1m, 1w, 1d, 6h, 1h",
+                  "code": "invalid_request"},
+        )
+        with pytest.raises(ApiError) as exc_info:
+            client.get_price_history("bad")
+        assert exc_info.value.status_code == 400
+        assert "Data API error" in str(exc_info.value)
+
+
+    def test_data_api_request_error(self, client: PolymarketClient):
+        with patch.object(
+            client._http, "get",
+            side_effect=httpx.ConnectError("Connection refused"),
+        ):
+            with pytest.raises(ApiError, match="Data API request failed"):
+                client.get_price_history("tok_yes")
+
+
+class TestSplitPriceHistoryPage:
+    def test_non_dict_data(self):
+        from pm_trader.api import _split_price_history_page
+        assert _split_price_history_page([1, 2]) == ([], None)
+
+    def test_data_non_list(self):
+        from pm_trader.api import _split_price_history_page
+        assert _split_price_history_page({"data": "oops"}) == ([], None)
+
+    def test_pagination_non_dict(self):
+        from pm_trader.api import _split_price_history_page
+        rows, cursor = _split_price_history_page(
+            {"data": [], "pagination": "oops"}
+        )
+        assert rows == []
+        assert cursor is None
+
+    def test_next_cursor_non_string(self):
+        from pm_trader.api import _split_price_history_page
+        _, cursor = _split_price_history_page(
+            {"data": [], "pagination": {"next_cursor": 123}}
+        )
+        assert cursor is None
 
 
 # ---------------------------------------------------------------------------
