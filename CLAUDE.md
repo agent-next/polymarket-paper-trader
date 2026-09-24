@@ -73,6 +73,7 @@ mcp_server.py → engine.py (trading tools, 30 MCP tools)
 
 ### Key design decisions
 - **Fee formula**: the market's `feeSchedule` drives the official curve — `shares * rate * p * (1-p)`, charged on the share count for buys and sells, taker-only when `takerOnly`, rounded to 5 decimals (smallest charge 0.00001). Markets without a usable `feeSchedule` (absent, `rate` 0, or a non-identity `exponent`) fall back to the legacy `(bps/10000) * min(price, 1-price) * size`
+- **Slippage**: primary metric is vs best quote (positive = worse than the touch), with midpoint slippage also reported for context
 - **FOK** (fill-or-kill): all or nothing. **FAK** (fill-and-kill): partial fills ok
 - **Limit orders**: GTC (rest until filled/cancelled) or GTD (expire at timestamp)
 - **No price/book caching**: always live from API. Market metadata cached 5 min.

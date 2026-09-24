@@ -10,6 +10,7 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ### Changed
 - **Market buys can no longer spend reserved cash.** `buy` checks `total_cost + fee` against `available_cash` instead of raw cash, so a market order cannot consume the reserve held by resting buys; when nothing rests, `available_cash == cash` and behavior is unchanged. A resting buy that later cannot be afforded (multi-order fee-slack exhaustion) is still permanently rejected by `check_orders` via the fill-time cash guard.
+- **Slippage is now measured against the crossed quote.** `FillResult.slippage_bps` — and the `slippage` persisted on every trade and surfaced via CLI/MCP/export — is now `(avg_price - best_ask) / best_ask * 10_000` for buys and `(best_bid - avg_price) / best_bid * 10_000` for sells: a fill at the touch is exactly 0 and worse fills are positive on both sides. The previous midpoint-based value is preserved on the fill result as `slippage_bps_midpoint` (reported on `FillResult` only, not persisted).
 
 ## [0.3.1] - 2026-09-24
 
