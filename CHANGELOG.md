@@ -5,7 +5,7 @@ All notable changes to `polymarket-paper-trader` are documented here.
 ## [Unreleased]
 
 ### Changed
-- **Market listing migrated to `GET /markets/keyset` cursor pagination** — `list_markets` and `get_markets_by_tag` now page via `after_cursor`/`next_cursor` (≤100 per request, multi-page fetch until the requested limit, deduplicated by `condition_id`, a repeated cursor is never re-followed) instead of the deprecated offset-based `GET /markets`. Ordering uses the keyset field names `volume_num`/`liquidity_num`. Tag filtering resolves `tag_slug` → numeric `tag_id` via `GET /tags/slug/{slug}` (cached 5 min); an unknown slug returns `[]` as before. Per-item market payloads are unchanged, as are both public signatures and `list[Market]` return types.
+- **Market listing migrated to `GET /markets/keyset` cursor pagination** — `list_markets` and `get_markets_by_tag` now page via `after_cursor`/`next_cursor` (≤100 per request, multi-page fetch until the requested limit, deduplicated by `condition_id`, a repeated cursor is never re-followed) instead of the deprecated offset-based `GET /markets`. Ordering uses the keyset field names `volumeNum`/`liquidityNum`. Tag filtering resolves `tag_slug` → numeric `tag_id` via `GET /tags/slug/{slug}` (cached 5 min); an unknown slug returns `[]` as before. Per-item market payloads are unchanged, as are both public signatures and `list[Market]` return types.
 
 ## [0.3.2] - 2026-09-24
 
