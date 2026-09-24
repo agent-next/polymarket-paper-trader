@@ -27,7 +27,7 @@ def create_agent(
     Otherwise registers a new agent with an auto-generated name.
 
     Returns:
-        Agent instance (from polymarket-leaderboard SDK).
+        Agent instance (from polymarket-leaderboard-client).
 
     Raises:
         AgentBridgeError: if SDK not installed or connection fails.
