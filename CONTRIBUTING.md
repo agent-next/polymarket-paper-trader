@@ -4,13 +4,14 @@ Thanks for helping improve the Polymarket paper-trading toolkit.
 
 ## Repository layout
 
-This repository hosts three Python packages:
+This repository hosts four Python packages:
 
 | Path | Package | What it is |
 |------|---------|------------|
 | `.` (root) | `polymarket-paper-trader` | Paper-trading simulator, CLI, and MCP server |
 | `benchmark/` | `polymarket-benchmark` | LLM evaluation harness ("decision intelligence" benchmark) |
 | `leaderboard-client/` | `polymarket-leaderboard-client` | Client SDK for a compatible leaderboard server |
+| `leaderboard-server/` | `polymarket-leaderboard` | FastAPI leaderboard service (depends on the root package and the client) |
 
 Each package is self-contained with its own `pyproject.toml`, tests, and coverage gate.
 
@@ -25,6 +26,9 @@ pip install -e "benchmark[dev]"
 
 # leaderboard client
 pip install -e "leaderboard-client[dev]"
+
+# leaderboard server (needs the root package and the client installed first)
+pip install -e . -e leaderboard-client -e "leaderboard-server[dev]"
 ```
 
 ## Running tests
@@ -35,6 +39,7 @@ Run the suite for the package you changed:
 python3 -m pytest tests/ -x -q -m "not live"                    # root
 cd benchmark && python3 -m pytest tests/ -x -q -m "not live"    # benchmark
 cd leaderboard-client && python3 -m pytest tests/ -x -q         # client
+cd leaderboard-server && python3 -m pytest tests/ -x -q         # server
 ```
 
 Every package maintains **100% test coverage**; the CI gate fails below that. Add tests

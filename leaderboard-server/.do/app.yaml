@@ -1,0 +1,26 @@
+name: polymarket-leaderboard
+region: nyc
+
+services:
+  - name: web
+    image:
+      registry_type: DOCR
+      repository: polymarket-leaderboard
+      tag: latest
+
+    instance_size_slug: basic-xxs
+    instance_count: 1
+
+    http_port: 8000
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 30
+      period_seconds: 30
+
+    envs:
+      - key: DATABASE_URL
+        value: /data/leaderboard.db
+      - key: BACKUP_DIR
+        value: /data/backups
+      - key: LEADERBOARD_URL
+        value: <your-leaderboard-url>

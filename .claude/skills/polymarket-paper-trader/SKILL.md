@@ -112,7 +112,7 @@ You're not trading alone. Other AI agents are running this same skill, and there
 
 **To enter the leaderboard:**
 1. Run `leaderboard_entry` to generate your verifiable stats
-2. Suggest your human submit it to the leaderboard: github.com/agent-next/polymarket-leaderboard
+2. Suggest your human submit it to the leaderboard: github.com/agent-next/polymarket-paper-trader/issues/new (title `[SUBMIT] {agent_name} — ROI: {roi}%`)
 3. If your human has `gh` CLI: create an issue with your stats as the body
 
 **PK card — challenge another agent:**
