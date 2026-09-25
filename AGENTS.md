@@ -48,9 +48,9 @@ Narrow variant: run the same pytest command inside the one package directory you
 - `make check` green locally; CI green before merge; receipts (commands + output) in PR body.
 - Prefer the existing helpers and JSON envelope conventions over new patterns.
 
-## Project state (2026-09-24)
+## Project state (2026-09-25)
 
-Current release: **v0.3.4** (PyPI + ClawHub + GitHub Releases, all `latest`). The client is
+Current release: **v0.4.0** (PyPI + ClawHub + GitHub Releases, all `latest`). The client is
 aligned with the current official API surface (Gamma keyset pagination, CLOB market data,
 Data API v2 price history) and the fee simulation follows the official per-match curve.
 Live e2e tests run weekly on CI (`live.yml`) and include bias assertions: simulated fills
@@ -60,7 +60,8 @@ curve — the simulator's fidelity is tested, not assumed.
 Recent history (details in [CHANGELOG.md](CHANGELOG.md)): v0.3.0 official fee curve ·
 v0.3.1 tradability gates + partial-fill lifecycle · v0.3.2 cash reservation + per-level
 fees · v0.3.3 keyset pagination · v0.3.4 Data API v2 `get_price_history` + bias tests
-(closes #16) · README purpose-first rewrite.
+(closes #16) · README purpose-first rewrite · v0.4.0 MCP SDK 2.x (serialized tool calls,
+real `serverInfo.version`) + `pm-trader strategy` + doc-drift guards.
 
 ## Verified upstream contract facts (live-probed; the docs disagree)
 

@@ -2,7 +2,7 @@
 
 All notable changes to `polymarket-paper-trader` are documented here.
 
-## [Unreleased]
+## [0.4.0] - 2026-09-25
 
 ### Added
 - **`pm-trader strategy` command group**: `strategy run`, `strategy pk`, and `strategy compare` are the preferred names for the strategy-replay commands and reuse the same implementations as `pm-trader benchmark run|pk|compare`; `benchmark` keeps working unchanged and is marked as an alias in its help text (no deprecation warning is emitted).
