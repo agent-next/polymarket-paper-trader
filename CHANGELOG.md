@@ -13,23 +13,16 @@ All notable changes to `polymarket-paper-trader` are documented here.
   (remote MCP), LangChain, the OpenAI Agents SDK, and CrewAI; a README "Works with"
   table; and a `metadata.openclaw` block in both `SKILL.md` copies (alongside the
   existing `metadata.clawdbot`) plus a skill "Setup" note.
-- **MCP server carries the trading skill with it**: `MCPServer(...)` now passes
-  `instructions` (what the server is, paper money, suggested
-  init_account -> search_markets -> get_order_book -> buy/sell ->
-  portfolio/stats workflow); the full `skill/polymarket-paper-trader/SKILL.md`
-  body is exposed as both a `trading_playbook` MCP prompt and a
-  `skill://trading-playbook` MCP resource, so MCP-only clients (Cursor,
-  Claude.ai connectors, Grok API remote MCP, ChatGPT apps) get the same
-  playbook skill-aware agents get. The file is packaged into the wheel via a
-  symlink at `pm_trader/_skill/SKILL.md` plus `[tool.setuptools.package-data]`
-  — the same bytes, not a hand-maintained copy.
-- **Remote transport**: `pm-trader-mcp` and `pm-trader mcp` gain
+- **MCP server carries the trading skill with it**: server `instructions`, plus
+  `skill/polymarket-paper-trader/SKILL.md`'s body exposed as a
+  `trading_playbook` prompt and a `skill://trading-playbook` resource, so
+  MCP-only clients get the same playbook skill-aware agents get.
+- **Remote transport**: `pm-trader-mcp` / `pm-trader mcp` gain
   `--transport {stdio,streamable-http}` (default `stdio`, unchanged
-  behavior), `--host` (default `127.0.0.1`) and `--port` (default `8000`),
-  using the MCP SDK's native streamable-HTTP support.
-- **Docker**: root `Dockerfile` (`python:3.12-slim`) and `.dockerignore` to
-  self-host the streamable-HTTP server; a container holds one paper account
-  (single-tenant, self-host only — not a public multi-user service).
+  behavior), `--host` and `--port`, using the MCP SDK's native
+  streamable-HTTP support.
+- **Docker**: root `Dockerfile` and `.dockerignore` to self-host the
+  streamable-HTTP server (single-tenant, self-host only).
 - Closed loop (no self-merge): `implement` only on `bot:implement` or `/oc implement` (`deepseek-v4-flash`); after a `GITHUB_TOKEN` push a separate `dispatch-tests` job (the only job holding `actions: write`; the model job has no Actions scope) validates the pushed branch output against a strict ref pattern, verifies `.github/workflows/test.yml` on the ref is byte-identical to the default branch, then dispatches `gh workflow run Tests --ref <branch>` — so a prompt-injected model can never hold a token that dispatches workflows nor reshape the dispatched workflow. `review` stays comment-only; merge gating stays with branch protection.
 - Review hardening: `implement` gated to trusted actors (collaborator write+ via permission API) and the exact `/oc implement` command form, including PR review comments; `comment` job drops `contents: write`; preflight steps stay inline in the workflow (no local composite action — PR-review-comment checkouts are PR-controlled); bot jobs get `timeout-minutes` and stop logging secret lengths.
 - Key isolation: public Q&A/triage/review jobs run on a separate `FREEINFERENCE_PUBLIC_KEY` (same env name, so `opencode.json` is unchanged); `implement` keeps `FREEINFERENCE_API_KEY` — a public-face prompt injection cannot burn the implement pool.

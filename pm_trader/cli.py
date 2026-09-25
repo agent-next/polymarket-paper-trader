@@ -910,5 +910,5 @@ def watch(ctx: click.Context, slugs_or_ids: tuple[str, ...], outcomes: tuple[str
 )
 def mcp(transport: str, host: str, port: int) -> None:
     """Start MCP server (stdio or streamable-http transport) for AI agent integration."""
-    from pm_trader.mcp_server import main as mcp_main
-    mcp_main(["--transport", transport, "--host", host, "--port", str(port)])
+    from pm_trader.mcp_server import _run as mcp_run
+    mcp_run(transport, host, port)

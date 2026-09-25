@@ -1111,16 +1111,15 @@ class TestCliSimErrorPaths:
         result = _invoke(runner, ["--account", "../../etc", "init"], data_dir)
         assert result.exit_code != 0
 
-    @patch("pm_trader.mcp_server.main")
-    def test_mcp_command(self, mock_mcp_main, runner, data_dir):
+    @patch("pm_trader.mcp_server._run")
+    def test_mcp_command(self, mock_mcp_run, runner, data_dir):
         """mcp command invokes the MCP server with stdio defaults."""
         result = runner.invoke(main, ["mcp"])
-        mock_mcp_main.assert_called_once_with(
-            ["--transport", "stdio", "--host", "127.0.0.1", "--port", "8000"]
-        )
+        assert result.exit_code == 0
+        mock_mcp_run.assert_called_once_with("stdio", "127.0.0.1", 8000)
 
-    @patch("pm_trader.mcp_server.main")
-    def test_mcp_command_streamable_http_options(self, mock_mcp_main, runner, data_dir):
+    @patch("pm_trader.mcp_server._run")
+    def test_mcp_command_streamable_http_options(self, mock_mcp_run, runner, data_dir):
         """mcp command forwards --transport/--host/--port to the MCP server."""
         result = runner.invoke(
             main,
@@ -1135,6 +1134,4 @@ class TestCliSimErrorPaths:
             ],
         )
         assert result.exit_code == 0
-        mock_mcp_main.assert_called_once_with(
-            ["--transport", "streamable-http", "--host", "0.0.0.0", "--port", "9001"]
-        )
+        mock_mcp_run.assert_called_once_with("streamable-http", "0.0.0.0", 9001)
