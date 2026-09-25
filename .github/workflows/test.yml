@@ -35,3 +35,20 @@ jobs:
       - name: Run tests with coverage
         if: matrix.python-version == '3.13'
         run: python -m pytest tests/ -x -q -m "not live" --cov=pm_trader --cov-report=term-missing --cov-fail-under=100
+
+  outsider:
+    # Install the built wheel into a clean venv and use it from outside the checkout,
+    # as a user would: CLI, MCP over stdio and streamable-http, strategy from a user dir.
+    name: Outsider install
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - run: pip install build && python -m build
+      - run: python -m venv "$RUNNER_TEMP/user" && "$RUNNER_TEMP/user/bin/pip" install dist/*.whl
+      - name: Smoke test as an outsider
+        working-directory: ${{ runner.temp }}
+        run: PATH="$RUNNER_TEMP/user/bin:$PATH" "$RUNNER_TEMP/user/bin/python" "$GITHUB_WORKSPACE/scripts/outsider_smoke.py"

@@ -16,3 +16,4 @@ build/
 benchmark/results/
 benchmark/.coverage
 leaderboard-client/.coverage
+.outsider/

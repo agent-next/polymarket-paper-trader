@@ -62,13 +62,24 @@ jobs:
           pip install build
           python -m build
 
+      - name: Tag matches package version
+        run: |
+          ls dist/ | grep -q "^polymarket_paper_trader-${GITHUB_REF_NAME#v}-py3-none-any.whl$" \
+            || { echo "tag $GITHUB_REF_NAME does not match built wheel: $(ls dist/)"; exit 1; }
+
+      - name: Outsider smoke test on the exact artifact
+        working-directory: ${{ runner.temp }}
+        run: |
+          python -m venv user && user/bin/pip install "$GITHUB_WORKSPACE"/dist/*.whl
+          PATH="$PWD/user/bin:$PATH" user/bin/python "$GITHUB_WORKSPACE/scripts/outsider_smoke.py" "${GITHUB_REF_NAME#v}"
+
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           password: ${{ secrets.PYPI_API_TOKEN }}
 
   publish-clawhub:
-    needs: test
+    needs: publish-pypi  # the skill installs the package from PyPI
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -105,3 +116,26 @@ jobs:
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           generate_release_notes: true
+
+  verify-pypi:
+    # Close the loop: install the released version from PyPI like a new user would.
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - name: Install the released version from PyPI
+        working-directory: ${{ runner.temp }}
+        run: |
+          python -m venv user
+          for i in $(seq 1 20); do  # the index can lag the upload by a few minutes
+            user/bin/pip install --no-cache-dir "polymarket-paper-trader==${GITHUB_REF_NAME#v}" && break
+            sleep 30
+          done
+          user/bin/pip show polymarket-paper-trader
+      - name: Outsider smoke test on the PyPI release
+        working-directory: ${{ runner.temp }}
+        run: PATH="$PWD/user/bin:$PATH" user/bin/python "$GITHUB_WORKSPACE/scripts/outsider_smoke.py" "${GITHUB_REF_NAME#v}"
