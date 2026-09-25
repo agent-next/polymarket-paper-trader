@@ -2,15 +2,17 @@
 
 All notable changes to `polymarket-paper-trader` are documented here.
 
-## [0.4.0] - 2026-09-25
-
-### Added
-- **`pm-trader strategy` command group**: `strategy run`, `strategy pk`, and `strategy compare` are the preferred names for the strategy-replay commands and reuse the same implementations as `pm-trader benchmark run|pk|compare`; `benchmark` keeps working unchanged and is marked as an alias in its help text (no deprecation warning is emitted).
+## [Unreleased]
 
 ### Added
 - Closed loop (no self-merge): `implement` only on `bot:implement` or `/oc implement` (`deepseek-v4-flash`); after a `GITHUB_TOKEN` push a separate `dispatch-tests` job (the only job holding `actions: write`; the model job has no Actions scope) validates the pushed branch output against a strict ref pattern, verifies `.github/workflows/test.yml` on the ref is byte-identical to the default branch, then dispatches `gh workflow run Tests --ref <branch>` — so a prompt-injected model can never hold a token that dispatches workflows nor reshape the dispatched workflow. `review` stays comment-only; merge gating stays with branch protection.
 - Review hardening: `implement` gated to trusted actors (collaborator write+ via permission API) and the exact `/oc implement` command form, including PR review comments; `comment` job drops `contents: write`; preflight steps stay inline in the workflow (no local composite action — PR-review-comment checkouts are PR-controlled); bot jobs get `timeout-minutes` and stop logging secret lengths.
 - Key isolation: public Q&A/triage/review jobs run on a separate `FREEINFERENCE_PUBLIC_KEY` (same env name, so `opencode.json` is unchanged); `implement` keeps `FREEINFERENCE_API_KEY` — a public-face prompt injection cannot burn the implement pool.
+
+## [0.4.0] - 2026-09-25
+
+### Added
+- **`pm-trader strategy` command group**: `strategy run`, `strategy pk`, and `strategy compare` are the preferred names for the strategy-replay commands and reuse the same implementations as `pm-trader benchmark run|pk|compare`; `benchmark` keeps working unchanged and is marked as an alias in its help text (no deprecation warning is emitted).
 
 ### Changed
 - **MCP SDK 2.x**: the MCP server now requires `mcp>=2,<3` and uses `MCPServer` (upstream removed `mcp.server.fastmcp` in 2.0). Fresh installs now get MCP SDK 2.x; `serverInfo.version` now reports the `polymarket-paper-trader` package version instead of the MCP library version. Tool names, signatures, and payloads are unchanged.
