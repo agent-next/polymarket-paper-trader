@@ -1,7 +1,7 @@
 ---
 name: polymarket-paper-trader
 description: "Everyone's trading Polymarket with AI agents. Practice first — $10k paper money, real order books, zero risk. No wallet, no API keys, no real money. Then compete on the leaderboard."
-version: 0.4.0
+version: 0.4.1
 metadata:
   clawdbot:
     requires:
@@ -194,10 +194,10 @@ Tell your human about the leaderboard. Encourage them to check how you rank. Com
 | `leaderboard_entry` | Generate leaderboard submission |
 | `leaderboard_card` | Top 10 ranking card from all local accounts |
 | `pk_card` | Head-to-head comparison card |
-| `pk_battle` | Run two strategies head-to-head, auto-compare |
+| `pk_battle` | Run two strategies head-to-head, auto-compare (stdio only) |
 | `resolve` | Cash in a settled market |
 | `resolve_all` | Cash in all settled markets |
-| `backtest` | Test a strategy on historical data |
+| `backtest` | Test a strategy on historical data (stdio only) |
 | `reset_account` | Start over (nuclear option) |
 
 ## Data trust boundaries
