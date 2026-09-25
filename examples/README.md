@@ -34,6 +34,13 @@ Best in choppy markets that oscillate around equilibrium.
 Place 5 limit buy orders at 3-cent intervals below market price, with
 take-profit sells 5 cents above entry. Profits from range-bound oscillation.
 
+### Jev Edge (`jev_edge.py`)
+"Jev vs the market": asks the Jev decision model for a YES probability on each
+scanned binary market and buys the side it favors when Jev's probability
+disagrees with the YES midpoint by more than `EDGE`. Requires the benchmark
+package (`pip install -e "benchmark"`); model defaults to
+`opencode/jev-1.13-free` (no key needed), override with `JEV_MODEL`.
+
 ## Write Your Own
 
 A strategy is any function with this signature:
