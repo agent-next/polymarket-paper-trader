@@ -35,6 +35,9 @@ dev = [
 [tool.setuptools.packages.find]
 include = ["pm_trader*"]
 
+[tool.setuptools.package-data]
+pm_trader = ["_skill/SKILL.md"]
+
 [tool.pytest.ini_options]
 markers = ["live: tests requiring network access to Polymarket API"]
 # Root invocation collects only the product suite (same scope as CI test.yml);

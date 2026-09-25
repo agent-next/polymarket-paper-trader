@@ -929,7 +929,7 @@ class TestBacktestTool:
 class TestMcpServerMain:
     def test_main_calls_mcp_run(self):
         with patch.object(mcp_server.mcp, "run") as mock_run:
-            mcp_server.main()
+            mcp_server.main([])
             mock_run.assert_called_once()
 
 
@@ -1210,3 +1210,170 @@ class TestToolDispatch:
         assert seen[0] == seen[1]
         assert seen[0].startswith("pm-trader-mcp")
         assert seen[0] != loop_thread
+
+
+# ---------------------------------------------------------------------------
+# Server instructions + trading playbook (skill prompt/resource)
+# ---------------------------------------------------------------------------
+
+
+class TestInstructions:
+    def test_server_advertises_instructions(self):
+        assert mcp_server.mcp.instructions == mcp_server._SERVER_INSTRUCTIONS
+
+    def test_instructions_describe_workflow(self):
+        text = mcp_server.mcp.instructions
+        assert "paper" in text.lower()
+        for tool_name in ("init_account", "search_markets", "get_order_book", "buy", "portfolio"):
+            assert tool_name in text
+
+
+class TestTradingPlaybook:
+    def _skill_source_body(self) -> str:
+        import re
+
+        root = Path(__file__).resolve().parent.parent
+        raw = (root / "skill/polymarket-paper-trader/SKILL.md").read_text(encoding="utf-8")
+        return re.sub(r"\A---\n.*?\n---\n", "", raw, count=1, flags=re.DOTALL)
+
+    def test_skill_body_strips_frontmatter_and_matches_source(self):
+        body = mcp_server._skill_body()
+        assert not body.startswith("---")
+        assert body.startswith("\n# You are a Polymarket trader.") or body.lstrip().startswith(
+            "# You are a Polymarket trader."
+        )
+        assert body == self._skill_source_body()
+
+    def test_prompt_function_returns_skill_body(self):
+        assert mcp_server.trading_playbook() == mcp_server._skill_body()
+
+    def test_resource_function_returns_skill_body(self):
+        assert mcp_server.trading_playbook_resource() == mcp_server._skill_body()
+
+    def test_registered_as_mcp_prompt(self):
+        import anyio
+
+        async def _get():
+            result = await mcp_server.mcp.get_prompt("trading_playbook")
+            return result
+
+        result = anyio.run(_get)
+        text = result.messages[0].content.text
+        assert text == mcp_server._skill_body()
+
+    def test_registered_as_mcp_resource(self):
+        import anyio
+
+        async def _read():
+            return await mcp_server.mcp.read_resource("skill://trading-playbook")
+
+        contents = anyio.run(_read)
+        contents = list(contents)
+        assert len(contents) == 1
+        assert contents[0].content == mcp_server._skill_body()
+
+
+# ---------------------------------------------------------------------------
+# CLI-argument handling for transport/host/port
+# ---------------------------------------------------------------------------
+
+
+class TestArgParser:
+    def test_defaults_to_stdio(self):
+        args = mcp_server._build_arg_parser().parse_args([])
+        assert args.transport == "stdio"
+        assert args.host == "127.0.0.1"
+        assert args.port == 8000
+
+    def test_parses_streamable_http_options(self):
+        args = mcp_server._build_arg_parser().parse_args(
+            ["--transport", "streamable-http", "--host", "0.0.0.0", "--port", "9001"]
+        )
+        assert args.transport == "streamable-http"
+        assert args.host == "0.0.0.0"
+        assert args.port == 9001
+
+    def test_rejects_unknown_transport(self):
+        with pytest.raises(SystemExit):
+            mcp_server._build_arg_parser().parse_args(["--transport", "sse"])
+
+
+class TestMcpMainTransport:
+    def test_main_defaults_to_plain_stdio_run(self):
+        with patch.object(mcp_server.mcp, "run") as mock_run:
+            mcp_server.main([])
+            mock_run.assert_called_once_with()
+
+    def test_main_streamable_http_forwards_host_and_port(self):
+        with patch.object(mcp_server.mcp, "run") as mock_run:
+            mcp_server.main(
+                ["--transport", "streamable-http", "--host", "0.0.0.0", "--port", "9001"]
+            )
+            mock_run.assert_called_once_with(
+                transport="streamable-http", host="0.0.0.0", port=9001
+            )
+
+
+class TestStreamableHttpSmoke:
+    def test_initialize_and_list_tools_over_real_http(self):
+        """Spawn the real server over streamable-http; no network (tools/list only)."""
+        import anyio
+
+        anyio.run(self._smoke)
+
+    async def _smoke(self):
+        import socket
+        import sys
+
+        import anyio
+        from importlib.metadata import version as pkg_version
+
+        from mcp import ClientSession
+        from mcp.client.streamable_http import streamable_http_client
+
+        sock = socket.socket()
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+        sock.close()
+
+        proc = await anyio.open_process(
+            [
+                sys.executable,
+                "-m",
+                "pm_trader.mcp_server",
+                "--transport",
+                "streamable-http",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+            ],
+        )
+        try:
+            url = f"http://127.0.0.1:{port}/mcp"
+            with anyio.fail_after(30):
+                last_error: Exception | None = None
+                for _ in range(50):
+                    try:
+                        async with streamable_http_client(url) as (read, write):
+                            async with ClientSession(read, write) as session:
+                                init = await session.initialize()
+                                assert init.server_info.name == "pm-trader"
+                                assert init.server_info.version == pkg_version(
+                                    "polymarket-paper-trader"
+                                )
+                                assert init.instructions == mcp_server._SERVER_INSTRUCTIONS
+                                tools = await session.list_tools()
+                                registered = await mcp_server.mcp.list_tools()
+                                assert len(registered) > 0
+                                assert len(tools.tools) == len(registered)
+                        break
+                    except Exception as exc:  # server still starting up
+                        last_error = exc
+                        await anyio.sleep(0.2)
+                else:  # pragma: no cover - only on unexpected startup failure
+                    raise AssertionError(f"server never became ready: {last_error}")
+        finally:
+            proc.terminate()
+            with anyio.move_on_after(5):
+                await proc.wait()
