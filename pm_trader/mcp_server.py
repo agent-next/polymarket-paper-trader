@@ -7,8 +7,12 @@ Run with:
 
 from __future__ import annotations
 
+import asyncio
+import functools
 import importlib.metadata
 import json
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from mcp.server import MCPServer
@@ -27,6 +31,33 @@ def _server_version() -> str:
 
 
 mcp = MCPServer("pm-trader", version=_server_version())
+
+# MCP SDK 2.x dispatches tools/call concurrently and runs sync tool functions
+# on arbitrary anyio worker threads; the Engine's SQLite connection is bound
+# to the thread that opened it. Serialize every tool call on one dedicated
+# worker thread — the serialized execution semantics SDK 1.x provided.
+_tool_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pm-trader-mcp")
+
+
+def _tool(fn: Callable[..., str]) -> Callable[..., str]:
+    """Register ``fn`` as an MCP tool executed on the dedicated worker thread.
+
+    The registered callable is an async wrapper that submits ``fn`` to the
+    single-worker executor; ``functools.wraps`` keeps the name, docstring and
+    signature identical so the advertised tool schemas are unchanged. The
+    module attribute stays the plain sync function for direct calls.
+    """
+
+    @functools.wraps(fn)
+    async def _wrapper(**kwargs: object) -> str:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            _tool_executor, functools.partial(fn, **kwargs)
+        )
+
+    mcp.add_tool(_wrapper)
+    return fn
+
 
 # ---------------------------------------------------------------------------
 # Engine lifecycle — one Engine per server session
@@ -98,7 +129,7 @@ def _market_to_dict(m: object) -> dict:
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool()
+@_tool
 def init_account(balance: float = 10_000.0, account: str = "default") -> str:
     """Initialize a paper trading account with starting balance (USD).
 
@@ -115,7 +146,7 @@ def init_account(balance: float = 10_000.0, account: str = "default") -> str:
         return _err_from(e)
 
 
-@mcp.tool()
+@_tool
 def get_balance(account: str = "default") -> str:
     """Get current account balance (cash, reserved/available cash), positions value, and P&L."""
     try:
@@ -126,7 +157,7 @@ def get_balance(account: str = "default") -> str:
         return _err(str(e), "not_initialized")
 
 
-@mcp.tool()
+@_tool
 def reset_account(account: str = "default") -> str:
     """Reset account — deletes all trades, positions, and balance."""
     try:
@@ -145,7 +176,7 @@ def reset_account(account: str = "default") -> str:
 MAX_RESULTS = 100
 
 
-@mcp.tool()
+@_tool
 def search_markets(query: str, limit: int = 10) -> str:
     """Search Polymarket for markets matching a query string."""
     engine = _get_engine()
@@ -153,7 +184,7 @@ def search_markets(query: str, limit: int = 10) -> str:
     return _ok([_market_to_dict(m) for m in markets])
 
 
-@mcp.tool()
+@_tool
 def list_markets(limit: int = 20, sort_by: str = "volume") -> str:
     """List active Polymarket markets sorted by volume or liquidity."""
     engine = _get_engine()
@@ -161,7 +192,7 @@ def list_markets(limit: int = 20, sort_by: str = "volume") -> str:
     return _ok([_market_to_dict(m) for m in markets])
 
 
-@mcp.tool()
+@_tool
 def get_market(slug_or_id: str) -> str:
     """Get detailed info for a specific market by slug or condition ID."""
     try:
@@ -172,7 +203,7 @@ def get_market(slug_or_id: str) -> str:
         return _err(str(e), "market_not_found")
 
 
-@mcp.tool()
+@_tool
 def get_order_book(slug_or_id: str, outcome: str = "yes") -> str:
     """Get the live order book for a market outcome (asks and bids)."""
     try:
@@ -190,7 +221,7 @@ def get_order_book(slug_or_id: str, outcome: str = "yes") -> str:
         return _err(str(e), "order_book_error")
 
 
-@mcp.tool()
+@_tool
 def get_tags() -> str:
     """Get all market categories/tags for filtering."""
     try:
@@ -201,7 +232,7 @@ def get_tags() -> str:
         return _err_from(e)
 
 
-@mcp.tool()
+@_tool
 def get_markets_by_tag(tag_slug: str, limit: int = 20) -> str:
     """List markets in a specific category/tag."""
     try:
@@ -214,7 +245,7 @@ def get_markets_by_tag(tag_slug: str, limit: int = 20) -> str:
         return _err_from(e)
 
 
-@mcp.tool()
+@_tool
 def get_event(slug: str) -> str:
     """Get event details — a group of related markets."""
     try:
@@ -225,7 +256,7 @@ def get_event(slug: str) -> str:
         return _err_from(e)
 
 
-@mcp.tool()
+@_tool
 def watch_prices(
     slugs: str, outcomes: str = "yes",
 ) -> str:
@@ -249,7 +280,7 @@ def watch_prices(
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool()
+@_tool
 def buy(
     slug_or_id: str,
     outcome: str,
@@ -285,7 +316,7 @@ def buy(
         return _err_from(e)
 
 
-@mcp.tool()
+@_tool
 def sell(
     slug_or_id: str,
     outcome: str,
@@ -326,7 +357,7 @@ def sell(
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool()
+@_tool
 def portfolio(account: str = "default") -> str:
     """Get all open positions with live prices and unrealized P&L."""
     try:
@@ -337,7 +368,7 @@ def portfolio(account: str = "default") -> str:
         return _err_from(e)
 
 
-@mcp.tool()
+@_tool
 def history(limit: int = 50, account: str = "default") -> str:
     """Get recent trade history."""
     try:
@@ -367,7 +398,7 @@ def history(limit: int = 50, account: str = "default") -> str:
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool()
+@_tool
 def place_limit_order(
     slug_or_id: str,
     outcome: str,
@@ -396,7 +427,7 @@ def place_limit_order(
         return _err_from(e)
 
 
-@mcp.tool()
+@_tool
 def list_orders(account: str = "default") -> str:
     """List all pending limit orders."""
     try:
@@ -407,7 +438,7 @@ def list_orders(account: str = "default") -> str:
         return _err_from(e)
 
 
-@mcp.tool()
+@_tool
 def cancel_order(order_id: int, account: str = "default") -> str:
     """Cancel a pending limit order by ID."""
     try:
@@ -420,7 +451,7 @@ def cancel_order(order_id: int, account: str = "default") -> str:
         return _err_from(e)
 
 
-@mcp.tool()
+@_tool
 def cancel_all_orders(account: str = "default") -> str:
     """Cancel all pending limit orders at once."""
     try:
@@ -431,7 +462,7 @@ def cancel_all_orders(account: str = "default") -> str:
         return _err_from(e)
 
 
-@mcp.tool()
+@_tool
 def check_orders(account: str = "default") -> str:
     """Check all pending limit orders against live prices and execute fills.
 
@@ -450,7 +481,7 @@ def check_orders(account: str = "default") -> str:
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool()
+@_tool
 def stats(account: str = "default") -> str:
     """Get performance analytics: win rate, ROI, profit, max drawdown."""
     try:
@@ -468,7 +499,7 @@ def stats(account: str = "default") -> str:
         return _err_from(e)
 
 
-@mcp.tool()
+@_tool
 def stats_card(account: str = "default", format: str = "markdown") -> str:
     """Get a shareable stats card — ready to post on X, Telegram, Discord, etc.
 
@@ -498,7 +529,7 @@ def stats_card(account: str = "default", format: str = "markdown") -> str:
         return _err_from(e)
 
 
-@mcp.tool()
+@_tool
 def leaderboard_entry(account: str = "default") -> str:
     """Generate a verifiable leaderboard entry for ranking and PK.
 
@@ -539,7 +570,7 @@ def leaderboard_entry(account: str = "default") -> str:
         return _err_from(e)
 
 
-@mcp.tool()
+@_tool
 def share_content(
     account: str = "default",
     platform: str = "twitter",
@@ -586,7 +617,7 @@ def share_content(
         return _err_from(e)
 
 
-@mcp.tool()
+@_tool
 def pk_card(account_a: str = "default", account_b: str = "aggressive") -> str:
     """Generate a head-to-head PK comparison card between two accounts.
 
@@ -624,7 +655,7 @@ def pk_card(account_a: str = "default", account_b: str = "aggressive") -> str:
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool()
+@_tool
 def leaderboard_card(accounts: str = "") -> str:
     """Generate a Top 10 leaderboard card from all local accounts.
 
@@ -676,7 +707,7 @@ def leaderboard_card(accounts: str = "") -> str:
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool()
+@_tool
 def pk_battle(
     strategy_a: str,
     strategy_b: str,
@@ -706,7 +737,7 @@ def pk_battle(
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool()
+@_tool
 def resolve(slug_or_id: str, account: str = "default") -> str:
     """Resolve a market's positions, paying out $1/share for winning outcome."""
     try:
@@ -725,7 +756,7 @@ def resolve(slug_or_id: str, account: str = "default") -> str:
         return _err_from(e)
 
 
-@mcp.tool()
+@_tool
 def resolve_all(account: str = "default") -> str:
     """Resolve all open positions in closed/resolved markets."""
     try:
@@ -749,7 +780,7 @@ def resolve_all(account: str = "default") -> str:
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool()
+@_tool
 def backtest(
     data_path: str,
     strategy_path: str,

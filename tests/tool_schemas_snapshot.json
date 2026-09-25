@@ -1,0 +1,989 @@
+{
+  "backtest": {
+    "inputSchema": {
+      "properties": {
+        "balance": {
+          "default": 10000.0,
+          "title": "Balance",
+          "type": "number"
+        },
+        "data_path": {
+          "title": "Data Path",
+          "type": "string"
+        },
+        "depth": {
+          "default": 500.0,
+          "title": "Depth",
+          "type": "number"
+        },
+        "spread": {
+          "default": 0.02,
+          "title": "Spread",
+          "type": "number"
+        },
+        "strategy_path": {
+          "title": "Strategy Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "data_path",
+        "strategy_path"
+      ],
+      "title": "backtestArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "backtestOutput",
+      "type": "object"
+    }
+  },
+  "buy": {
+    "inputSchema": {
+      "properties": {
+        "account": {
+          "default": "default",
+          "title": "Account",
+          "type": "string"
+        },
+        "amount_usd": {
+          "title": "Amount Usd",
+          "type": "number"
+        },
+        "order_type": {
+          "default": "fok",
+          "title": "Order Type",
+          "type": "string"
+        },
+        "outcome": {
+          "title": "Outcome",
+          "type": "string"
+        },
+        "slug_or_id": {
+          "title": "Slug Or Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug_or_id",
+        "outcome",
+        "amount_usd"
+      ],
+      "title": "buyArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "buyOutput",
+      "type": "object"
+    }
+  },
+  "cancel_all_orders": {
+    "inputSchema": {
+      "properties": {
+        "account": {
+          "default": "default",
+          "title": "Account",
+          "type": "string"
+        }
+      },
+      "title": "cancel_all_ordersArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "cancel_all_ordersOutput",
+      "type": "object"
+    }
+  },
+  "cancel_order": {
+    "inputSchema": {
+      "properties": {
+        "account": {
+          "default": "default",
+          "title": "Account",
+          "type": "string"
+        },
+        "order_id": {
+          "title": "Order Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "order_id"
+      ],
+      "title": "cancel_orderArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "cancel_orderOutput",
+      "type": "object"
+    }
+  },
+  "check_orders": {
+    "inputSchema": {
+      "properties": {
+        "account": {
+          "default": "default",
+          "title": "Account",
+          "type": "string"
+        }
+      },
+      "title": "check_ordersArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "check_ordersOutput",
+      "type": "object"
+    }
+  },
+  "get_balance": {
+    "inputSchema": {
+      "properties": {
+        "account": {
+          "default": "default",
+          "title": "Account",
+          "type": "string"
+        }
+      },
+      "title": "get_balanceArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "get_balanceOutput",
+      "type": "object"
+    }
+  },
+  "get_event": {
+    "inputSchema": {
+      "properties": {
+        "slug": {
+          "title": "Slug",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug"
+      ],
+      "title": "get_eventArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "get_eventOutput",
+      "type": "object"
+    }
+  },
+  "get_market": {
+    "inputSchema": {
+      "properties": {
+        "slug_or_id": {
+          "title": "Slug Or Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug_or_id"
+      ],
+      "title": "get_marketArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "get_marketOutput",
+      "type": "object"
+    }
+  },
+  "get_markets_by_tag": {
+    "inputSchema": {
+      "properties": {
+        "limit": {
+          "default": 20,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "tag_slug": {
+          "title": "Tag Slug",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tag_slug"
+      ],
+      "title": "get_markets_by_tagArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "get_markets_by_tagOutput",
+      "type": "object"
+    }
+  },
+  "get_order_book": {
+    "inputSchema": {
+      "properties": {
+        "outcome": {
+          "default": "yes",
+          "title": "Outcome",
+          "type": "string"
+        },
+        "slug_or_id": {
+          "title": "Slug Or Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug_or_id"
+      ],
+      "title": "get_order_bookArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "get_order_bookOutput",
+      "type": "object"
+    }
+  },
+  "get_tags": {
+    "inputSchema": {
+      "properties": {},
+      "title": "get_tagsArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "get_tagsOutput",
+      "type": "object"
+    }
+  },
+  "history": {
+    "inputSchema": {
+      "properties": {
+        "account": {
+          "default": "default",
+          "title": "Account",
+          "type": "string"
+        },
+        "limit": {
+          "default": 50,
+          "title": "Limit",
+          "type": "integer"
+        }
+      },
+      "title": "historyArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "historyOutput",
+      "type": "object"
+    }
+  },
+  "init_account": {
+    "inputSchema": {
+      "properties": {
+        "account": {
+          "default": "default",
+          "title": "Account",
+          "type": "string"
+        },
+        "balance": {
+          "default": 10000.0,
+          "title": "Balance",
+          "type": "number"
+        }
+      },
+      "title": "init_accountArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "init_accountOutput",
+      "type": "object"
+    }
+  },
+  "leaderboard_card": {
+    "inputSchema": {
+      "properties": {
+        "accounts": {
+          "default": "",
+          "title": "Accounts",
+          "type": "string"
+        }
+      },
+      "title": "leaderboard_cardArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "leaderboard_cardOutput",
+      "type": "object"
+    }
+  },
+  "leaderboard_entry": {
+    "inputSchema": {
+      "properties": {
+        "account": {
+          "default": "default",
+          "title": "Account",
+          "type": "string"
+        }
+      },
+      "title": "leaderboard_entryArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "leaderboard_entryOutput",
+      "type": "object"
+    }
+  },
+  "list_markets": {
+    "inputSchema": {
+      "properties": {
+        "limit": {
+          "default": 20,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "sort_by": {
+          "default": "volume",
+          "title": "Sort By",
+          "type": "string"
+        }
+      },
+      "title": "list_marketsArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "list_marketsOutput",
+      "type": "object"
+    }
+  },
+  "list_orders": {
+    "inputSchema": {
+      "properties": {
+        "account": {
+          "default": "default",
+          "title": "Account",
+          "type": "string"
+        }
+      },
+      "title": "list_ordersArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "list_ordersOutput",
+      "type": "object"
+    }
+  },
+  "pk_battle": {
+    "inputSchema": {
+      "properties": {
+        "balance": {
+          "default": 10000.0,
+          "title": "Balance",
+          "type": "number"
+        },
+        "name_a": {
+          "default": "player_a",
+          "title": "Name A",
+          "type": "string"
+        },
+        "name_b": {
+          "default": "player_b",
+          "title": "Name B",
+          "type": "string"
+        },
+        "strategy_a": {
+          "title": "Strategy A",
+          "type": "string"
+        },
+        "strategy_b": {
+          "title": "Strategy B",
+          "type": "string"
+        }
+      },
+      "required": [
+        "strategy_a",
+        "strategy_b"
+      ],
+      "title": "pk_battleArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "pk_battleOutput",
+      "type": "object"
+    }
+  },
+  "pk_card": {
+    "inputSchema": {
+      "properties": {
+        "account_a": {
+          "default": "default",
+          "title": "Account A",
+          "type": "string"
+        },
+        "account_b": {
+          "default": "aggressive",
+          "title": "Account B",
+          "type": "string"
+        }
+      },
+      "title": "pk_cardArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "pk_cardOutput",
+      "type": "object"
+    }
+  },
+  "place_limit_order": {
+    "inputSchema": {
+      "properties": {
+        "account": {
+          "default": "default",
+          "title": "Account",
+          "type": "string"
+        },
+        "amount": {
+          "title": "Amount",
+          "type": "number"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "limit_price": {
+          "title": "Limit Price",
+          "type": "number"
+        },
+        "order_type": {
+          "default": "gtc",
+          "title": "Order Type",
+          "type": "string"
+        },
+        "outcome": {
+          "title": "Outcome",
+          "type": "string"
+        },
+        "side": {
+          "title": "Side",
+          "type": "string"
+        },
+        "slug_or_id": {
+          "title": "Slug Or Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug_or_id",
+        "outcome",
+        "side",
+        "amount",
+        "limit_price"
+      ],
+      "title": "place_limit_orderArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "place_limit_orderOutput",
+      "type": "object"
+    }
+  },
+  "portfolio": {
+    "inputSchema": {
+      "properties": {
+        "account": {
+          "default": "default",
+          "title": "Account",
+          "type": "string"
+        }
+      },
+      "title": "portfolioArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "portfolioOutput",
+      "type": "object"
+    }
+  },
+  "reset_account": {
+    "inputSchema": {
+      "properties": {
+        "account": {
+          "default": "default",
+          "title": "Account",
+          "type": "string"
+        }
+      },
+      "title": "reset_accountArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "reset_accountOutput",
+      "type": "object"
+    }
+  },
+  "resolve": {
+    "inputSchema": {
+      "properties": {
+        "account": {
+          "default": "default",
+          "title": "Account",
+          "type": "string"
+        },
+        "slug_or_id": {
+          "title": "Slug Or Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug_or_id"
+      ],
+      "title": "resolveArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "resolveOutput",
+      "type": "object"
+    }
+  },
+  "resolve_all": {
+    "inputSchema": {
+      "properties": {
+        "account": {
+          "default": "default",
+          "title": "Account",
+          "type": "string"
+        }
+      },
+      "title": "resolve_allArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "resolve_allOutput",
+      "type": "object"
+    }
+  },
+  "search_markets": {
+    "inputSchema": {
+      "properties": {
+        "limit": {
+          "default": 10,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "query": {
+          "title": "Query",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "title": "search_marketsArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "search_marketsOutput",
+      "type": "object"
+    }
+  },
+  "sell": {
+    "inputSchema": {
+      "properties": {
+        "account": {
+          "default": "default",
+          "title": "Account",
+          "type": "string"
+        },
+        "order_type": {
+          "default": "fok",
+          "title": "Order Type",
+          "type": "string"
+        },
+        "outcome": {
+          "title": "Outcome",
+          "type": "string"
+        },
+        "shares": {
+          "title": "Shares",
+          "type": "number"
+        },
+        "slug_or_id": {
+          "title": "Slug Or Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug_or_id",
+        "outcome",
+        "shares"
+      ],
+      "title": "sellArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "sellOutput",
+      "type": "object"
+    }
+  },
+  "share_content": {
+    "inputSchema": {
+      "properties": {
+        "account": {
+          "default": "default",
+          "title": "Account",
+          "type": "string"
+        },
+        "platform": {
+          "default": "twitter",
+          "title": "Platform",
+          "type": "string"
+        },
+        "template": {
+          "default": "performance",
+          "title": "Template",
+          "type": "string"
+        }
+      },
+      "title": "share_contentArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "share_contentOutput",
+      "type": "object"
+    }
+  },
+  "stats": {
+    "inputSchema": {
+      "properties": {
+        "account": {
+          "default": "default",
+          "title": "Account",
+          "type": "string"
+        }
+      },
+      "title": "statsArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "statsOutput",
+      "type": "object"
+    }
+  },
+  "stats_card": {
+    "inputSchema": {
+      "properties": {
+        "account": {
+          "default": "default",
+          "title": "Account",
+          "type": "string"
+        },
+        "format": {
+          "default": "markdown",
+          "title": "Format",
+          "type": "string"
+        }
+      },
+      "title": "stats_cardArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "stats_cardOutput",
+      "type": "object"
+    }
+  },
+  "watch_prices": {
+    "inputSchema": {
+      "properties": {
+        "outcomes": {
+          "default": "yes",
+          "title": "Outcomes",
+          "type": "string"
+        },
+        "slugs": {
+          "title": "Slugs",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slugs"
+      ],
+      "title": "watch_pricesArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "watch_pricesOutput",
+      "type": "object"
+    }
+  }
+}

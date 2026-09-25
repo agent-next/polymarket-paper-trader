@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -1060,3 +1061,152 @@ class TestStdioSmoke:
                     )
                     tools = await session.list_tools()
                     assert len(tools.tools) == 30
+
+
+class TestStdioCallTool:
+    """tools/call over real stdio transport (no network)."""
+
+    def test_sequential_init_then_balance(self, tmp_path):
+        import anyio
+
+        anyio.run(self._seq, tmp_path)
+
+    def test_parallel_get_balance_serialized(self, tmp_path):
+        import anyio
+
+        anyio.run(self._par, tmp_path)
+
+    async def _seq(self, tmp_path):
+        import sys
+
+        import anyio
+
+        from mcp import ClientSession, StdioServerParameters
+        from mcp.client.stdio import stdio_client
+
+        params = StdioServerParameters(
+            command=sys.executable,
+            args=["-m", "pm_trader.mcp_server"],
+            env={**os.environ, "HOME": str(tmp_path)},
+        )
+        with anyio.fail_after(30):
+            async with stdio_client(params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    init_res = await session.call_tool(
+                        "init_account", {"balance": 1000.0}
+                    )
+                    bal_res = await session.call_tool("get_balance", {})
+        init_payload = json.loads(init_res.content[0].text)
+        bal_payload = json.loads(bal_res.content[0].text)
+        assert init_payload["ok"] is True
+        assert init_payload["data"]["cash"] == 1000.0
+        assert bal_payload["ok"] is True
+        assert bal_payload["data"]["cash"] == 1000.0
+
+    async def _par(self, tmp_path):
+        import sys
+
+        import anyio
+
+        from mcp import ClientSession, StdioServerParameters
+        from mcp.client.stdio import stdio_client
+
+        params = StdioServerParameters(
+            command=sys.executable,
+            args=["-m", "pm_trader.mcp_server"],
+            env={**os.environ, "HOME": str(tmp_path)},
+        )
+        with anyio.fail_after(30):
+            async with stdio_client(params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    await session.call_tool(
+                        "init_account", {"balance": 1000.0}
+                    )
+                    texts = []
+
+                    async def one():
+                        res = await session.call_tool("get_balance", {})
+                        texts.append(res.content[0].text)
+
+                    async with anyio.create_task_group() as tg:
+                        for _ in range(8):
+                            tg.start_soon(one)
+        assert len(texts) == 8
+        for text in texts:
+            assert "SQLite objects created in a thread" not in text
+            assert json.loads(text)["ok"] is True
+
+
+class TestStdioToolSchemas:
+    """tools/list schemas must stay identical across the dispatch change."""
+
+    def test_tool_schemas_match_snapshot(self):
+        import anyio
+
+        anyio.run(self._schemas)
+
+    async def _schemas(self):
+        import sys
+
+        import anyio
+
+        from mcp import ClientSession, StdioServerParameters
+        from mcp.client.stdio import stdio_client
+
+        params = StdioServerParameters(
+            command=sys.executable,
+            args=["-m", "pm_trader.mcp_server"],
+        )
+        with anyio.fail_after(30):
+            async with stdio_client(params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    tools = await session.list_tools()
+        snapshot = {}
+        for t in sorted(tools.tools, key=lambda t: t.name):
+            d = t.model_dump(by_alias=True, exclude_none=True)
+            snapshot[t.name] = {
+                "inputSchema": d.get("inputSchema"),
+                "outputSchema": d.get("outputSchema"),
+            }
+        expected = json.loads(
+            (Path(__file__).parent / "tool_schemas_snapshot.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert snapshot == expected
+
+
+class TestToolDispatch:
+    """Registered tools execute serialized on the dedicated worker thread."""
+
+    def test_calls_run_on_single_executor_thread(self):
+        import anyio
+
+        anyio.run(self._dispatch)
+
+    async def _dispatch(self):
+        import threading
+
+        loop_thread = threading.current_thread().name
+        seen: list[str] = []
+
+        def dispatch_probe() -> str:
+            seen.append(threading.current_thread().name)
+            return "ok"
+
+        mcp_server._tool(dispatch_probe)
+        try:
+            r1 = await mcp_server.mcp.call_tool("dispatch_probe", {})
+            r2 = await mcp_server.mcp.call_tool("dispatch_probe", {})
+        finally:
+            mcp_server.mcp.remove_tool("dispatch_probe")
+        assert r1.content[0].text == "ok"
+        assert r2.content[0].text == "ok"
+        assert len(seen) == 2
+        # Same dedicated worker thread for both calls, not the loop thread.
+        assert seen[0] == seen[1]
+        assert seen[0].startswith("pm-trader-mcp")
+        assert seen[0] != loop_thread
