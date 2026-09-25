@@ -83,6 +83,11 @@ class TestVersionConsistency:
         assert data["version"] == _installed_version()
         assert data["packages"][0]["version"] == _installed_version()
 
+    def test_agent_manifests_match_installed(self) -> None:
+        for rel in (".claude-plugin/plugin.json", "gemini-extension.json"):
+            data = json.loads((ROOT / rel).read_text(encoding="utf-8"))
+            assert data["version"] == _installed_version(), rel
+
     def test_skill_frontmatter_matches_installed(self) -> None:
         for rel in ("skill/polymarket-paper-trader/SKILL.md", ".claude/skills/polymarket-paper-trader/SKILL.md"):
             assert _frontmatter_version(ROOT / rel) == _installed_version(), rel
