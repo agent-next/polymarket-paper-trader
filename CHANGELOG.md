@@ -4,6 +4,9 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+### Added
+- **`pm-trader strategy` command group**: `strategy run`, `strategy pk`, and `strategy compare` are the preferred names for the strategy-replay commands and reuse the same implementations as `pm-trader benchmark run|pk|compare`; `benchmark` keeps working unchanged and is marked as an alias in its help text (no deprecation warning is emitted).
+
 ### Changed
 - **MCP SDK 2.x**: the MCP server now requires `mcp>=2,<3` and uses `MCPServer` (upstream removed `mcp.server.fastmcp` in 2.0). Fresh installs now get MCP SDK 2.x; `serverInfo.version` now reports the `polymarket-paper-trader` package version instead of the MCP library version. Tool names, signatures, and payloads are unchanged.
 

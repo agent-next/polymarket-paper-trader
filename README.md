@@ -82,6 +82,8 @@ pm-trader stats
 | `markets list [--limit N] [--sort volume\|liquidity]` | Browse active markets |
 | `markets search QUERY` | Full-text market search |
 | `markets get SLUG` | Market details |
+| `markets tags` | List all market categories/tags |
+| `markets event SLUG` | Event details — a group of related markets |
 | `price SLUG` | YES/NO midpoints and spread |
 | `book SLUG [--depth N]` | Order book snapshot |
 | `watch SLUG [SLUG...] [--outcome yes\|no]` | Monitor live prices |
@@ -92,6 +94,7 @@ pm-trader stats
 | `orders place SLUG OUTCOME SIDE AMOUNT PRICE` | Limit order (GTC/GTD) |
 | `orders list` | Open limit orders (pending and partially filled) |
 | `orders cancel ID` | Cancel a limit order |
+| `orders cancel-all` | Cancel all pending limit orders at once |
 | `orders check` | Fill limit orders if price crosses |
 | `stats [--card\|--tweet\|--plain]` | Win rate, ROI, profit, max drawdown |
 | `resolve [SLUG] [--all]` | Resolve a closed market, or all closed markets (winners get $1/share) |
@@ -99,11 +102,15 @@ pm-trader stats
 | `pk ACCOUNT_A ACCOUNT_B` | Battle: who's the better trader? |
 | `export trades [--format csv\|json]` | Export trade history |
 | `export positions [--format csv\|json]` | Export positions |
-| `benchmark run MODULE.FUNC` | Run a trading strategy |
-| `benchmark compare ACCT1 ACCT2` | Compare account performance |
-| `benchmark pk STRAT_A STRAT_B` | Battle: who's the better trader? |
+| `strategy run MODULE.FUNC` | Run a trading strategy |
+| `strategy compare ACCT1 ACCT2` | Compare account performance |
+| `strategy pk STRAT_A STRAT_B` | Battle: who's the better trader? |
+| `benchmark run MODULE.FUNC` | Alias of `strategy run` |
+| `benchmark compare ACCT1 ACCT2` | Alias of `strategy compare` |
+| `benchmark pk STRAT_A STRAT_B` | Alias of `strategy pk` |
 | `accounts list` | List named accounts |
 | `accounts create NAME` | Create account for A/B testing |
+| `accounts delete NAME --confirm` | Delete a named account and all its data |
 | `mcp` | Start MCP server (stdio transport) |
 
 Global flags: `--data-dir PATH`, `--account NAME` (or env vars `PM_TRADER_DATA_DIR`, `PM_TRADER_ACCOUNT`).
@@ -172,7 +179,7 @@ Three ready-to-use strategies in `examples/`:
 Buys when YES price crosses above 0.55, takes profit at 0.70, stops loss at 0.35.
 
 ```bash
-pm-trader benchmark run examples.momentum.run
+pm-trader strategy run examples.momentum.run
 ```
 
 ### Mean reversion (`examples/mean_reversion.py`)
@@ -180,7 +187,7 @@ pm-trader benchmark run examples.momentum.run
 Buys when YES price drops 12+ cents below 0.50 fair value, sells when it reverts.
 
 ```bash
-pm-trader benchmark run examples.mean_reversion.run
+pm-trader strategy run examples.mean_reversion.run
 ```
 
 ### Limit grid (`examples/limit_grid.py`)
@@ -188,7 +195,7 @@ pm-trader benchmark run examples.mean_reversion.run
 Places a grid of limit buy orders below current price with take-profit sells above.
 
 ```bash
-pm-trader benchmark run examples.limit_grid.run
+pm-trader strategy run examples.limit_grid.run
 ```
 
 ### Writing your own strategy
@@ -209,7 +216,7 @@ def run(engine: Engine) -> None:
 ```
 
 ```bash
-pm-trader benchmark run examples.my_strategy.run
+pm-trader strategy run examples.my_strategy.run
 ```
 
 For backtesting with historical data:
@@ -223,7 +230,7 @@ def backtest_strategy(engine, snapshot, prices):
 
 ## Evaluate your agent: polymarket-benchmark
 
-The paper trader is the gym; the `polymarket-benchmark` package in this repository is the scoreboard. It is a separate install (not part of the `pm-trader` CLI — `pm-trader benchmark` replays trading strategies, see the CLI table above):
+The paper trader is the gym; the `polymarket-benchmark` package in this repository is the scoreboard. It is a separate install (not part of the `pm-trader` CLI — `pm-trader strategy` replays trading strategies (`pm-trader benchmark` remains as an alias), see the CLI table above):
 
 ```bash
 pip install -e "benchmark[dev]"
@@ -243,7 +250,7 @@ pm-trader --account conservative init --balance 5000
 pm-trader --account aggressive buy some-market yes 500
 pm-trader --account conservative buy some-market yes 100
 
-pm-trader benchmark compare aggressive conservative
+pm-trader strategy compare aggressive conservative
 ```
 
 ## Share your results

@@ -727,6 +727,48 @@ class TestBenchmarkCommands:
         assert data["ok"] is True
 
 
+class TestStrategyCommands:
+    """`strategy` reuses the `benchmark` command objects — same JSON output."""
+
+    def test_strategy_run_error_matches_benchmark(self, runner, data_dir):
+        args = ["run", "nonexistent.strategy"]
+        benchmark = _invoke(runner, ["benchmark"] + args, data_dir)
+        strategy = _invoke(runner, ["strategy"] + args, data_dir)
+        assert strategy.exit_code == benchmark.exit_code
+        assert strategy.output == benchmark.output
+        assert _parse(strategy)["code"] == "BENCHMARK_ERROR"
+
+    @patch("pm_trader.benchmark.run_strategy")
+    def test_strategy_run_success_matches_benchmark(self, mock_run, runner, data_dir):
+        mock_run.return_value = {"strategy": "mod.fn", "pnl": 100.0}
+        benchmark = _invoke(runner, ["benchmark", "run", "mod.fn"], data_dir)
+        strategy = _invoke(runner, ["strategy", "run", "mod.fn"], data_dir)
+        assert strategy.output == benchmark.output
+        assert _parse(strategy)["ok"] is True
+
+    def test_strategy_compare_matches_benchmark(self, runner, data_dir):
+        _invoke(runner, ["accounts", "create", "a1"], data_dir)
+        _invoke(runner, ["accounts", "create", "a2", "--balance", "5000"], data_dir)
+        benchmark = _invoke(runner, ["benchmark", "compare", "a1", "a2"], data_dir)
+        strategy = _invoke(runner, ["strategy", "compare", "a1", "a2"], data_dir)
+        assert strategy.output == benchmark.output
+        assert _parse(strategy)["ok"] is True
+
+    def test_strategy_pk_matches_benchmark(self, runner, data_dir):
+        args = [
+            "pk",
+            "tests.test_benchmark.noop_strategy",
+            "tests.test_benchmark.noop_strategy",
+            "--name-a", "alpha",
+            "--name-b", "beta",
+        ]
+        benchmark = _invoke(runner, ["benchmark"] + args, data_dir)
+        strategy = _invoke(runner, ["strategy"] + args, data_dir)
+        assert strategy.exit_code == benchmark.exit_code == 0
+        assert strategy.output == benchmark.output
+        assert "Winner:" in strategy.output
+
+
 # ---------------------------------------------------------------------------
 # Error path coverage for trading commands
 # ---------------------------------------------------------------------------

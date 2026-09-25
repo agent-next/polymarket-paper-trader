@@ -659,7 +659,7 @@ def accounts_delete(ctx: click.Context, name: str, confirm: bool) -> None:
 
 @main.group()
 def benchmark() -> None:
-    """Run and compare trading strategies."""
+    """Run and compare trading strategies (alias of 'strategy')."""
     pass
 
 
@@ -736,6 +736,17 @@ def benchmark_compare(ctx: click.Context, account_names: tuple[str, ...]) -> Non
             indent=2,
         ))
         sys.exit(1)
+
+
+@main.group()
+def strategy() -> None:
+    """Run and compare trading strategies."""
+    pass
+
+
+strategy.add_command(benchmark_run)
+strategy.add_command(benchmark_pk)
+strategy.add_command(benchmark_compare)
 
 
 # ---------------------------------------------------------------------------
