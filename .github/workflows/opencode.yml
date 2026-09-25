@@ -6,7 +6,7 @@ on:
   pull_request_review_comment:
     types: [created]
   issues:
-    types: [opened]
+    types: [opened, labeled]
   pull_request:
     types: [opened, synchronize, ready_for_review]
 
@@ -18,19 +18,20 @@ permissions:
   contents: read
 
 env:
-  # Public-repo bot: Harvard SEAS FreeInference (OpenAI-compatible).
-  # qwen3.6-35b is the fast free model; operator notes say unlimited
-  # concurrency on this ID. Do not put the key in this file.
+  # Public Q&A / triage / review: fast FreeInference pool.
+  # Implement uses OPENCODE_IMPLEMENT_MODEL (slow pool, 1 in-flight per key).
   OPENCODE_MODEL: freeinference/qwen3.6-35b
+  OPENCODE_IMPLEMENT_MODEL: freeinference/deepseek-v4-flash
 
 jobs:
   comment:
     if: |
-      github.event_name == 'issue_comment' ||
-      github.event_name == 'pull_request_review_comment'
+      (github.event_name == 'issue_comment' ||
+       github.event_name == 'pull_request_review_comment') &&
+      !startsWith(github.event.comment.body, '/oc implement')
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
-      contents: write
       issues: write
       pull-requests: write
     steps:
@@ -40,16 +41,16 @@ jobs:
           persist-credentials: false
       - name: Preflight FreeInference key
         env:
-          FREEINFERENCE_API_KEY: ${{ secrets.FREEINFERENCE_API_KEY }}
+          FREEINFERENCE_API_KEY: ${{ secrets.FREEINFERENCE_PUBLIC_KEY }}
         run: |
           if [ -z "$FREEINFERENCE_API_KEY" ]; then
             echo "FREEINFERENCE_API_KEY is empty" >&2
             exit 1
           fi
-          echo "FREEINFERENCE_API_KEY is set (len=${#FREEINFERENCE_API_KEY})"
+          echo "FREEINFERENCE_API_KEY is set"
       - uses: anomalyco/opencode/github@31406ccc51b4bd2a4e1e086b2bcaa5f7f804f26d # v1.18.18
         env:
-          FREEINFERENCE_API_KEY: ${{ secrets.FREEINFERENCE_API_KEY }}
+          FREEINFERENCE_API_KEY: ${{ secrets.FREEINFERENCE_PUBLIC_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: ${{ env.OPENCODE_MODEL }}
@@ -63,15 +64,72 @@ jobs:
 
             On /oc or /opencode:
             - Answer, explain, or review from the repo and thread.
-            - Do not push commits unless the comment explicitly asks to fix or implement.
+            - Do not push commits. Implementation is a different job (/oc implement).
             - Prefer citing tests/ and pm_trader/ over speculation.
 
   triage:
-    if: github.event_name == 'issues'
+    if: github.event_name == 'issues' && github.event.action == 'opened'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       issues: write
     steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Preflight FreeInference key
+        env:
+          FREEINFERENCE_API_KEY: ${{ secrets.FREEINFERENCE_PUBLIC_KEY }}
+        run: |
+          if [ -z "$FREEINFERENCE_API_KEY" ]; then
+            echo "FREEINFERENCE_API_KEY is empty" >&2
+            exit 1
+          fi
+          echo "FREEINFERENCE_API_KEY is set"
+      - uses: anomalyco/opencode/github@31406ccc51b4bd2a4e1e086b2bcaa5f7f804f26d # v1.18.18
+        env:
+          FREEINFERENCE_API_KEY: ${{ secrets.FREEINFERENCE_PUBLIC_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          model: ${{ env.OPENCODE_MODEL }}
+          use_github_token: true
+          share: false
+          prompt: |
+            Triage this new issue on a paper-trading simulator.
+            Label if you can (bug, enhancement, documentation).
+            Ask for missing repro details. Do not write code or push.
+            Do not add bot:implement unless a human already asked for an implementation.
+
+  implement:
+    if: |
+      (github.event_name == 'issues' &&
+       github.event.action == 'labeled' &&
+       github.event.label.name == 'bot:implement') ||
+      ((github.event_name == 'issue_comment' ||
+        github.event_name == 'pull_request_review_comment') &&
+       startsWith(github.event.comment.body, '/oc implement'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    outputs:
+      branch: ${{ steps.publish-branch.outputs.branch }}
+    steps:
+      - name: Gate to trusted actors
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          perm=$(gh api "repos/${REPO}/collaborators/${ACTOR}/permission" --jq .permission 2>/dev/null || echo none)
+          case "$perm" in
+            admin|maintain|write) echo "actor ${ACTOR} has ${perm}; implement allowed" ;;
+            *) echo "actor ${ACTOR} lacks write access (${perm}); refusing implement" >&2; exit 1 ;;
+          esac
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 1
@@ -84,23 +142,83 @@ jobs:
             echo "FREEINFERENCE_API_KEY is empty" >&2
             exit 1
           fi
-          echo "FREEINFERENCE_API_KEY is set (len=${#FREEINFERENCE_API_KEY})"
+          echo "FREEINFERENCE_API_KEY is set"
       - uses: anomalyco/opencode/github@31406ccc51b4bd2a4e1e086b2bcaa5f7f804f26d # v1.18.18
         env:
           FREEINFERENCE_API_KEY: ${{ secrets.FREEINFERENCE_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          model: ${{ env.OPENCODE_MODEL }}
+          model: ${{ env.OPENCODE_IMPLEMENT_MODEL }}
+          mentions: "/oc implement"
           use_github_token: true
           share: false
           prompt: |
-            Triage this new issue on a paper-trading simulator.
-            Label if you can (bug, enhancement, documentation).
-            Ask for missing repro details. Do not write code or push.
+            Implement the requested change on this paper-trading simulator.
+            There is no wallet and no real money. Never invent fills or P&L.
+            Never print secrets.
+
+            - Create or update a branch and open a PR. Do not merge.
+            - Prefer tests first. Cite tests/ and pm_trader/.
+            - Do not approve the PR.
+      - name: Publish pushed branch
+        id: publish-branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          branch=$(git rev-parse --abbrev-ref HEAD)
+          default_branch=$(gh api "repos/${REPO}" --jq .default_branch)
+          if [ -z "$branch" ] || [ "$branch" = "HEAD" ] || [ "$branch" = "$default_branch" ]; then
+            echo "implement produced no pushed branch (HEAD=${branch}); refusing to guess a PR" >&2
+            exit 1
+          fi
+          if ! [[ "$branch" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]]; then
+            echo "branch '${branch}' failed strict ref validation; refusing to expose it" >&2
+            exit 1
+          fi
+          if ! gh api "repos/${REPO}/branches/${branch}" --jq .name >/dev/null 2>&1; then
+            echo "branch ${branch} is not on ${REPO} (fork push or never pushed); cannot dispatch Tests" >&2
+            exit 1
+          fi
+          echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+
+  dispatch-tests:
+    needs: implement
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch Tests on the validated branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ needs.implement.outputs.branch }}
+          WORKFLOW_PATH: .github/workflows/test.yml
+        run: |
+          set -euo pipefail
+          if ! [[ "$BRANCH" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]]; then
+            echo "branch output '${BRANCH}' failed ref validation; refusing dispatch" >&2
+            exit 1
+          fi
+          # The dispatched run executes the workflow file AT THE REF; refuse to
+          # dispatch when the pushed branch rewrote it (a model-written workflow
+          # would run with repository secrets attached).
+          default_sha=$(gh api "repos/${REPO}/contents/${WORKFLOW_PATH}" --jq .sha)
+          branch_sha=$(gh api "repos/${REPO}/contents/${WORKFLOW_PATH}?ref=${BRANCH}" --jq .sha)
+          if [ -z "$branch_sha" ] || [ "$branch_sha" != "$default_sha" ]; then
+            echo "${WORKFLOW_PATH} on ${BRANCH} differs from the default branch; refusing dispatch" >&2
+            exit 1
+          fi
+          echo "Dispatching Tests on ${BRANCH}"
+          gh workflow run Tests --repo "${REPO}" --ref "${BRANCH}"
 
   review:
     if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       pull-requests: write
@@ -111,16 +229,16 @@ jobs:
           persist-credentials: false
       - name: Preflight FreeInference key
         env:
-          FREEINFERENCE_API_KEY: ${{ secrets.FREEINFERENCE_API_KEY }}
+          FREEINFERENCE_API_KEY: ${{ secrets.FREEINFERENCE_PUBLIC_KEY }}
         run: |
           if [ -z "$FREEINFERENCE_API_KEY" ]; then
             echo "FREEINFERENCE_API_KEY is empty" >&2
             exit 1
           fi
-          echo "FREEINFERENCE_API_KEY is set (len=${#FREEINFERENCE_API_KEY})"
+          echo "FREEINFERENCE_API_KEY is set"
       - uses: anomalyco/opencode/github@31406ccc51b4bd2a4e1e086b2bcaa5f7f804f26d # v1.18.18
         env:
-          FREEINFERENCE_API_KEY: ${{ secrets.FREEINFERENCE_API_KEY }}
+          FREEINFERENCE_API_KEY: ${{ secrets.FREEINFERENCE_PUBLIC_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: ${{ env.OPENCODE_MODEL }}
@@ -129,4 +247,4 @@ jobs:
           prompt: |
             Shallow review only. Report discrete defects this diff introduces.
             Ignore style nits and speculation. If nothing actionable, do not post LGTM.
-            Do not push commits.
+            Do not push commits. Do not approve. Do not merge.
