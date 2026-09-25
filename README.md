@@ -42,6 +42,20 @@ uv pip install -e ".[dev]"
 
 Requires Python 3.10+.
 
+## Works with
+
+| Runtime | One-line install |
+|---|---|
+| Claude Code | `/plugin marketplace add agent-next/polymarket-paper-trader` |
+| Codex CLI | `codex mcp add polymarket-paper-trader -- uvx --from polymarket-paper-trader pm-trader-mcp` |
+| Cursor | [![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.png)](cursor://anysphere.cursor-deeplink/mcp/install?name=polymarket-paper-trader&config=eyJjb21tYW5kIjoidXZ4IiwiYXJncyI6WyItLWZyb20iLCJwb2x5bWFya2V0LXBhcGVyLXRyYWRlciIsInBtLXRyYWRlci1tY3AiXX0=) |
+| Gemini CLI | `gemini extensions install https://github.com/agent-next/polymarket-paper-trader` |
+| OpenCode / Goose / Cline / Windsurf / Copilot | add `pm-trader-mcp` to the client's MCP config |
+| OpenClaw / ClawHub | `npx clawhub install polymarket-paper-trader` |
+| Hermes Agent / LangChain / OpenAI Agents SDK / CrewAI | wrap `uvx --from polymarket-paper-trader pm-trader-mcp` |
+
+Full copy-paste config for every runtime above (plus Grok/xAI remote MCP): [docs/integrations.md](docs/integrations.md).
+
 ## Quick start
 
 ```bash
