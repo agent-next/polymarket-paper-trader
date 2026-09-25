@@ -13,3 +13,5 @@ task-runs
 benchmark/results
 docs
 examples
+.env
+**/.env*

@@ -4,6 +4,14 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+### Security
+- **Streamable-HTTP transport no longer serves `backtest`/`pk_battle`**: both
+  read arbitrary local files and import/execute local strategy modules, which
+  must not be reachable from a remote MCP client; they remain available on
+  stdio. Docker/README now also state plainly that the HTTP endpoint has no
+  authentication and document publishing the port to `127.0.0.1` only;
+  `.dockerignore` now excludes `.env`/`.env*` files from the image.
+
 ### Added
 - **Agent runtime integrations**: a Claude Code plugin (`.claude-plugin/plugin.json` +
   `marketplace.json`) and a `gemini-extension.json` that bundle the

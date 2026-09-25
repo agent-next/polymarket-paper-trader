@@ -6,6 +6,12 @@
 # not expose a shared container to multiple untrusted users; they would all
 # trade the same paper account. Mount a volume at /root/.pm-trader to persist
 # the account across restarts.
+#
+# No authentication: the streamable-http endpoint has none. Publish the port
+# to 127.0.0.1 only (`docker run -p 127.0.0.1:8000:8000 ...`) unless a real
+# authenticating proxy sits in front. `backtest`/`pk_battle` (local file
+# reads + local strategy-module execution) are stdio-only and not served
+# here.
 FROM python:3.12-slim
 
 WORKDIR /app

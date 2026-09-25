@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
@@ -1292,9 +1292,38 @@ class TestMcpMainTransport:
             mock_run.assert_called_once_with()
 
     def test_main_streamable_http_forwards_host_and_port(self):
-        with patch.object(mcp_server.mcp, "run") as mock_run:
+        with patch.object(mcp_server.mcp, "run") as mock_run, patch.object(
+            mcp_server.mcp, "remove_tool"
+        ):
             mcp_server.main(
                 ["--transport", "streamable-http", "--host", "0.0.0.0", "--port", "9001"]
+            )
+            mock_run.assert_called_once_with(
+                transport="streamable-http", host="0.0.0.0", port=9001
+            )
+
+
+class TestLocalOnlyToolRemoval:
+    """`_run` must strip local-filesystem/code-exec tools before serving
+    over a network transport, and must leave stdio untouched. `remove_tool`
+    is mocked here so the module-global `mcp` registry is never actually
+    mutated in-process (that would leak into other tests)."""
+
+    def test_stdio_run_does_not_remove_tools(self):
+        with patch.object(mcp_server.mcp, "run") as mock_run, patch.object(
+            mcp_server.mcp, "remove_tool"
+        ) as mock_remove:
+            mcp_server._run("stdio", "127.0.0.1", 8000)
+            mock_remove.assert_not_called()
+            mock_run.assert_called_once_with()
+
+    def test_streamable_http_run_removes_local_only_tools(self):
+        with patch.object(mcp_server.mcp, "run") as mock_run, patch.object(
+            mcp_server.mcp, "remove_tool"
+        ) as mock_remove:
+            mcp_server._run("streamable-http", "0.0.0.0", 9001)
+            mock_remove.assert_has_calls(
+                [call(name) for name in mcp_server._LOCAL_ONLY_TOOLS]
             )
             mock_run.assert_called_once_with(
                 transport="streamable-http", host="0.0.0.0", port=9001
@@ -1350,9 +1379,10 @@ class TestStreamableHttpSmoke:
                             )
                             assert init.instructions == mcp_server._SERVER_INSTRUCTIONS
                             tools = await session.list_tools()
-                            registered = await mcp_server.mcp.list_tools()
-                            assert len(registered) > 0
-                            assert len(tools.tools) == len(registered)
+                            names = {t.name for t in tools.tools}
+                            assert len(tools.tools) == 28
+                            assert "backtest" not in names
+                            assert "pk_battle" not in names
                     break
                 except Exception as exc:  # server still starting up
                     last_error = exc

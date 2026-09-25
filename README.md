@@ -168,14 +168,20 @@ pm-trader-mcp --transport streamable-http --host 0.0.0.0 --port 8000
 
 The MCP endpoint is then `http://<host>:<port>/mcp`. A running server holds
 **one** paper-trading account — it is single-tenant, self-host-only, not a
-public multi-user service.
+public multi-user service. **There is no authentication** on this transport;
+anyone who can reach the port can call every exposed tool. `backtest` and
+`pk_battle` (local file reads + local strategy-module execution) are
+**stdio-only** and are not registered when serving over streamable-http.
 
 ### Docker
 
 ```bash
 docker build -t pm-trader-mcp .
-docker run -p 8000:8000 -v pm-trader-data:/root/.pm-trader pm-trader-mcp
+docker run -p 127.0.0.1:8000:8000 -v pm-trader-data:/root/.pm-trader pm-trader-mcp
 ```
+
+Publish the port to `127.0.0.1` only (as above) unless you put a real
+authenticating proxy in front of it — the container has no auth of its own.
 
 ### MCP tools
 
