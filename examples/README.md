@@ -37,9 +37,16 @@ take-profit sells 5 cents above entry. Profits from range-bound oscillation.
 ### Jev Edge (`jev_edge.py`)
 "Jev vs the market": asks the Jev decision model for a YES probability on each
 scanned binary market and buys the side it favors when Jev's probability
-disagrees with the YES midpoint by more than `EDGE`. Requires the benchmark
-package (`pip install -e "benchmark"`); model defaults to
-`opencode/jev-1.13-free` (no key needed), override with `JEV_MODEL`.
+disagrees with the YES midpoint by more than `EDGE`, skipping markets priced
+outside `[MIN_PRICE, MAX_PRICE]` (default `[0.05, 0.95]`) since fees eat a
+near-fixed fraction of stake at the extremes. Requires the benchmark package
+(`pip install -e "benchmark"`); model defaults to `opencode/jev-1.13-free`
+(no key needed), override with `JEV_MODEL`. Run from the repo root with
+`PYTHONPATH=.` (a strict editable install does not map the `examples`
+namespace package):
+```
+PYTHONPATH=. pm-trader strategy run examples.jev_edge.run
+```
 
 ## Write Your Own
 
