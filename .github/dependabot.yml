@@ -14,6 +14,7 @@ updates:
       - "/"
       - "/benchmark"
       - "/leaderboard-client"
+      - "/leaderboard-server"
     schedule:
       interval: monthly
     open-pull-requests-limit: 2

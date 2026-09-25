@@ -1,6 +1,6 @@
 # polymarket-paper-trader — agent guide
 
-Org rules: https://github.com/agent-next/.github/blob/main/AGENT-STANDARD.md (hard limits, PR/merge policy).
+Contribution and PR rules: [CONTRIBUTING.md](CONTRIBUTING.md); security reports: [SECURITY.md](SECURITY.md).
 
 See [CLAUDE.md](CLAUDE.md) for the detailed module map of the root `pm_trader` package.
 
@@ -16,20 +16,22 @@ FastMCP). Public repo, actively maintained; the product ships to PyPI/ClawHub/MC
 
 ## Layout
 
-Three independent packages: the root `polymarket-paper-trader` (`pm_trader/`), `benchmark/`
-(`pm_benchmark/`), and `leaderboard-client/` (`pm_leaderboard_client/`). Work on one package
-at a time; each has its own tests and 100% coverage gate.
+Four independent packages: the root `polymarket-paper-trader` (`pm_trader/`), `benchmark/`
+(`pm_benchmark/`), `leaderboard-client/` (`pm_leaderboard_client/`), and `leaderboard-server/`
+(`server/`, depends on the root package and the client). Work on one package at a time; each
+has its own tests and 100% coverage gate.
 
 ## Setup
 
-`make setup` installs all three packages editable with dev extras:
-`pip install -e ".[dev]" -e "benchmark[dev]" -e "leaderboard-client[dev]"`.
+`make setup` creates `.venv` and installs all four packages editable with dev extras:
+`pip install -e ".[dev]" -e "benchmark[dev]" -e "leaderboard-client[dev]" -e "leaderboard-server[dev]"`.
 Requires Python 3.10+ and pip.
 
 ## Check
 
-`make check` = the gate CI runs (`.github/workflows/test.yml` + `toolkit.yml`): per package,
-`python3 -m pytest tests/ -x -q -m "not live"` with coverage `--cov-fail-under=100`.
+`make check` runs, per package, the coverage gate CI enforces on Python 3.13
+(`.github/workflows/test.yml` + `toolkit.yml`): `pytest tests/ -x -q -m "not live"` with
+`--cov-fail-under=100`. CI additionally runs the suites on Python 3.10-3.12.
 Narrow variant: run the same pytest command inside the one package directory you touched.
 
 ## Boundaries
