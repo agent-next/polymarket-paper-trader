@@ -5,6 +5,14 @@ All notable changes to `polymarket-paper-trader` are documented here.
 ## [Unreleased]
 
 ### Added
+- **Agent runtime integrations**: a Claude Code plugin (`.claude-plugin/plugin.json` +
+  `marketplace.json`) and a `gemini-extension.json` that bundle the
+  `polymarket-paper-trader` skill with `pm-trader-mcp`; `docs/integrations.md` with
+  copy-paste MCP/skill config for Claude Code, Codex CLI, Cursor, Gemini CLI, OpenCode,
+  Goose, Cline, Windsurf, GitHub Copilot, OpenClaw/ClawHub, Hermes Agent, Grok/xAI
+  (remote MCP), LangChain, the OpenAI Agents SDK, and CrewAI; a README "Works with"
+  table; and a `metadata.openclaw` block in both `SKILL.md` copies (alongside the
+  existing `metadata.clawdbot`) plus a skill "Setup" note.
 - Closed loop (no self-merge): `implement` only on `bot:implement` or `/oc implement` (`deepseek-v4-flash`); after a `GITHUB_TOKEN` push a separate `dispatch-tests` job (the only job holding `actions: write`; the model job has no Actions scope) validates the pushed branch output against a strict ref pattern, verifies `.github/workflows/test.yml` on the ref is byte-identical to the default branch, then dispatches `gh workflow run Tests --ref <branch>` — so a prompt-injected model can never hold a token that dispatches workflows nor reshape the dispatched workflow. `review` stays comment-only; merge gating stays with branch protection.
 - Review hardening: `implement` gated to trusted actors (collaborator write+ via permission API) and the exact `/oc implement` command form, including PR review comments; `comment` job drops `contents: write`; preflight steps stay inline in the workflow (no local composite action — PR-review-comment checkouts are PR-controlled); bot jobs get `timeout-minutes` and stop logging secret lengths.
 - Key isolation: public Q&A/triage/review jobs run on a separate `FREEINFERENCE_PUBLIC_KEY` (same env name, so `opencode.json` is unchanged); `implement` keeps `FREEINFERENCE_API_KEY` — a public-face prompt injection cannot burn the implement pool.
