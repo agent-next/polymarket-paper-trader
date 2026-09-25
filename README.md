@@ -246,6 +246,10 @@ Places a grid of limit buy orders below current price with take-profit sells abo
 pm-trader strategy run examples.limit_grid.run
 ```
 
+### Jev edge (`examples/jev_edge.py`)
+
+"Jev vs the market": asks Jev for a YES probability per binary market and buys the side it favors — `pm-trader strategy run examples.jev_edge.run` (needs `pip install -e "benchmark"`).
+
 ### Writing your own strategy
 
 Strategies are imported from the `examples.` package (the allowlist lives in `pm_trader/benchmark.py`), so drop your file there:
