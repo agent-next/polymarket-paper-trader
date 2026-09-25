@@ -1,10 +1,9 @@
 # Runs the pm-trader MCP server over streamable-http for remote MCP clients
 # (Cursor, Claude.ai connectors, Grok API remote MCP, ChatGPT apps).
 #
-# Single-tenant: the container holds ONE paper-trading account (SQLite at
-# ~/.pm-trader/default/paper.db inside the container). Self-host only — do
-# not expose a shared container to multiple untrusted users; they would all
-# trade the same paper account. Mount a volume at /root/.pm-trader to persist
+# No isolation between callers: everyone who reaches the container shares
+# its paper accounts (SQLite under ~/.pm-trader/ inside the container).
+# Self-host only — do not expose it to multiple untrusted users. Mount a volume at /root/.pm-trader to persist
 # the account across restarts.
 #
 # No authentication: the streamable-http endpoint has none. Publish the port

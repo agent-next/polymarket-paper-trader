@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import socket
+
 import json
 import os
 from pathlib import Path
@@ -728,6 +730,15 @@ class TestHistoryWithData:
         assert result["data"][0]["created_at"] is not None
         assert result["data"][0]["side"] == "buy"
 
+    def test_negative_limit_is_clamped(self):
+        init_account()
+        from pm_trader.mcp_server import _get_engine
+        _mock_engine_api(_get_engine())
+        buy("will-bitcoin-hit-100k", "yes", 50.0)
+        buy("will-bitcoin-hit-100k", "yes", 50.0)
+        result = _parse(history(limit=-1))  # SQLite LIMIT -1 would mean "all"
+        assert len(result["data"]) == 1
+
 
 class TestPortfolioWithData:
     def test_portfolio_after_trade(self):
@@ -987,6 +998,10 @@ class TestAccountValidation:
     def test_valid_account(self):
         result = _parse(init_account(account="my-agent_01"))
         assert result["ok"] is True
+
+    def test_dot_account_rejected(self):
+        result = _parse(init_account(account="."))
+        assert result["ok"] is False
 
     def test_reset_traversal(self):
         result = _parse(reset_account(account="../evil"))
@@ -1367,28 +1382,27 @@ class TestStreamableHttpSmoke:
         )
         try:
             url = f"http://127.0.0.1:{port}/mcp"
-            last_error: Exception | None = None
-            for _ in range(50):
+            for _ in range(50):  # wait for the port; assertions below stay unmasked
                 try:
-                    async with streamable_http_client(url) as (read, write):
-                        async with ClientSession(read, write) as session:
-                            init = await session.initialize()
-                            assert init.server_info.name == "pm-trader"
-                            assert init.server_info.version == pkg_version(
-                                "polymarket-paper-trader"
-                            )
-                            assert init.instructions == mcp_server._SERVER_INSTRUCTIONS
-                            tools = await session.list_tools()
-                            names = {t.name for t in tools.tools}
-                            assert len(tools.tools) == 28
-                            assert "backtest" not in names
-                            assert "pk_battle" not in names
+                    socket.create_connection(("127.0.0.1", port), timeout=0.2).close()
                     break
-                except Exception as exc:  # server still starting up
-                    last_error = exc
+                except OSError:
                     await anyio.sleep(0.2)
             else:  # pragma: no cover - only on unexpected startup failure
-                raise AssertionError(f"server never became ready: {last_error}")
+                raise AssertionError("server never started listening")
+            async with streamable_http_client(url) as (read, write):
+                async with ClientSession(read, write) as session:
+                    init = await session.initialize()
+                    assert init.server_info.name == "pm-trader"
+                    assert init.server_info.version == pkg_version(
+                        "polymarket-paper-trader"
+                    )
+                    assert init.instructions == mcp_server._SERVER_INSTRUCTIONS
+                    tools = await session.list_tools()
+                    names = {t.name for t in tools.tools}
+                    assert len(tools.tools) == 28
+                    assert "backtest" not in names
+                    assert "pk_battle" not in names
         finally:
             proc.terminate()
             with anyio.move_on_after(5):
