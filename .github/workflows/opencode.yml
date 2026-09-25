@@ -115,7 +115,8 @@ jobs:
       contents: write
       issues: write
       pull-requests: write
-      actions: write
+    outputs:
+      branch: ${{ steps.publish-branch.outputs.branch }}
     steps:
       - name: Gate to trusted actors
         env:
@@ -159,7 +160,8 @@ jobs:
             - Create or update a branch and open a PR. Do not merge.
             - Prefer tests first. Cite tests/ and pm_trader/.
             - Do not approve the PR.
-      - name: Dispatch Tests after GITHUB_TOKEN push
+      - name: Publish pushed branch
+        id: publish-branch
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
@@ -171,12 +173,47 @@ jobs:
             echo "implement produced no pushed branch (HEAD=${branch}); refusing to guess a PR" >&2
             exit 1
           fi
+          if ! [[ "$branch" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]]; then
+            echo "branch '${branch}' failed strict ref validation; refusing to expose it" >&2
+            exit 1
+          fi
           if ! gh api "repos/${REPO}/branches/${branch}" --jq .name >/dev/null 2>&1; then
             echo "branch ${branch} is not on ${REPO} (fork push or never pushed); cannot dispatch Tests" >&2
             exit 1
           fi
-          echo "Dispatching Tests on ${branch}"
-          gh workflow run Tests --repo "${REPO}" --ref "${branch}"
+          echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+
+  dispatch-tests:
+    needs: implement
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch Tests on the validated branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ needs.implement.outputs.branch }}
+          WORKFLOW_PATH: .github/workflows/test.yml
+        run: |
+          set -euo pipefail
+          if ! [[ "$BRANCH" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]]; then
+            echo "branch output '${BRANCH}' failed ref validation; refusing dispatch" >&2
+            exit 1
+          fi
+          # The dispatched run executes the workflow file AT THE REF; refuse to
+          # dispatch when the pushed branch rewrote it (a model-written workflow
+          # would run with repository secrets attached).
+          default_sha=$(gh api "repos/${REPO}/contents/${WORKFLOW_PATH}" --jq .sha)
+          branch_sha=$(gh api "repos/${REPO}/contents/${WORKFLOW_PATH}?ref=${BRANCH}" --jq .sha)
+          if [ -z "$branch_sha" ] || [ "$branch_sha" != "$default_sha" ]; then
+            echo "${WORKFLOW_PATH} on ${BRANCH} differs from the default branch; refusing dispatch" >&2
+            exit 1
+          fi
+          echo "Dispatching Tests on ${BRANCH}"
+          gh workflow run Tests --repo "${REPO}" --ref "${BRANCH}"
 
   review:
     if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
