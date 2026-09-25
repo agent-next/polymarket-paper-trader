@@ -9,12 +9,9 @@ on:
     types: [opened, labeled]
   pull_request:
     types: [opened, synchronize, ready_for_review]
-  workflow_run:
-    workflows: ["Tests"]
-    types: [completed]
 
 concurrency:
-  group: opencode-${{ github.event.pull_request.number || github.event.issue.number || github.event.workflow_run.id || github.ref }}
+  group: opencode-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -161,7 +158,7 @@ jobs:
 
             - Create or update a branch and open a PR. Do not merge.
             - Prefer tests first. Cite tests/ and pm_trader/.
-            - Do not approve the PR. Do not add merge-ready yourself.
+            - Do not approve the PR.
       - name: Dispatch Tests after GITHUB_TOKEN push
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -169,16 +166,17 @@ jobs:
         run: |
           set -euo pipefail
           branch=$(git rev-parse --abbrev-ref HEAD)
-          if [ "$branch" = "HEAD" ] || [ "$branch" = "main" ]; then
-            branch=$(gh pr list --repo "$REPO" --state open --json headRefName,author,updatedAt \
-              --jq '[.[] | select(.author.login=="github-actions[bot]")] | sort_by(.updatedAt) | reverse | .[0].headRefName // empty')
+          default_branch=$(gh api "repos/${REPO}" --jq .default_branch)
+          if [ -z "$branch" ] || [ "$branch" = "HEAD" ] || [ "$branch" = "$default_branch" ]; then
+            echo "implement produced no pushed branch (HEAD=${branch}); refusing to guess a PR" >&2
+            exit 1
           fi
-          if [ -z "$branch" ]; then
-            echo "no implement branch; skip Tests dispatch"
-            exit 0
+          if ! gh api "repos/${REPO}/branches/${branch}" --jq .name >/dev/null 2>&1; then
+            echo "branch ${branch} is not on ${REPO} (fork push or never pushed); cannot dispatch Tests" >&2
+            exit 1
           fi
           echo "Dispatching Tests on ${branch}"
-          gh workflow run Tests --repo "$REPO" --ref "$branch"
+          gh workflow run Tests --repo "${REPO}" --ref "${branch}"
 
   review:
     if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
@@ -213,82 +211,3 @@ jobs:
             Shallow review only. Report discrete defects this diff introduces.
             Ignore style nits and speculation. If nothing actionable, do not post LGTM.
             Do not push commits. Do not approve. Do not merge.
-
-  merge-ready:
-    if: |
-      github.event_name == 'workflow_run' &&
-      (github.event.workflow_run.event == 'pull_request' ||
-       github.event.workflow_run.event == 'workflow_dispatch' ||
-       github.event.workflow_run.event == 'push')
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      pull-requests: write
-      issues: write
-      checks: read
-      statuses: read
-    steps:
-      - name: Reconcile merge-ready label with Tests result
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SHA: ${{ github.event.workflow_run.head_sha }}
-          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          pr=$(gh api "repos/${REPO}/commits/${SHA}/pulls" \
-            --jq '[.[] | select(.state == "open" and .head.sha == env.SHA)][0].number // empty')
-          if [ -z "$pr" ]; then
-            echo "No open PR with head $SHA (none or stale); nothing to reconcile"
-            exit 0
-          fi
-          echo "PR #$pr sha=$SHA conclusion=$CONCLUSION"
-          if [ "$CONCLUSION" != "success" ]; then
-            if gh pr view "$pr" --repo "$REPO" --json labels --jq '.labels[].name' | grep -qx merge-ready; then
-              gh pr edit "$pr" --repo "$REPO" --remove-label merge-ready
-              echo "Tests ${CONCLUSION}; removed merge-ready from PR #$pr"
-            else
-              echo "Tests ${CONCLUSION}; merge-ready not set on PR #$pr"
-            fi
-            exit 0
-          fi
-          if gh pr view "$pr" --repo "$REPO" --json labels --jq '.labels[].name' | grep -qx merge-ready; then
-            echo "merge-ready already set on PR #$pr"
-            exit 0
-          fi
-          context_gone=0
-          not_green=0
-          for ctx in "Python 3.10" "Python 3.11" "Python 3.12" "Python 3.13"; do
-            state=$(CTX="$ctx" gh api "repos/${REPO}/commits/${SHA}/check-runs" \
-              --jq '[.check_runs[]? | select(.name == env.CTX)] | last
-                    | if . == null then "absent" elif .conclusion == null then "pending" else .conclusion end')
-            # legacy statuses API fallback when the context is not a check-run
-            if [ "$state" = "absent" ]; then
-              state=$(CTX="$ctx" gh api "repos/${REPO}/commits/${SHA}/status" \
-                --jq '[.statuses[]? | select(.context == env.CTX)] | last
-                      | if . == null then "absent" else .state end')
-            fi
-            echo "check $ctx -> $state"
-            case "$state" in
-              success) ;;
-              absent) context_gone=1 ;;
-              *) not_green=1 ;;
-            esac
-          done
-          if [ "$context_gone" -ne 0 ]; then
-            echo "Required check context missing entirely for $SHA (Tests matrix renamed?); failing loud" >&2
-            exit 1
-          fi
-          if [ "$not_green" -ne 0 ]; then
-            echo "Required Python 3.10–3.13 checks are not all success; skip merge-ready"
-            exit 0
-          fi
-          head_now=$(gh pr view "$pr" --repo "$REPO" --json headRefOid --jq .headRefOid)
-          if [ "$head_now" != "$SHA" ]; then
-            echo "PR #$pr head moved to ${head_now} before labeling; aborting"
-            exit 0
-          fi
-          gh label create merge-ready --repo "$REPO" --force --color 0E8A16 --description "CI green; human may merge" || true
-          gh pr edit "$pr" --repo "$REPO" --add-label merge-ready
-          gh pr comment "$pr" --repo "$REPO" --body "merge-ready: Python 3.10–3.13 are green on \`${SHA}\`. A human (not this job) may merge. This job does not merge."
