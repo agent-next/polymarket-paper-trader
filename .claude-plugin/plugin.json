@@ -11,7 +11,7 @@
   "repository": "https://github.com/agent-next/polymarket-paper-trader",
   "license": "MIT",
   "keywords": ["polymarket", "trading", "prediction-markets", "mcp", "paper-trading"],
-  "skills": ["./skill/"],
+  "skills": ["./skill/polymarket-paper-trader"],
   "mcpServers": {
     "polymarket-paper-trader": {
       "command": "uvx",
