@@ -1,0 +1,12 @@
+{
+  "name": "polymarket-paper-trader",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "postCreateCommand": "make setup",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "${containerWorkspaceFolder}/.venv/bin/python"
+      }
+    }
+  }
+}
