@@ -50,7 +50,7 @@ Narrow variant: run the same pytest command inside the one package directory you
 
 ## Project state (2026-09-25)
 
-Current release: **v0.4.0** (PyPI + ClawHub + GitHub Releases, all `latest`). The client is
+Current release: **v0.4.1** (PyPI + ClawHub + GitHub Releases, all `latest`). The client is
 aligned with the current official API surface (Gamma keyset pagination, CLOB market data,
 Data API v2 price history) and the fee simulation follows the official per-match curve.
 Live e2e tests run weekly on CI (`live.yml`) and include bias assertions: simulated fills
@@ -61,7 +61,10 @@ Recent history (details in [CHANGELOG.md](CHANGELOG.md)): v0.3.0 official fee cu
 v0.3.1 tradability gates + partial-fill lifecycle · v0.3.2 cash reservation + per-level
 fees · v0.3.3 keyset pagination · v0.3.4 Data API v2 `get_price_history` + bias tests
 (closes #16) · README purpose-first rewrite · v0.4.0 MCP SDK 2.x (serialized tool calls,
-real `serverInfo.version`) + `pm-trader strategy` + doc-drift guards.
+real `serverInfo.version`) + `pm-trader strategy` + doc-drift guards · v0.4.1 agent-runtime
+integrations (Claude Code plugin, Gemini CLI extension, `docs/integrations.md`), MCP carries
+the skill (`trading_playbook` prompt/resource), streamable-HTTP transport (no
+`backtest`/`pk_battle` over HTTP), Dockerfile, Jev strategy, outsider install gate.
 
 ## Verified upstream contract facts (live-probed; the docs disagree)
 
@@ -97,14 +100,17 @@ docs example was wrong.
 
 ## Conventions and pitfalls
 
-- Version pins live in `pyproject.toml`, `server.json` (two places), and BOTH
+- Version pins live in `pyproject.toml`, `server.json` (two places),
+  `.claude-plugin/plugin.json`, `gemini-extension.json`, and BOTH
   `skill/polymarket-paper-trader/SKILL.md` copies (they must be identical — `test_meta`
   enforces it, and the changelog heading must match the installed version; reinstall with
   `pip install -e . --no-deps` after a bump so dist-info catches up).
 - Release policy: patch releases are routine; any minor/major bump is an owner decision.
   Releases: bump pins → promote `[Unreleased]` in the CHANGELOG → PR → green CI → tag
-  `vX.Y.Z` on the merged main commit → `publish.yml` (tests → PyPI → ClawHub → GitHub
-  Release). Verify the tag live on PyPI and ClawHub before announcing.
+  `vX.Y.Z` on the merged main commit → `publish.yml` (tests → tag/version match + outsider
+  smoke on the built wheel → PyPI → ClawHub, GitHub Release, and `verify-pypi` re-running
+  the smoke against the published package). `make outsider` runs the same smoke locally.
+  Verify the tag live on PyPI and ClawHub before announcing.
 - The benchmark harness is a separate install (`polymarket-benchmark`); `pm-trader
   benchmark run` replays trading strategies and only imports modules from the
   `examples.` and `tests.test_benchmark.` prefixes (allowlist in
