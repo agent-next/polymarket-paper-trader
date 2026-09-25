@@ -4,6 +4,8 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-25
+
 ### Security
 - **Streamable-HTTP transport no longer serves `backtest`/`pk_battle`**: both
   read arbitrary local files and import/execute local strategy modules, which

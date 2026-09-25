@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin.json",
   "name": "polymarket-paper-trader",
   "displayName": "Polymarket Paper Trader",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Paper trading simulator for Polymarket prediction markets: $10k paper money, real order books, zero risk. Bundles the trading skill and the pm-trader-mcp server.",
   "author": {
     "name": "agent-next"

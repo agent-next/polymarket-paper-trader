@@ -210,13 +210,13 @@ authenticating proxy in front of it — the container has no auth of its own.
 | `stats` | Win rate, ROI, profit, max drawdown |
 | `resolve` | Resolve a closed market (winners get $1/share) |
 | `resolve_all` | Resolve all closed markets |
-| `backtest` | Backtest a strategy against historical snapshots |
+| `backtest` | Backtest a strategy against historical snapshots (stdio only) |
 | `stats_card` | Shareable stats card (tweet/markdown/plain) |
 | `share_content` | Platform-specific content (twitter/telegram/discord) |
 | `leaderboard_entry` | Generate verifiable leaderboard submission |
 | `leaderboard_card` | Top 10 ranking card from all local accounts |
 | `pk_card` | Head-to-head comparison between two accounts |
-| `pk_battle` | Run two strategies head-to-head, auto-compare |
+| `pk_battle` | Run two strategies head-to-head, auto-compare (stdio only) |
 
 ## Strategy examples
 
