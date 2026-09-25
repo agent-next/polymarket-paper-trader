@@ -668,7 +668,7 @@ def benchmark() -> None:
 @click.option("--balance", type=float, default=10_000.0)
 @click.pass_context
 def benchmark_run(ctx: click.Context, strategy_path: str, balance: float) -> None:
-    """Run a strategy: pm-trader benchmark run module.function"""
+    """Run a strategy: pm-trader strategy run module.function"""
     from pm_trader.benchmark import run_strategy
 
     try:
