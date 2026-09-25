@@ -1353,7 +1353,6 @@ class TestStreamableHttpSmoke:
         anyio.run(self._smoke)
 
     async def _smoke(self):
-        import socket
         import sys
 
         import anyio
