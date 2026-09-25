@@ -21,7 +21,7 @@ classifiers = [
 dependencies = [
     "click>=8.0",
     "httpx>=0.27",
-    "mcp>=1.28,<2",
+    "mcp>=1.28,<3",
 ]
 
 [project.optional-dependencies]
