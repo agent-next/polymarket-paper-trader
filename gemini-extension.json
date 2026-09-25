@@ -1,0 +1,12 @@
+{
+  "name": "polymarket-paper-trader",
+  "version": "0.4.0",
+  "description": "Paper trading simulator for Polymarket prediction markets: $10k paper money, real order books, zero risk.",
+  "mcpServers": {
+    "polymarket-paper-trader": {
+      "command": "uvx",
+      "args": ["--from", "polymarket-paper-trader", "pm-trader-mcp"]
+    }
+  },
+  "contextFileName": "skill/polymarket-paper-trader/SKILL.md"
+}
