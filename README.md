@@ -131,10 +131,18 @@ Global flags: `--data-dir PATH`, `--account NAME` (or env vars `PM_TRADER_DATA_D
 
 ## MCP server — what your agent can do
 
-Your agent gets the following tools via the [Model Context Protocol](https://modelcontextprotocol.io):
+Your agent gets the following tools via the [Model Context Protocol](https://modelcontextprotocol.io).
+The server also carries the full trading playbook with it — as MCP server
+`instructions`, as a `trading_playbook` prompt, and as a `skill://trading-playbook`
+resource — so MCP-only clients (Cursor, Claude.ai connectors, Grok API remote
+MCP, ChatGPT apps) get the same guidance skill-aware agents get from
+[`skill/polymarket-paper-trader/SKILL.md`](skill/polymarket-paper-trader/SKILL.md).
 
 ```bash
 pm-trader-mcp  # starts on stdio
+
+# or, with no local install:
+uvx --from polymarket-paper-trader pm-trader-mcp
 ```
 
 Add to your Claude Code config:
@@ -147,6 +155,26 @@ Add to your Claude Code config:
     }
   }
 }
+```
+
+### Remote transport (streamable-http)
+
+For MCP clients that only speak HTTP, run the server with `--transport streamable-http`:
+
+```bash
+pm-trader-mcp --transport streamable-http --host 0.0.0.0 --port 8000
+# or: pm-trader mcp --transport streamable-http --host 0.0.0.0 --port 8000
+```
+
+The MCP endpoint is then `http://<host>:<port>/mcp`. A running server holds
+**one** paper-trading account — it is single-tenant, self-host-only, not a
+public multi-user service.
+
+### Docker
+
+```bash
+docker build -t pm-trader-mcp .
+docker run -p 8000:8000 -v pm-trader-data:/root/.pm-trader pm-trader-mcp
 ```
 
 ### MCP tools
