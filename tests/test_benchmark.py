@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -67,6 +68,20 @@ class TestRunStrategy:
         assert result["total_trades"] == 0
         assert result["pnl"] == 0.0
         assert result["roi_pct"] == 0.0
+
+    def test_resolves_strategy_from_cwd(self, tmp_path: Path, monkeypatch):
+        """Console scripts lack the cwd on sys.path; a user's examples/ must still load."""
+        (tmp_path / "examples").mkdir()
+        (tmp_path / "examples" / "cwd_probe.py").write_text(
+            "def run(engine):\n    engine.init_account(321.0)\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(sys, "path", [p for p in sys.path if p not in ("", ".")])
+        monkeypatch.delitem(sys.modules, "examples.cwd_probe", raising=False)
+        for _ in range(2):  # second call: cwd already on sys.path
+            assert run_strategy("examples.cwd_probe.run")["cash"] == 321.0
+        assert sys.path[0] == str(tmp_path)
+        monkeypatch.delitem(sys.modules, "examples.cwd_probe")
 
 
 # ---------------------------------------------------------------------------

@@ -11,7 +11,7 @@ The Jev client lives in the benchmark package:
 
 Usage (live, from the repo root — examples.* needs the repo root on
 sys.path under a strict editable install):
-    PYTHONPATH=. pm-trader strategy run examples.jev_edge.run
+    pm-trader strategy run examples.jev_edge.run
 
 Environment:
     JEV_MODEL  — Jev model id (default: opencode/jev-1.13-free, no key needed)
