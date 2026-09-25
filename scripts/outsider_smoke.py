@@ -23,6 +23,7 @@ from mcp.client.stdio import stdio_client
 STDIO_TOOLS = 30
 LOCAL_ONLY = {"backtest", "pk_battle"}  # not served over streamable-http
 EXPECTED_VERSION = sys.argv[1] if len(sys.argv) > 1 else ""
+TIMEOUT = 60  # seconds per request/command; a hung server must fail, not stall CI
 
 
 def _check(cond: bool, msg: str) -> None:
@@ -57,15 +58,18 @@ async def _exercise(session: ClientSession, label: str) -> None:
     _check(body["data"]["cash"] == 1234, f"{label}: get_balance cash == 1234")
 
 
-async def _stdio(data_dir: str) -> None:
-    params = StdioServerParameters(
-        command="pm-trader-mcp", env={**os.environ, "PM_TRADER_DATA_DIR": data_dir}
-    )
-    async with stdio_client(params) as (r, w), ClientSession(r, w) as s:
+def _env(home: str) -> dict[str, str]:
+    # The MCP server keeps accounts under ~/.pm-trader; never touch the real one.
+    return {**os.environ, "HOME": home}
+
+
+async def _stdio(home: str) -> None:
+    params = StdioServerParameters(command="pm-trader-mcp", env=_env(home))
+    async with stdio_client(params) as (r, w), ClientSession(r, w, read_timeout_seconds=TIMEOUT) as s:
         await _exercise(s, "stdio")
 
 
-async def _http(data_dir: str) -> None:
+async def _http(home: str) -> None:
     from mcp.client.streamable_http import streamable_http_client
 
     with socket.socket() as sock:
@@ -73,21 +77,26 @@ async def _http(data_dir: str) -> None:
         port = sock.getsockname()[1]
     proc = subprocess.Popen(
         ["pm-trader-mcp", "--transport", "streamable-http", "--port", str(port)],
-        env={**os.environ, "PM_TRADER_DATA_DIR": data_dir},
+        env=_env(home),
     )
     try:
         for _ in range(100):
+            if proc.poll() is not None:
+                sys.exit(f"FAIL: http server exited early ({proc.returncode})")
             try:
                 socket.create_connection(("127.0.0.1", port), timeout=0.2).close()
                 break
             except OSError:
                 time.sleep(0.1)
         async with streamable_http_client(f"http://127.0.0.1:{port}/mcp") as (r, w, *_):
-            async with ClientSession(r, w) as s:
+            async with ClientSession(r, w, read_timeout_seconds=TIMEOUT) as s:
                 await _exercise(s, "http")
     finally:
         proc.terminate()
-        proc.wait(timeout=10)
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
 
 
 def _strategy_from_user_dir(work: str) -> None:
@@ -97,7 +106,7 @@ def _strategy_from_user_dir(work: str) -> None:
         f.write("def run(engine):\n    pass\n")
     out = subprocess.run(
         ["pm-trader", "strategy", "run", "examples.outsider_probe.run", "--balance", "777"],
-        capture_output=True, text=True, cwd=work,
+        capture_output=True, text=True, cwd=work, env=_env(work), timeout=TIMEOUT,
     )
     body = json.loads(out.stdout or "{}")
     ok = body.get("ok") is True and body["data"]["starting_balance"] == 777
@@ -105,10 +114,12 @@ def _strategy_from_user_dir(work: str) -> None:
 
 
 def main() -> None:
-    out = subprocess.run(["pm-trader", "--help"], capture_output=True, text=True, check=True)
+    out = subprocess.run(["pm-trader", "--help"], capture_output=True, text=True, check=True, timeout=TIMEOUT)
     _check("strategy" in out.stdout, "pm-trader --help lists commands")
     with tempfile.TemporaryDirectory() as d:
         _strategy_from_user_dir(d)
+        for sub in ("stdio", "http"):
+            os.makedirs(os.path.join(d, sub))
         asyncio.run(_stdio(os.path.join(d, "stdio")))
         asyncio.run(_http(os.path.join(d, "http")))
     print("OUTSIDER SMOKE PASSED")

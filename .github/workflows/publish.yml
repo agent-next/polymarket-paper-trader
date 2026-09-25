@@ -48,6 +48,7 @@ jobs:
   publish-pypi:
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       id-token: write
     steps:
@@ -102,7 +103,7 @@ jobs:
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
 
   release:
-    needs: [test]
+    needs: publish-pypi  # no release notes for artifacts that never landed
     if: always() && needs.test.result == 'success'
     runs-on: ubuntu-latest
     permissions:
