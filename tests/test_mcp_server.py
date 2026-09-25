@@ -1005,3 +1005,58 @@ class TestAccountValidation:
     def test_cancel_order_traversal(self):
         result = _parse(cancel_order(1, account="../evil"))
         assert result["ok"] is False
+
+
+# ---------------------------------------------------------------------------
+# serverInfo + real stdio transport
+# ---------------------------------------------------------------------------
+
+
+class TestServerInfo:
+    def test_advertised_name_and_version(self):
+        from importlib.metadata import version as pkg_version
+
+        assert mcp_server.mcp.name == "pm-trader"
+        assert mcp_server.mcp.version == pkg_version("polymarket-paper-trader")
+
+    def test_version_fallback_when_not_installed(self):
+        import importlib.metadata
+
+        with patch.object(
+            importlib.metadata,
+            "version",
+            side_effect=importlib.metadata.PackageNotFoundError("gone"),
+        ):
+            assert mcp_server._server_version() == "0.0.0+unknown"
+
+
+class TestStdioSmoke:
+    def test_initialize_and_list_tools_over_real_stdio(self):
+        """Spawn the real server over stdio; no network (tools/list only)."""
+        import anyio
+
+        anyio.run(self._smoke)
+
+    async def _smoke(self):
+        import sys
+
+        import anyio
+        from importlib.metadata import version as pkg_version
+
+        from mcp import ClientSession, StdioServerParameters
+        from mcp.client.stdio import stdio_client
+
+        params = StdioServerParameters(
+            command=sys.executable,
+            args=["-m", "pm_trader.mcp_server"],
+        )
+        with anyio.fail_after(30):
+            async with stdio_client(params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    init = await session.initialize()
+                    assert init.server_info.name == "pm-trader"
+                    assert init.server_info.version == pkg_version(
+                        "polymarket-paper-trader"
+                    )
+                    tools = await session.list_tools()
+                    assert len(tools.tools) == 30

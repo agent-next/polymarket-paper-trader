@@ -7,16 +7,26 @@ Run with:
 
 from __future__ import annotations
 
+import importlib.metadata
 import json
 from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 
 from pm_trader.engine import Engine
 
 DEFAULT_DATA_DIR = Path.home() / ".pm-trader" / "default"
 
-mcp = FastMCP("pm-trader", json_response=True)
+
+def _server_version() -> str:
+    """Return the installed package version for MCP serverInfo."""
+    try:
+        return importlib.metadata.version("polymarket-paper-trader")
+    except importlib.metadata.PackageNotFoundError:
+        return "0.0.0+unknown"
+
+
+mcp = MCPServer("pm-trader", version=_server_version())
 
 # ---------------------------------------------------------------------------
 # Engine lifecycle — one Engine per server session
