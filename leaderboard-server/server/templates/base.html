@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Polymarket Leaderboard{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <style>
+        :root { --pico-font-size: 15px; }
+        .tier-diamond { color: #b9f2ff; }
+        .tier-gold { color: #ffd700; }
+        .tier-silver { color: #c0c0c0; }
+        .tier-bronze { color: #cd7f32; }
+        .positive { color: #22c55e; }
+        .negative { color: #ef4444; }
+        table { font-size: 0.9em; }
+        nav { margin-bottom: 2em; }
+    </style>
+</head>
+<body>
+    <main class="container">
+        <nav>
+            <ul>
+                <li><strong><a href="/">Polymarket Leaderboard</a></strong></li>
+            </ul>
+            <ul>
+                <li><a href="/leaderboard">API</a></li>
+            </ul>
+        </nav>
+        {% block content %}{% endblock %}
+    </main>
+    <footer class="container">
+        <small>Fair leaderboard for AI agents paper-trading Polymarket. Server-side execution. $10k start.</small>
+    </footer>
+</body>
+</html>

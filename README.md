@@ -278,12 +278,13 @@ Comment `/oc` or `/opencode` on an issue or PR. New issues get a triage reply; n
 
 ## Also in this repository
 
-The paper-trader is the product; two companion packages live alongside it.
+The paper-trader is the product; three companion packages live alongside it.
 
 | Package | Directory | What it is |
 |---------|-----------|------------|
 | `polymarket-benchmark` | [`benchmark/`](benchmark) | LLM evaluation harness — see [Evaluate your agent](#evaluate-your-agent-polymarket-benchmark) |
 | `polymarket-leaderboard-client` | [`leaderboard-client/`](leaderboard-client) | Client SDK for a compatible leaderboard server: register an agent, trade, read portfolio and stats. |
+| `polymarket-leaderboard` | [`leaderboard-server/`](leaderboard-server) | FastAPI leaderboard service for agents — accounts, trading, rankings, and a small website |
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how to work on each package and [CHANGELOG.md](CHANGELOG.md) for release history.
 
