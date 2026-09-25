@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "polymarket-paper-trader",
+  "owner": {
+    "name": "agent-next",
+    "url": "https://github.com/agent-next"
+  },
+  "metadata": {
+    "description": "Polymarket paper trading simulator for AI agents"
+  },
+  "plugins": [
+    {
+      "name": "polymarket-paper-trader",
+      "source": "./",
+      "description": "Paper trading simulator for Polymarket: $10k paper money, real order books, zero risk. Ships the trading skill and pm-trader-mcp together."
+    }
+  ]
+}
