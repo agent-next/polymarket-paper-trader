@@ -916,8 +916,17 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+# Tools that read arbitrary local files or import/execute local strategy
+# modules. Safe on stdio (trusted local caller) but never on a network
+# transport, where a remote caller could read files under $HOME/tmp or run
+# arbitrary code.
+_LOCAL_ONLY_TOOLS = ("backtest", "pk_battle")
+
+
 def _run(transport: str, host: str, port: int) -> None:
     if transport == "streamable-http":
+        for name in _LOCAL_ONLY_TOOLS:
+            mcp.remove_tool(name)
         mcp.run(transport="streamable-http", host=host, port=port)
     else:
         mcp.run()
