@@ -117,7 +117,3 @@ docs example was wrong.
 
 - Expose the eval harness through `pm-trader` (subcommand or pip extra) instead of a
   separate editable install.
-- Disambiguate the two "benchmark" surfaces (candidate: rename strategy replay to
-  `pm-trader strategy ...`).
-- `test_meta.TestDocCounts` could derive README counts mechanically instead of relying on
-  prose staying count-free.

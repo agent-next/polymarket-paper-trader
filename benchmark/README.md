@@ -12,8 +12,8 @@ polymarket-benchmark measures how well language models analyze, predict, and tra
 
 ```bash
 pip install -e ".[dev]"
-# Optional: install leaderboard SDK for --leaderboard-url agent mode
-pip install -e ".[dev,agent]"
+# Optional: install the leaderboard SDK for --leaderboard-url agent mode
+pip install -e "../leaderboard-client"
 
 # LLM-only evaluation (no trades)
 polymarket-benchmark run --model claude-opus-4 --market-set mini
@@ -158,8 +158,8 @@ prompts.py — LLM prompt templates
 
 ```bash
 pip install -e ".[dev]"
-# Optional: install leaderboard SDK bridge for agent mode
-pip install -e ".[dev,agent]"
+# Optional: install the leaderboard SDK bridge for agent mode
+pip install -e "../leaderboard-client"
 
 # Run tests (215 total, 100% coverage)
 python -m pytest tests/ -x -q -m "not live"

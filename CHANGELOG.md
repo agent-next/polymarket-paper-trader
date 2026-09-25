@@ -12,6 +12,7 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ### Fixed
 - **MCP tool calls serialized on a dedicated worker thread.** MCP SDK 2.x dispatches `tools/call` concurrently and runs sync tool functions on arbitrary anyio worker threads, so parallel calls crashed with "SQLite objects created in a thread can only be used in that same thread" — the Engine's SQLite connection is bound to the thread that opened it. Every registered tool is now an async wrapper that submits the sync function to a single-worker `ThreadPoolExecutor`, restoring the serialized execution semantics SDK 1.x provided (SDK 1.x ran sync tools on the event-loop thread). Tool names, signatures, and advertised schemas are unchanged; the module-level functions remain plain sync callables for direct use.
+- **Documentation drift**: the README CLI table now lists every leaf command (added `markets tags`, `markets event`, `accounts delete`, `orders cancel-all`, and the `strategy`/`benchmark` rows); `benchmark/README.md` no longer references a nonexistent `agent` extra (agent mode installs `../leaderboard-client`); `examples/README.md` uses `pm-trader strategy` and drops the nonexistent `pm-trader backtest` CLI invocation. New `test_meta` guards walk the click command tree and both SKILL.md tool tables so these tables cannot drift again.
 
 ## [0.3.4] - 2026-09-24
 

@@ -32,6 +32,51 @@ def _tool_names() -> list[str]:
     return sorted(re.findall(r"@_tool\s*\ndef\s+([a-z_]+)\(", src))
 
 
+def _cli_leaf_commands() -> list[str]:
+    """Return every leaf command path in the click tree (e.g. 'markets list')."""
+    import click
+
+    from pm_trader.cli import main
+
+    leaves: list[str] = []
+
+    def walk(group: click.Group, prefix: str) -> None:
+        for name, cmd in group.commands.items():
+            path = f"{prefix} {name}".strip()
+            if isinstance(cmd, click.Group):
+                walk(cmd, path)
+            else:
+                leaves.append(path)
+
+    walk(main, "")
+    return sorted(leaves)
+
+
+def _readme_cli_commands() -> list[str]:
+    """Extract command paths from the README 'CLI commands' table.
+
+    Each row's first cell holds the invocation in backticks; the command path
+    is the leading run of lowercase word tokens (args like SLUG or [--opt x]
+    stop the match).
+    """
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    section = re.search(r"## CLI commands\n\n(.*?)\n\n", readme, re.DOTALL)
+    assert section, "CLI commands table not found in README.md"
+    commands = []
+    for line in section.group(1).splitlines():
+        match = re.match(r"^\| `([^`]+)` ", line)
+        if not match:
+            continue
+        path = []
+        for word in match.group(1).split():
+            if not re.fullmatch(r"[a-z][a-z0-9-]*", word):
+                break
+            path.append(word)
+        if path:
+            commands.append(" ".join(path))
+    return sorted(commands)
+
+
 class TestVersionConsistency:
     def test_server_json_matches_installed(self) -> None:
         data = json.loads((ROOT / "server.json").read_text(encoding="utf-8"))
@@ -63,3 +108,19 @@ class TestDocCounts:
         assert table, "MCP tools table not found in README.md"
         rows = re.findall(r"^\| `([a-z_]+)` ", table.group(0), re.MULTILINE)
         assert sorted(rows) == _tool_names()
+
+    def test_readme_cli_table_matches_click_tree(self) -> None:
+        """Every leaf CLI command appears in the README table, and vice versa."""
+        assert _readme_cli_commands() == _cli_leaf_commands()
+
+    def test_skill_tools_table_matches_registered_tools(self) -> None:
+        """Both SKILL.md copies list exactly the registered MCP tools."""
+        for rel in (
+            "skill/polymarket-paper-trader/SKILL.md",
+            ".claude/skills/polymarket-paper-trader/SKILL.md",
+        ):
+            text = (ROOT / rel).read_text(encoding="utf-8")
+            section = re.search(r"## Tools\n\n(.*?)\n\n", text, re.DOTALL)
+            assert section, f"Tools table not found in {rel}"
+            rows = re.findall(r"^\| `([a-z0-9_]+)` ", section.group(1), re.MULTILINE)
+            assert sorted(rows) == _tool_names(), rel
