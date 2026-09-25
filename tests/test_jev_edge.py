@@ -247,6 +247,17 @@ class TestJevEdge:
         assert len(jev.calls) == 1  # only the open binary market was asked
         assert open_market.question in jev.calls[0]["state"]
 
+    def test_price_band_skips_before_querying_jev(self, acct, monkeypatch):
+        market = _market()
+        _mock(acct, [market], mid=0.02)  # below MIN_PRICE
+        jev = _fake_jev(probability=0.90)  # would be a huge edge if asked
+        _use_fake_jev(monkeypatch, jev)
+
+        jev_edge.run(acct)
+
+        assert jev.calls == []  # skipped before ever asking Jev
+        assert acct.get_history() == []
+
     def test_position_cap_stops_scan(self, acct, monkeypatch):
         _mock(acct, [_market()])
         jev = _fake_jev(probability=0.95)
