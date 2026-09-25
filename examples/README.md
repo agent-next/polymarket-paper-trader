@@ -12,12 +12,12 @@ npx clawhub install polymarket-paper-trader
 pm-trader init --balance 10000
 
 # Run a strategy
-pm-trader benchmark run examples.momentum.run
-pm-trader benchmark run examples.mean_reversion.run
-pm-trader benchmark run examples.limit_grid.run
+pm-trader strategy run examples.momentum.run
+pm-trader strategy run examples.mean_reversion.run
+pm-trader strategy run examples.limit_grid.run
 
 # Compare results
-pm-trader benchmark compare momentum mean_reversion limit_grid
+pm-trader strategy compare momentum mean_reversion limit_grid
 ```
 
 ## Strategies
@@ -60,7 +60,7 @@ def my_strategy(engine: Engine) -> None:
 
 Run it:
 ```bash
-pm-trader benchmark run my_module.my_strategy
+pm-trader strategy run my_module.my_strategy
 ```
 
 ### Available Engine Methods
@@ -91,10 +91,7 @@ def backtest_strategy(engine: Engine, snapshot, prices: dict) -> None:
         engine.buy(snapshot.market_slug, snapshot.outcome, 200.0)
 ```
 
-```bash
-# Run backtest with historical data
-pm-trader backtest data/prices.csv my_module.backtest_strategy
-```
+Backtests run through the `backtest` MCP tool (`pm_trader.backtest.run_backtest`) — there is no `pm-trader backtest` CLI command.
 
 ## MCP Integration
 

@@ -659,7 +659,7 @@ def accounts_delete(ctx: click.Context, name: str, confirm: bool) -> None:
 
 @main.group()
 def benchmark() -> None:
-    """Run and compare trading strategies."""
+    """Run and compare trading strategies (alias of 'strategy')."""
     pass
 
 
@@ -668,7 +668,7 @@ def benchmark() -> None:
 @click.option("--balance", type=float, default=10_000.0)
 @click.pass_context
 def benchmark_run(ctx: click.Context, strategy_path: str, balance: float) -> None:
-    """Run a strategy: pm-trader benchmark run module.function"""
+    """Run a strategy: pm-trader strategy run module.function"""
     from pm_trader.benchmark import run_strategy
 
     try:
@@ -736,6 +736,17 @@ def benchmark_compare(ctx: click.Context, account_names: tuple[str, ...]) -> Non
             indent=2,
         ))
         sys.exit(1)
+
+
+@main.group()
+def strategy() -> None:
+    """Run and compare trading strategies."""
+    pass
+
+
+strategy.add_command(benchmark_run)
+strategy.add_command(benchmark_pk)
+strategy.add_command(benchmark_compare)
 
 
 # ---------------------------------------------------------------------------
