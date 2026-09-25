@@ -35,7 +35,7 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           fetch-depth: 1
           persist-credentials: false
@@ -48,7 +48,7 @@ jobs:
             exit 1
           fi
           echo "FREEINFERENCE_API_KEY is set"
-      - uses: anomalyco/opencode/github@31406ccc51b4bd2a4e1e086b2bcaa5f7f804f26d # v1.18.18
+      - uses: anomalyco/opencode/github@08462140ec0de1e4b17d4a353d8d5827f53cf7b0 # v2.0.14
         env:
           FREEINFERENCE_API_KEY: ${{ secrets.FREEINFERENCE_PUBLIC_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -74,7 +74,7 @@ jobs:
     permissions:
       issues: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           fetch-depth: 1
           persist-credentials: false
@@ -87,7 +87,7 @@ jobs:
             exit 1
           fi
           echo "FREEINFERENCE_API_KEY is set"
-      - uses: anomalyco/opencode/github@31406ccc51b4bd2a4e1e086b2bcaa5f7f804f26d # v1.18.18
+      - uses: anomalyco/opencode/github@08462140ec0de1e4b17d4a353d8d5827f53cf7b0 # v2.0.14
         env:
           FREEINFERENCE_API_KEY: ${{ secrets.FREEINFERENCE_PUBLIC_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -130,7 +130,7 @@ jobs:
             admin|maintain|write) echo "actor ${ACTOR} has ${perm}; implement allowed" ;;
             *) echo "actor ${ACTOR} lacks write access (${perm}); refusing implement" >&2; exit 1 ;;
           esac
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           fetch-depth: 1
           persist-credentials: false
@@ -143,7 +143,7 @@ jobs:
             exit 1
           fi
           echo "FREEINFERENCE_API_KEY is set"
-      - uses: anomalyco/opencode/github@31406ccc51b4bd2a4e1e086b2bcaa5f7f804f26d # v1.18.18
+      - uses: anomalyco/opencode/github@08462140ec0de1e4b17d4a353d8d5827f53cf7b0 # v2.0.14
         env:
           FREEINFERENCE_API_KEY: ${{ secrets.FREEINFERENCE_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -223,7 +223,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           fetch-depth: 1
           persist-credentials: false
@@ -236,7 +236,7 @@ jobs:
             exit 1
           fi
           echo "FREEINFERENCE_API_KEY is set"
-      - uses: anomalyco/opencode/github@31406ccc51b4bd2a4e1e086b2bcaa5f7f804f26d # v1.18.18
+      - uses: anomalyco/opencode/github@08462140ec0de1e4b17d4a353d8d5827f53cf7b0 # v2.0.14
         env:
           FREEINFERENCE_API_KEY: ${{ secrets.FREEINFERENCE_PUBLIC_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
