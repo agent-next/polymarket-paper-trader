@@ -118,7 +118,7 @@ _engine: Engine | None = None
 
 def _validate_account_name(account: str) -> str:
     """Validate account name to prevent path traversal."""
-    if not account or ".." in account or "/" in account or "\\" in account:
+    if not account or account == "." or ".." in account or "/" in account or "\\" in account:
         raise ValueError(f"Invalid account name: {account!r}")
     if account != account.strip():
         raise ValueError(f"Invalid account name: {account!r}")
@@ -226,11 +226,16 @@ def reset_account(account: str = "default") -> str:
 MAX_RESULTS = 100
 
 
+def _clamp_limit(limit: int, cap: int = MAX_RESULTS) -> int:
+    """Clamp a caller-supplied limit to [1, cap] (a negative SQLite LIMIT means unlimited)."""
+    return max(1, min(limit, cap))
+
+
 @_tool
 def search_markets(query: str, limit: int = 10) -> str:
     """Search Polymarket for markets matching a query string."""
     engine = _get_engine()
-    markets = engine.api.search_markets(query, limit=min(limit, MAX_RESULTS))
+    markets = engine.api.search_markets(query, limit=_clamp_limit(limit))
     return _ok([_market_to_dict(m) for m in markets])
 
 
@@ -238,7 +243,7 @@ def search_markets(query: str, limit: int = 10) -> str:
 def list_markets(limit: int = 20, sort_by: str = "volume") -> str:
     """List active Polymarket markets sorted by volume or liquidity."""
     engine = _get_engine()
-    markets = engine.api.list_markets(limit=min(limit, MAX_RESULTS), sort_by=sort_by)
+    markets = engine.api.list_markets(limit=_clamp_limit(limit), sort_by=sort_by)
     return _ok([_market_to_dict(m) for m in markets])
 
 
@@ -288,7 +293,7 @@ def get_markets_by_tag(tag_slug: str, limit: int = 20) -> str:
     try:
         engine = _get_engine()
         markets = engine.api.get_markets_by_tag(
-            tag_slug, limit=min(limit, MAX_RESULTS),
+            tag_slug, limit=_clamp_limit(limit),
         )
         return _ok([_market_to_dict(m) for m in markets])
     except Exception as e:
@@ -422,7 +427,7 @@ def portfolio(account: str = "default") -> str:
 def history(limit: int = 50, account: str = "default") -> str:
     """Get recent trade history."""
     try:
-        limit = min(limit, MAX_RESULTS * 10)
+        limit = _clamp_limit(limit, MAX_RESULTS * 10)
         engine = _get_engine(account)
         trades = engine.get_history(limit)
         return _ok([

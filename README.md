@@ -166,9 +166,9 @@ pm-trader-mcp --transport streamable-http --host 0.0.0.0 --port 8000
 # or: pm-trader mcp --transport streamable-http --host 0.0.0.0 --port 8000
 ```
 
-The MCP endpoint is then `http://<host>:<port>/mcp`. A running server holds
-**one** paper-trading account — it is single-tenant, self-host-only, not a
-public multi-user service. **There is no authentication** on this transport;
+The MCP endpoint is then `http://<host>:<port>/mcp`. There is no isolation
+between callers — everyone who reaches the server shares all of its paper
+accounts; it is self-host-only, not a public multi-user service. **There is no authentication** on this transport;
 anyone who can reach the port can call every exposed tool. `backtest` and
 `pk_battle` (local file reads + local strategy-module execution) are
 **stdio-only** and are not registered when serving over streamable-http.
