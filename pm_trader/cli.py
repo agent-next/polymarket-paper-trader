@@ -888,7 +888,27 @@ def watch(ctx: click.Context, slugs_or_ids: tuple[str, ...], outcomes: tuple[str
 
 
 @main.command()
-def mcp() -> None:
-    """Start MCP server (stdio transport) for AI agent integration."""
+@click.option(
+    "--transport",
+    type=click.Choice(["stdio", "streamable-http"]),
+    default="stdio",
+    show_default=True,
+    help="Transport to serve on",
+)
+@click.option(
+    "--host",
+    default="127.0.0.1",
+    show_default=True,
+    help="Host to bind for streamable-http",
+)
+@click.option(
+    "--port",
+    type=int,
+    default=8000,
+    show_default=True,
+    help="Port to bind for streamable-http",
+)
+def mcp(transport: str, host: str, port: int) -> None:
+    """Start MCP server (stdio or streamable-http transport) for AI agent integration."""
     from pm_trader.mcp_server import main as mcp_main
-    mcp_main()
+    mcp_main(["--transport", transport, "--host", host, "--port", str(port)])
