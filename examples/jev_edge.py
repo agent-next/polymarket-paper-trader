@@ -9,8 +9,9 @@ buy the underpriced side.
 The Jev client lives in the benchmark package:
     pip install -e "benchmark"
 
-Usage (live):
-    pm-trader strategy run examples.jev_edge.run
+Usage (live, from the repo root — examples.* needs the repo root on
+sys.path under a strict editable install):
+    PYTHONPATH=. pm-trader strategy run examples.jev_edge.run
 
 Environment:
     JEV_MODEL  — Jev model id (default: opencode/jev-1.13-free, no key needed)
@@ -29,6 +30,11 @@ from pm_trader.models import Market, SimError
 QUERY = os.environ.get("JEV_QUERY", "bitcoin")       # Market search query
 JEV_MODEL = os.environ.get("JEV_MODEL", "opencode/jev-1.13-free")
 EDGE = 0.10                  # Min |jev_p - yes_price| gap required to trade
+MIN_PRICE = 0.05             # Skip markets priced below this (deep longshots:
+MAX_PRICE = 0.95             # fees eat a fixed fraction of stake regardless
+                              # of edge size, per the official fee curve —
+                              # fee = amount * rate * (1 - p), which stays
+                              # near its max as p -> 0)
 POSITION_SIZE_USD = 200.0    # Dollars per trade
 MAX_POSITIONS = 5            # Maximum concurrent open positions
 MAX_MARKETS = 10             # Markets to scan per run
@@ -99,6 +105,11 @@ def run(engine: Engine) -> None:
         except SimError:
             yes_price = market.yes_price
 
+        if not (MIN_PRICE <= yes_price <= MAX_PRICE):
+            print(f"[jev_edge] {market.slug}: price {yes_price:.2f} outside "
+                  f"[{MIN_PRICE:.2f}, {MAX_PRICE:.2f}] — skip")
+            continue
+
         try:
             answers = jev.query_jev(
                 JEV_MODEL, _market_state(market, yes_price), JEV_QUESTIONS
@@ -127,5 +138,5 @@ def run(engine: Engine) -> None:
                 f"[jev_edge] {market.slug}: BUY {outcome.upper()} "
                 f"${POSITION_SIZE_USD:.0f} (edge {abs(diff):.2f})"
             )
-        except Exception as e:
+        except SimError as e:
             print(f"[jev_edge] {market.slug}: buy {outcome} failed: {e}")
