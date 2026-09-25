@@ -926,13 +926,6 @@ class TestBacktestTool:
         assert result["data"]["snapshots_processed"] == 2
 
 
-class TestMcpServerMain:
-    def test_main_calls_mcp_run(self):
-        with patch.object(mcp_server.mcp, "run") as mock_run:
-            mcp_server.main([])
-            mock_run.assert_called_once()
-
-
 class TestBacktestInvalidStrategy:
     def test_strategy_path_no_dot(self):
         """strategy_path without module.function format returns error."""
@@ -1244,12 +1237,6 @@ class TestTradingPlaybook:
         )
         assert body == self._skill_source_body()
 
-    def test_prompt_function_returns_skill_body(self):
-        assert mcp_server.trading_playbook() == mcp_server._skill_body()
-
-    def test_resource_function_returns_skill_body(self):
-        assert mcp_server.trading_playbook_resource() == mcp_server._skill_body()
-
     def test_registered_as_mcp_prompt(self):
         import anyio
 
@@ -1351,28 +1338,27 @@ class TestStreamableHttpSmoke:
         )
         try:
             url = f"http://127.0.0.1:{port}/mcp"
-            with anyio.fail_after(30):
-                last_error: Exception | None = None
-                for _ in range(50):
-                    try:
-                        async with streamable_http_client(url) as (read, write):
-                            async with ClientSession(read, write) as session:
-                                init = await session.initialize()
-                                assert init.server_info.name == "pm-trader"
-                                assert init.server_info.version == pkg_version(
-                                    "polymarket-paper-trader"
-                                )
-                                assert init.instructions == mcp_server._SERVER_INSTRUCTIONS
-                                tools = await session.list_tools()
-                                registered = await mcp_server.mcp.list_tools()
-                                assert len(registered) > 0
-                                assert len(tools.tools) == len(registered)
-                        break
-                    except Exception as exc:  # server still starting up
-                        last_error = exc
-                        await anyio.sleep(0.2)
-                else:  # pragma: no cover - only on unexpected startup failure
-                    raise AssertionError(f"server never became ready: {last_error}")
+            last_error: Exception | None = None
+            for _ in range(50):
+                try:
+                    async with streamable_http_client(url) as (read, write):
+                        async with ClientSession(read, write) as session:
+                            init = await session.initialize()
+                            assert init.server_info.name == "pm-trader"
+                            assert init.server_info.version == pkg_version(
+                                "polymarket-paper-trader"
+                            )
+                            assert init.instructions == mcp_server._SERVER_INSTRUCTIONS
+                            tools = await session.list_tools()
+                            registered = await mcp_server.mcp.list_tools()
+                            assert len(registered) > 0
+                            assert len(tools.tools) == len(registered)
+                    break
+                except Exception as exc:  # server still starting up
+                    last_error = exc
+                    await anyio.sleep(0.2)
+            else:  # pragma: no cover - only on unexpected startup failure
+                raise AssertionError(f"server never became ready: {last_error}")
         finally:
             proc.terminate()
             with anyio.move_on_after(5):

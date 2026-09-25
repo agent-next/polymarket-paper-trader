@@ -49,13 +49,8 @@ def _server_version() -> str:
 
 
 def _skill_body() -> str:
-    """Return the SKILL.md body (YAML frontmatter stripped).
-
-    The file is packaged as ``pm_trader/_skill/SKILL.md`` — a symlink to the
-    canonical ``skill/polymarket-paper-trader/SKILL.md`` in the repo root, so
-    the wheel ships the exact same bytes an agent's skill loader reads, with
-    no hand-maintained copy to drift.
-    """
+    """Return SKILL.md's body (YAML frontmatter stripped), packaged via the
+    symlink at ``pm_trader/_skill/SKILL.md``."""
     text = importlib.resources.files("pm_trader").joinpath(
         "_skill/SKILL.md"
     ).read_text(encoding="utf-8")
@@ -921,13 +916,17 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _run(transport: str, host: str, port: int) -> None:
+    if transport == "streamable-http":
+        mcp.run(transport="streamable-http", host=host, port=port)
+    else:
+        mcp.run()
+
+
 def main(argv: list[str] | None = None) -> None:
     """Run MCP server on stdio (default) or streamable-http transport."""
     args = _build_arg_parser().parse_args(argv)
-    if args.transport == "streamable-http":
-        mcp.run(transport="streamable-http", host=args.host, port=args.port)
-    else:
-        mcp.run()
+    _run(args.transport, args.host, args.port)
 
 
 if __name__ == "__main__":  # pragma: no cover
