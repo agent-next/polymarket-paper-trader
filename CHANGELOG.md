@@ -2,6 +2,11 @@
 
 All notable changes to `polymarket-paper-trader` are documented here.
 
+## [Unreleased]
+
+### Changed
+- **MCP SDK 2.x**: the MCP server now requires `mcp>=2,<3` and uses `MCPServer` (upstream removed `mcp.server.fastmcp` in 2.0). Fresh installs now get MCP SDK 2.x; `serverInfo.version` now reports the `polymarket-paper-trader` package version instead of the MCP library version. Tool names, signatures, and payloads are unchanged.
+
 ## [0.3.4] - 2026-09-24
 
 ### Added

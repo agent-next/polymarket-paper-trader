@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # polymarket-paper-trader
 
-Paper trading simulator for Polymarket. Built for AI agents. Python 3.10+, SQLite, Click CLI, FastMCP.
+Paper trading simulator for Polymarket. Built for AI agents. Python 3.10+, SQLite, Click CLI, MCPServer (MCP SDK 2.x).
 
 ## Commands
 

@@ -119,7 +119,5 @@ docs example was wrong.
   separate editable install.
 - Disambiguate the two "benchmark" surfaces (candidate: rename strategy replay to
   `pm-trader strategy ...`).
-- FastMCP `serverInfo.version` reports the MCP library version (0.30.0), not the package
-  version.
 - `test_meta.TestDocCounts` could derive README counts mechanically instead of relying on
   prose staying count-free.
