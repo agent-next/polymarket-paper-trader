@@ -7,7 +7,7 @@ See [CLAUDE.md](CLAUDE.md) for the detailed module map of the root `pm_trader` p
 ## Purpose
 
 Paper-trading simulator for Polymarket, built for AI agents (Python 3.10+, SQLite, Click CLI,
-FastMCP). Public repo, actively maintained; the product ships to PyPI/ClawHub/MCP.
+MCP SDK 2.x). Public repo, actively maintained; the product ships to PyPI/ClawHub/MCP.
 
 ## Orient
 
