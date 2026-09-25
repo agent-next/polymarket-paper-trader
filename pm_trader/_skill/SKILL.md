@@ -1,0 +1,1 @@
+../../skill/polymarket-paper-trader/SKILL.md

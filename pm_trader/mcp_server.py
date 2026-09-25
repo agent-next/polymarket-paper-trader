@@ -2,15 +2,19 @@
 
 Run with:
     pm-trader mcp                  # stdio transport (default)
+    pm-trader-mcp --transport streamable-http --host 0.0.0.0 --port 8000
     python -m pm_trader.mcp_server # direct execution
 """
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import functools
 import importlib.metadata
+import importlib.resources
 import json
+import re
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -21,6 +25,20 @@ from pm_trader.engine import Engine
 
 DEFAULT_DATA_DIR = Path.home() / ".pm-trader" / "default"
 
+_SERVER_INSTRUCTIONS = """\
+pm-trader is a paper-trading simulator for Polymarket: real markets, real order
+books and real prices, but every dollar is fake — no wallet, no API keys, no
+real money at risk.
+
+Suggested workflow: init_account (creates the paper account with starting
+balance) -> search_markets / list_markets (find something to trade) ->
+get_order_book (check live liquidity before sizing) -> buy / sell (or
+place_limit_order for resting orders) -> portfolio / stats (track P&L and
+performance over time).
+
+Call the `trading_playbook` prompt (or read the `skill://trading-playbook`
+resource) for the full trading methodology this server was built around."""
+
 
 def _server_version() -> str:
     """Return the installed package version for MCP serverInfo."""
@@ -30,7 +48,44 @@ def _server_version() -> str:
         return "0.0.0+unknown"
 
 
-mcp = MCPServer("pm-trader", version=_server_version())
+def _skill_body() -> str:
+    """Return the SKILL.md body (YAML frontmatter stripped).
+
+    The file is packaged as ``pm_trader/_skill/SKILL.md`` — a symlink to the
+    canonical ``skill/polymarket-paper-trader/SKILL.md`` in the repo root, so
+    the wheel ships the exact same bytes an agent's skill loader reads, with
+    no hand-maintained copy to drift.
+    """
+    text = importlib.resources.files("pm_trader").joinpath(
+        "_skill/SKILL.md"
+    ).read_text(encoding="utf-8")
+    return re.sub(r"\A---\n.*?\n---\n", "", text, count=1, flags=re.DOTALL)
+
+
+mcp = MCPServer(
+    "pm-trader", version=_server_version(), instructions=_SERVER_INSTRUCTIONS
+)
+
+
+@mcp.prompt(
+    name="trading_playbook",
+    description="The full pm-trader trading methodology and workflow guide.",
+)
+def trading_playbook() -> str:
+    """Return the pm-trader SKILL.md playbook body."""
+    return _skill_body()
+
+
+@mcp.resource(
+    "skill://trading-playbook",
+    name="trading_playbook",
+    title="pm-trader trading playbook",
+    description="The full pm-trader trading methodology and workflow guide.",
+    mime_type="text/markdown",
+)
+def trading_playbook_resource() -> str:
+    """Return the pm-trader SKILL.md playbook body."""
+    return _skill_body()
 
 # MCP SDK 2.x dispatches tools/call concurrently and runs sync tool functions
 # on arbitrary anyio worker threads; the Engine's SQLite connection is bound
@@ -842,9 +897,37 @@ def backtest(
 # ---------------------------------------------------------------------------
 
 
-def main():
-    """Run MCP server on stdio transport."""
-    mcp.run()
+def _build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="pm-trader-mcp", description="Run the pm-trader MCP server."
+    )
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "streamable-http"],
+        default="stdio",
+        help="Transport to serve on (default: stdio)",
+    )
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Host to bind for streamable-http (default: 127.0.0.1)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port to bind for streamable-http (default: 8000)",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Run MCP server on stdio (default) or streamable-http transport."""
+    args = _build_arg_parser().parse_args(argv)
+    if args.transport == "streamable-http":
+        mcp.run(transport="streamable-http", host=args.host, port=args.port)
+    else:
+        mcp.run()
 
 
 if __name__ == "__main__":  # pragma: no cover
