@@ -7,7 +7,7 @@ See [CLAUDE.md](CLAUDE.md) for the detailed module map of the root `pm_trader` p
 ## Purpose
 
 Paper-trading simulator for Polymarket, built for AI agents (Python 3.10+, SQLite, Click CLI,
-FastMCP). Public repo, actively maintained; the product ships to PyPI/ClawHub/MCP.
+MCP SDK 2.x). Public repo, actively maintained; the product ships to PyPI/ClawHub/MCP.
 
 ## Orient
 
@@ -119,7 +119,5 @@ docs example was wrong.
   separate editable install.
 - Disambiguate the two "benchmark" surfaces (candidate: rename strategy replay to
   `pm-trader strategy ...`).
-- FastMCP `serverInfo.version` reports the MCP library version (0.30.0), not the package
-  version.
 - `test_meta.TestDocCounts` could derive README counts mechanically instead of relying on
   prose staying count-free.

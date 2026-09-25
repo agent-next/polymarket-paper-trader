@@ -2,6 +2,14 @@
 
 All notable changes to `polymarket-paper-trader` are documented here.
 
+## [Unreleased]
+
+### Changed
+- **MCP SDK 2.x**: the MCP server now requires `mcp>=2,<3` and uses `MCPServer` (upstream removed `mcp.server.fastmcp` in 2.0). Fresh installs now get MCP SDK 2.x; `serverInfo.version` now reports the `polymarket-paper-trader` package version instead of the MCP library version. Tool names, signatures, and payloads are unchanged.
+
+### Fixed
+- **MCP tool calls serialized on a dedicated worker thread.** MCP SDK 2.x dispatches `tools/call` concurrently and runs sync tool functions on arbitrary anyio worker threads, so parallel calls crashed with "SQLite objects created in a thread can only be used in that same thread" — the Engine's SQLite connection is bound to the thread that opened it. Every registered tool is now an async wrapper that submits the sync function to a single-worker `ThreadPoolExecutor`, restoring the serialized execution semantics SDK 1.x provided (SDK 1.x ran sync tools on the event-loop thread). Tool names, signatures, and advertised schemas are unchanged; the module-level functions remain plain sync callables for direct use.
+
 ## [0.3.4] - 2026-09-24
 
 ### Added
