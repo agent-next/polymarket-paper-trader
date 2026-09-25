@@ -12,9 +12,12 @@ PK battle: run two strategies head-to-head, same starting conditions.
 from __future__ import annotations
 
 import importlib
+import os
 import re
+import sys
 from pathlib import Path
 from tempfile import mkdtemp
+from typing import Callable
 
 from pm_trader.analytics import compute_stats
 from pm_trader.engine import Engine
@@ -49,6 +52,19 @@ def _validate_strategy_path(strategy_path: str) -> tuple[str, str]:
     return module_path, func_name
 
 
+def _load_strategy(strategy_path: str) -> Callable[[Engine], None]:
+    """Validate ``strategy_path`` and import it, resolving modules from the cwd.
+
+    Console scripts don't put the working directory on ``sys.path`` (unlike
+    ``python -m``), so ``examples.*`` in the user's project must be added here.
+    """
+    module_path, func_name = _validate_strategy_path(strategy_path)
+    cwd = os.getcwd()
+    if cwd not in sys.path:
+        sys.path.insert(0, cwd)
+    return getattr(importlib.import_module(module_path), func_name)
+
+
 def run_strategy(
     strategy_path: str,
     *,
@@ -66,9 +82,7 @@ def run_strategy(
     Returns:
         Dict with strategy name, analytics metrics, and trade count.
     """
-    module_path, func_name = _validate_strategy_path(strategy_path)
-    module = importlib.import_module(module_path)
-    strategy_fn = getattr(module, func_name)
+    strategy_fn = _load_strategy(strategy_path)
 
     # Create a fresh engine
     if data_dir is None:

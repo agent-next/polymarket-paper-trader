@@ -859,12 +859,9 @@ def backtest(
             load_snapshots_json,
             run_backtest,
         )
-        from pm_trader.benchmark import _validate_strategy_path
+        from pm_trader.benchmark import _load_strategy
 
-        import importlib
-
-        # Validate strategy path (allowlist + format check)
-        module_path, func_name = _validate_strategy_path(strategy_path)
+        strategy_fn = _load_strategy(strategy_path)
 
         # Validate data_path is under allowed directories (no traversal)
         data = P(data_path).resolve()
@@ -879,9 +876,6 @@ def backtest(
             snapshots = load_snapshots_json(data)
         else:
             snapshots = load_snapshots_csv(data)
-
-        mod = importlib.import_module(module_path)
-        strategy_fn = getattr(mod, func_name)
 
         from dataclasses import asdict
         result = run_backtest(

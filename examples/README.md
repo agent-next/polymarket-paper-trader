@@ -41,11 +41,9 @@ disagrees with the YES midpoint by more than `EDGE`, skipping markets priced
 outside `[MIN_PRICE, MAX_PRICE]` (default `[0.05, 0.95]`) since fees eat a
 near-fixed fraction of stake at the extremes. Requires the benchmark package
 (`pip install -e "benchmark"`); model defaults to `opencode/jev-1.13-free`
-(no key needed), override with `JEV_MODEL`. Run from the repo root with
-`PYTHONPATH=.` (a strict editable install does not map the `examples`
-namespace package):
+(no key needed), override with `JEV_MODEL`. Run from the repo root:
 ```
-PYTHONPATH=. pm-trader strategy run examples.jev_edge.run
+pm-trader strategy run examples.jev_edge.run
 ```
 
 ## Write Your Own

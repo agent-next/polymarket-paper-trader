@@ -248,7 +248,7 @@ pm-trader strategy run examples.limit_grid.run
 
 ### Jev edge (`examples/jev_edge.py`)
 
-"Jev vs the market": asks Jev for a YES probability per binary market and buys the side it favors, skipping markets priced outside `[0.05, 0.95]` where fees dominate — `PYTHONPATH=. pm-trader strategy run examples.jev_edge.run` (needs `pip install -e "benchmark"`).
+"Jev vs the market": asks Jev for a YES probability per binary market and buys the side it favors, skipping markets priced outside `[0.05, 0.95]` where fees dominate — `pm-trader strategy run examples.jev_edge.run` (needs `pip install -e "benchmark"`).
 
 ### Writing your own strategy
 
