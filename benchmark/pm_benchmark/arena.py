@@ -583,10 +583,14 @@ def run_predict(
         and r["ts"][:10] < today
         and r.get("prob") is not None
     } | resolved_slugs
+    # An entrant whose every row today is a skip (e.g. its API was down)
+    # runs again on a same-day re-run.
     done_today = {
         r.get("entrant")
         for r in existing
-        if isinstance(r.get("ts"), str) and r["ts"][:10] == today
+        if isinstance(r.get("ts"), str)
+        and r["ts"][:10] == today
+        and r.get("prob") is not None
     }
     taken_pairs = {
         (r.get("entrant"), r.get("slug"))
