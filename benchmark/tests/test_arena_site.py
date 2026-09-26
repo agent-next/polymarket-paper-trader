@@ -760,7 +760,7 @@ class TestOpenMarkets:
         html = render_site(board)
         assert "(paren) X" in html  # label kept when stripping leaves ""
 
-    def test_prob_clamped_on_dots_not_text(self) -> None:
+    def test_out_of_range_probs_render_em_dash_and_no_dot(self) -> None:
         board = {
             "open": [
                 {
@@ -773,10 +773,35 @@ class TestOpenMarkets:
             "entrants": [{"id": "e", "label": "E"}],
         }
         html = render_site(board)
-        assert "left:100.00%" in html
-        assert "left:0.00%" in html
-        assert ">150%</td>" in html
-        assert ">-20%</td>" in html
+        # outside [0, 1] is not a probability: em dash, and no dot to
+        # disagree with the label
+        assert ">150%</td>" not in html
+        assert ">-20%</td>" not in html
+        assert "150%" not in html
+        assert 'class="pdot' not in html
+        assert '<td class="pct e0">—</td>' in html
+        assert '<td class="pct">—</td>' in html  # the crowd cell
+        # the mobile card chips agree
+        assert '<span class="chip e0">E —</span>' in html
+        assert '<span class="chip">Crowd —</span>' in html
+
+    def test_prob_boundaries_0_and_1_still_render(self) -> None:
+        board = {
+            "open": [
+                {
+                    "slug": "s",
+                    "question": "Q",
+                    "market_prob": 1.0,
+                    "forecasts": {"e": {"prob": 0.0}},
+                }
+            ],
+            "entrants": [{"id": "e", "label": "E"}],
+        }
+        html = render_site(board)
+        assert ">100%</td>" in html
+        assert ">0%</td>" in html
+        assert 'class="pdot e0" style="left:0.00%"' in html
+        assert 'class="pdot" style="left:100.00%"' in html
 
     def test_market_view_dots_at_least_10px(self) -> None:
         html = render_site(sample_board())
@@ -1056,7 +1081,7 @@ class TestDuels:
         )[0]
         assert "B 20%" in card
 
-    def test_out_of_range_prob_clamped_before_gap_and_sort(self) -> None:
+    def test_out_of_range_prob_treated_as_missing(self) -> None:
         board = {
             "duels": [
                 {"slug": "wild", "question": "Wild?", "entrant": "a",
@@ -1069,21 +1094,20 @@ class TestDuels:
             "entrants": [{"id": "a", "label": "A", "kind": "ai"}],
         }
         html = render_site(board)
-        # the headline gap uses the clamped probability, like the dot does
-        assert "+150 pts" not in html
-        assert "-90 pts" not in html
+        # outside [0, 1] is missing data, not a clampable probability:
+        # no percent, no dot, no fabricated gap
         assert "200%" not in html and "-40%" not in html
-        assert ">A +50 pts vs crowd</span>" in html
-        assert ">A +65 pts vs crowd</span>" in html
-        assert ">A -50 pts vs crowd</span>" in html
-        # the clamped gap, not the raw one, decides the card order
+        assert "+150 pts" not in html and "+50 pts" not in html
+        assert "-90 pts" not in html
+        assert ">A +65 pts vs crowd</span>" in html  # the only real gap
+        assert html.count("— pts vs crowd") == 2  # wild and neg
+        wild = html.split("Wild?")[1].split("</article>")[0]
+        assert 'class="pdot e0"' not in wild
+        assert "A —" in wild  # the legend agrees with the missing dot
+        # an invalid prob sorts with the uncomputable rows, below real gaps
         section = html.split('id="duels"')[1]
         assert section.index("Valid?") < section.index("Wild?")
         assert section.index("Wild?") < section.index("Neg?")
-        wild = section.split("Wild?")[1].split("</article>")[0]
-        assert 'class="pdot e0" style="left:100.00%"' in wild
-        assert "A 100%" in wild
-        assert "A 200%" not in wild
 
     def test_headline_prefers_computable_gap(self) -> None:
         board = {
