@@ -53,7 +53,8 @@ jobs:
           git add -A
           if git diff --cached --quiet; then echo "no new data"; exit 0; fi
           git commit --quiet -m "arena: $(date -u +%Y-%m-%d) run ${GITHUB_RUN_ID}"
-          git push --quiet origin arena-data || { git pull --quiet --rebase origin arena-data && git push --quiet origin arena-data; }
+          # Runs are serialized by the concurrency group, so a plain push cannot race.
+          git push --quiet origin arena-data
       - name: Build site
         run: polymarket-benchmark arena build --data data --out site
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
