@@ -25,7 +25,11 @@ jobs:
           python-version: "3.13"
           cache: pip
 
-      - run: pip install -e ".[dev]"
+      - run: pip install -e ".[dev]" -e "./benchmark[dev]"
 
       - name: Run live e2e suite
         run: python -m pytest tests/test_e2e_live.py -m live -q --tb=short
+
+      - name: Run live benchmark checks (arena resolution)
+        working-directory: benchmark
+        run: python -m pytest tests/ -m live -q --tb=short -p no:cacheprovider --no-cov
