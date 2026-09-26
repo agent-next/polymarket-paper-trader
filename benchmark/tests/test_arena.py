@@ -756,6 +756,26 @@ class TestRunPredict:
         slugs = {(r["entrant"], r["slug"]) for r in load_forecasts(tmp_path)}
         assert slugs == {("gpt", "m1"), ("crowd", "m1")}
 
+    def test_all_skip_entrant_reruns_same_day(self, tmp_path, monkeypatch):
+        _write_forecasts(
+            tmp_path, "2026-09-26",
+            [_forecast_row("m1", "gpt", None, ts="2026-09-26T07:00:00Z",
+                           status="skip"),
+             _forecast_row("m1", "crowd", 0.5, ts="2026-09-26T07:00:00Z")],
+        )
+        monkeypatch.setattr(
+            arena, "list_markets", MagicMock(return_value=[_info("m1")])
+        )
+        monkeypatch.setattr(
+            arena, "query_model",
+            MagicMock(return_value='{"probability": 0.7, "reasoning": "r"}'),
+        )
+        _mock_price(monkeypatch, 0.5)
+        summary = run_predict(tmp_path, self._config(tmp_path), now=NOW)
+        assert summary["forecasts"] == 1
+        new = [r for r in load_forecasts(tmp_path) if r["ts"] == "2026-09-26T12:00:00Z"]
+        assert [(r["entrant"], r["prob"]) for r in new] == [("gpt", 0.7)]
+
     def test_prior_days_slugs_excluded(self, tmp_path, monkeypatch):
         """A slug forecast yesterday is not re-selected today."""
         _write_forecasts(
