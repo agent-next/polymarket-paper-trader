@@ -18,7 +18,7 @@ entrants:
     kind: ai
     model: openai/space-bunny-free
     api_base: https://opencode.ai/zen/v1
-    api_key_env: ZEN_API_KEY  # "public" placeholder in CI: free tier checks no key
+    api_key_env: ZEN_API_KEY  # placeholder value in CI: the free tier checks no key
     web_access: null        # stealth model: provider not disclosed
     cutoff: null
   - id: crowd

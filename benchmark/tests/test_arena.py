@@ -1303,6 +1303,14 @@ class TestBoard:
         board = self._board(rows, {})
         assert "gone" not in {e["id"] for e in board["entrants"]}
 
+    def test_removed_entrant_with_a_forecast_kept_after_skip(self):
+        rows = [
+            _forecast_row("a", "gone", None, ts="t", status="skip"),
+            _forecast_row("b", "gone", 0.6, ts="t"),
+        ]
+        board = self._board(rows, {})
+        assert "gone" in {e["id"] for e in board["entrants"]}
+
     def test_last_run_is_latest_row_ts(self):
         rows = [
             _forecast_row("a", "gpt", 0.9, ts="2026-09-25T01:00:00Z"),
