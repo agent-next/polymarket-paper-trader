@@ -134,7 +134,14 @@ def list_markets(
         data = data.get("markets", data.get("data", []))
     if not isinstance(data, list):
         return []
-    return [_parse_market(m) for m in data]
+    markets = []
+    for m in data:
+        # One malformed record must not sink the whole page.
+        try:
+            markets.append(_parse_market(m))
+        except (AttributeError, TypeError, ValueError):
+            continue
+    return markets
 
 
 def fetch_prices(
