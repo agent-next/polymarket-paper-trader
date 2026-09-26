@@ -63,6 +63,7 @@ FETCH_LIMIT = 100      # Gamma /markets page cap
 MAX_PAGES = 5          # bounded paging past the 100-per-page cap (v1.2)
 MAX_PER_EVENT = 2      # one event cannot fill the whole board (v1.2)
 MIN_LIQUIDITY = 10_000.0
+MIN_SECRET_LEN = 12
 MIN_PRICE = 0.03
 MAX_PRICE = 0.97
 MIN_DAYS = 1
@@ -608,7 +609,13 @@ def run_predict(
 
     key_envs = {e.api_key_env for e in entrants if e.api_key_env}
     key_envs |= {"JEV_API_KEY", "OPENCODE_API_KEY"}
-    secrets = [key for env in sorted(key_envs) if (key := os.environ.get(env))]
+    # Short values are public placeholders (Zen's anonymous key is "public"),
+    # not secrets; redacting them would mangle ordinary words in error text.
+    secrets = [
+        key
+        for env in sorted(key_envs)
+        if (key := os.environ.get(env)) and len(key) >= MIN_SECRET_LEN
+    ]
     fetch = price_fetch or (
         lambda m: _fetch_market_prob(m, http_client=http_client)
     )

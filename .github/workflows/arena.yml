@@ -42,9 +42,9 @@ jobs:
       - run: pip install -e . -e ./benchmark
       - name: Resolve and predict
         env:
-          # Zen free models check no key but litellm requires one. The value is
-          # redacted from error rows, so it must not be a word that occurs in text.
-          ZEN_API_KEY: zen-free-tier-placeholder
+          # litellm requires a key; Zen's free tier accepts only "public" (or no
+          # Authorization header) and rejects any other value with 401.
+          ZEN_API_KEY: public
         run: |
           polymarket-benchmark arena resolve --data data || echo "::warning::resolve failed"
           polymarket-benchmark arena predict --data data || echo "::warning::predict failed (partial results kept)"
