@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 import json
-import sys
-import types
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -131,9 +129,12 @@ class TestLoadEntrants:
         ]
         by_id = {e.id: e for e in entrants}
         assert by_id["jev"].model == "opencode/jev-1.13-free"
-        assert by_id["jev"].web_access is False
+        assert by_id["jev"].web_access is None  # undocumented upstream
         assert by_id["jev"].cutoff is None
         gh = by_id["gpt-4.1"]
+        # litellm strips the provider prefix; GitHub Models wants <publisher>/<model>
+        assert gh.model == "openai/openai/gpt-4.1"
+        assert by_id["grok-3-mini"].model == "openai/xai/grok-3-mini"
         assert gh.api_base == "https://models.github.ai/inference"
         assert gh.api_key_env == "GITHUB_TOKEN"
         assert gh.cutoff == "2024-06"
@@ -1411,38 +1412,37 @@ class TestRunBuild:
         )
         return data_dir, config
 
-    def test_writes_data_json(self, tmp_path):
+    def test_writes_site(self, tmp_path):
         data_dir, config = self._fixture(tmp_path)
         out = tmp_path / "site"
         summary = run_build(data_dir, config, out, now=NOW)
         board = json.loads((out / "data.json").read_text())
         assert board["leaderboard"][0]["entrant"] == "gpt"
-        assert summary["data_json"] == str(out / "data.json")
-        assert summary["index_html"] is None
-        assert not (out / "index.html").exists()
-
-    def test_renderer_stub_writes_index_and_cname(self, tmp_path, monkeypatch):
-        data_dir, config = self._fixture(tmp_path)
-        stub = types.SimpleNamespace(
-            render_site=lambda board: f"<html>{len(board['leaderboard'])}</html>"
-        )
-        monkeypatch.setitem(sys.modules, "pm_benchmark.arena_site", stub)
-        out = tmp_path / "site"
-        summary = run_build(data_dir, config, out, now=NOW)
-        # two resolved entrants (gpt + crowd) -> leaderboard of 2
-        assert (out / "index.html").read_text() == "<html>2</html>"
+        html = (out / "index.html").read_text()
+        assert html.startswith("<!doctype html>")
+        assert "not affiliated with Polymarket" in html
         assert (out / "CNAME").read_text().strip() == "polymarket-leaderboard.com"
-        assert summary["index_html"] == str(out / "index.html")
+        assert summary == {
+            "data_json": str(out / "data.json"),
+            "index_html": str(out / "index.html"),
+            "markets_open": len(board["open"]),
+            "leaderboard": len(board["leaderboard"]),
+        }
 
-    def test_no_renderer_only_data_json(self, tmp_path, monkeypatch):
-        """Without arena_site importable, build writes only data.json."""
-        data_dir, config = self._fixture(tmp_path)
-        monkeypatch.setitem(sys.modules, "pm_benchmark.arena_site", None)
-        out = tmp_path / "site"
-        run_build(data_dir, config, out, now=NOW)
-        assert (out / "data.json").exists()
-        assert not (out / "index.html").exists()
-        assert not (out / "CNAME").exists()
+
+class TestBoardModelDisplay:
+    def test_github_models_prefix_dropped(self, tmp_path):
+        config = _write_config(
+            tmp_path / "arena.yaml",
+            [
+                {"id": "gpt", "kind": "ai", "model": "openai/openai/gpt-4.1",
+                 "api_base": "https://models.github.ai/inference"},
+                {"id": "jev", "kind": "ai", "model": "opencode/jev-1.13-free"},
+            ],
+        )
+        board = build_board([], {}, load_entrants(config), now=NOW)
+        models = {e["id"]: e["model"] for e in board["entrants"]}
+        assert models == {"gpt": "openai/gpt-4.1", "jev": "opencode/jev-1.13-free"}
 
 
 class TestCli:
@@ -1516,8 +1516,7 @@ class TestCli:
         assert result.exit_code == 1
         assert json.loads(result.output)["ok"] is False
 
-    def test_build(self, cli_runner, tmp_path, monkeypatch):
-        monkeypatch.setitem(sys.modules, "pm_benchmark.arena_site", None)
+    def test_build(self, cli_runner, tmp_path):
         data_dir = tmp_path / "data"
         _write_forecasts(
             data_dir, "2026-09-25",
