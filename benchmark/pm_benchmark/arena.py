@@ -583,7 +583,11 @@ def run_predict(
         for r in existing
         if isinstance(r.get("ts"), str) and r["ts"][:10] == today
     }
-    taken_pairs = {(r.get("entrant"), r.get("slug")) for r in existing}
+    taken_pairs = {
+        (r.get("entrant"), r.get("slug"))
+        for r in existing
+        if r.get("prob") is not None
+    }
 
     markets = _list_candidate_markets(
         page_size=fetch_limit, max_pages=max_pages, http_client=http_client

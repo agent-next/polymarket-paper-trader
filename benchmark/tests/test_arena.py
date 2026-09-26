@@ -790,8 +790,11 @@ class TestRunPredict:
         )
         _mock_price(monkeypatch, 0.5)
         run_predict(tmp_path, self._config(tmp_path), now=NOW)
-        slugs = {r["slug"] for r in load_forecasts(tmp_path) if r["ts"].startswith("2026-09-26")}
-        assert slugs == {"m1", "m2"}
+        gpt_today = {
+            r["slug"] for r in load_forecasts(tmp_path)
+            if r["ts"].startswith("2026-09-26") and r["entrant"] == "gpt"
+        }
+        assert gpt_today == {"m1", "m2"}
 
     def test_resolved_slug_excluded(self, tmp_path, monkeypatch):
         """A market already resolved is never forecast again (L2)."""
