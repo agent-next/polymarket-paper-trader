@@ -1,6 +1,7 @@
 """Tests for pm_benchmark.providers."""
 from __future__ import annotations
 
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -168,7 +169,8 @@ class TestQueryModel:
 
     @patch("pm_benchmark.providers.litellm.completion")
     def test_passes_num_retries(self, mock_completion):
-        """LLMConfig.num_retries is forwarded to litellm (backoff on 429s)."""
+        """num_retries goes to the provider SDK as max_retries: litellm's own
+        num_retries path needs tenacity, which litellm does not declare."""
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = "ok"
@@ -178,7 +180,8 @@ class TestQueryModel:
         result = query_model(cfg, "analyze", "system")
         assert result == "ok"
         _, kwargs = mock_completion.call_args
-        assert kwargs["num_retries"] == 3
+        assert kwargs["max_retries"] == 3
+        assert "num_retries" not in kwargs
 
     @patch("pm_benchmark.providers.litellm.completion")
     def test_num_retries_omitted_by_default(self, mock_completion):
@@ -191,6 +194,7 @@ class TestQueryModel:
         assert result == "ok"
         _, kwargs = mock_completion.call_args
         assert "num_retries" not in kwargs
+        assert "max_retries" not in kwargs
 
     def test_missing_api_key_env(self, monkeypatch):
         monkeypatch.delenv("MISSING_KEY", raising=False)
@@ -279,3 +283,17 @@ class TestJevRouting:
         cfg = LLMConfig(model="jev-1.13-free")
         with pytest.raises(LLMError, match="Jev call failed"):
             query_model(cfg, "p", "s")
+
+
+def test_retries_work_without_tenacity(monkeypatch):
+    """Real litellm call (no mock) against a closed local port with tenacity
+    unimportable, as on a clean runner: the error is the connection, never
+    a tenacity import failure."""
+    monkeypatch.setitem(sys.modules, "tenacity", None)
+    cfg = LLMConfig(
+        model="openai/x", api_base="http://127.0.0.1:9/v1", num_retries=1
+    )
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    with pytest.raises(LLMError) as exc:
+        query_model(cfg, "p", "s", timeout=2)
+    assert "tenacity" not in str(exc.value)
