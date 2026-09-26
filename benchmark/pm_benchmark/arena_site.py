@@ -56,19 +56,26 @@ _MONTHS = (
 # Fixed domain for the alpha-vs-crowd confidence whisker, so rows compare.
 _CI_LO, _CI_HI = -0.15, 0.15
 # One fixed accent per entrant, in board order: (light theme, dark theme).
-# Pairs are chosen for WCAG-AA text contrast on each theme's surfaces; the
-# crowd is neutral gray. Indexes wrap when there are more entrants.
+# Pairs are chosen for WCAG-AA text contrast on each theme's surfaces.
+# Indexes wrap when there are more entrants.
 _PALETTE = (
     ("#1d4ed8", "#6ea8fe"),  # blue
     ("#7c3aed", "#b794f6"),  # violet
     ("#0f766e", "#2dd4bf"),  # teal
-    ("#c2410c", "#fb923c"),  # orange
     ("#be185d", "#f472b6"),  # pink
     ("#0e7490", "#22d3ee"),  # cyan
     ("#92400e", "#fbbf24"),  # amber
-    ("#15803d", "#4ade80"),  # green
+    ("#5b21b6", "#a78bfa"),  # deep purple
+    ("#0369a1", "#38bdf8"),  # sky
 )
+# The three baseline rules have canonical ids and fixed colors: the crowd
+# is neutral gray, the coin flip green, the market favorite orange.
 _CROWD_COLORS = ("#64748b", "#9aa7b4")
+_BASELINE_COLORS = {
+    "crowd": _CROWD_COLORS,
+    "coin": ("#15803d", "#4ade80"),    # green
+    "favorite": ("#c2410c", "#fb923c"),  # orange
+}
 _TOKENS = re.compile(r"[a-z0-9]+")
 
 _CSS = """
@@ -78,7 +85,7 @@ _CSS = """
   --bg2: #eef2f7;
   --card: #ffffff;
   --fg: #0f172a;
-  --muted: #475569;
+  --muted: #3f4c63;
   --border: #e2e8f0;
   --track: #e5eaf1;
   --accent: #1d4ed8;
@@ -126,7 +133,7 @@ code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.9em;
 }
-.wrap { margin: 0 auto; max-width: 1120px; padding: 0 18px; }
+.wrap { margin: 0 auto; max-width: 1220px; padding: 0 18px; }
 
 /* top bar */
 .topbar {
@@ -176,7 +183,7 @@ a.wordmark:hover { text-decoration: none; }
   display: grid;
   gap: 28px;
   grid-template-columns: minmax(0, 1fr) auto;
-  padding: 46px 0 6px;
+  padding: 26px 0 4px;
 }
 .eyebrow {
   color: var(--accent);
@@ -202,16 +209,21 @@ h1 .ai { color: var(--accent); }
 }
 .hero-art { align-items: center; display: flex; }
 .hero-art svg { display: block; }
+/* one bordered strip; the border color shows through 1px gaps as
+   dividers. Exactly five cells, so the last spans the row once the
+   strip wraps to two columns. */
 .stats {
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 12px;
   display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 1px;
+  grid-template-columns: repeat(5, 1fr);
+  overflow: hidden;
 }
 .stat {
   background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 11px 14px;
+  padding: 12px 16px;
 }
 .stat-num {
   display: block;
@@ -231,7 +243,7 @@ h1 .ai { color: var(--accent); }
 
 /* sections */
 main { padding-bottom: 24px; }
-section { margin-top: 46px; }
+section { margin-top: 34px; }
 .sec-head {
   align-items: baseline;
   display: flex;
@@ -297,7 +309,9 @@ td.q a:hover { color: var(--accent); }
 .chip {
   background: color-mix(in srgb, var(--ec, var(--muted)) 14%, transparent);
   border-radius: 6px;
-  color: var(--ec, var(--muted));
+  /* the 14% tint washes the accent out; pull the text toward the
+     theme's foreground so chip labels keep AA contrast */
+  color: color-mix(in srgb, var(--ec, var(--muted)) 82%, var(--fg));
   display: inline-block;
   font-size: 0.66rem;
   font-weight: 800;
@@ -377,7 +391,7 @@ td.q a:hover { color: var(--accent); }
   border-radius: 14px;
   display: flex;
   flex-direction: column;
-  padding: 14px 16px;
+  padding: 18px 20px;
 }
 .duel-q { font-size: 0.95rem; font-weight: 700; line-height: 1.35; margin: 0 0 6px; }
 .duel-q a { color: var(--fg); }
@@ -481,7 +495,11 @@ td.q a:hover { color: var(--accent); }
   right: 0;
   top: 4px;
 }
-.mini .pdot { border: 0; height: 7px; width: 7px; }
+.mini .pdot {
+  border: 1px solid var(--card);
+  height: 10px;
+  width: 10px;
+}
 .mvt {
   color: var(--muted);
   display: flex;
@@ -604,7 +622,7 @@ td.q a:hover { color: var(--accent); }
 @media (max-width: 960px) {
   .duels { grid-template-columns: repeat(2, 1fr); }
 }
-@media (max-width: 840px) {
+@media (max-width: 900px) {
   .hero { grid-template-columns: 1fr; }
   .hero-art { display: none; }
 }
@@ -616,8 +634,13 @@ td.q a:hover { color: var(--accent); }
   .pill { margin-left: 0; white-space: normal; }
   .botbar .pill { margin-left: 0; }
 }
+@media (max-width: 700px) {
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .stats .stat:last-child { grid-column: 1 / -1; }
+}
 @media (max-width: 640px) {
   .duels { grid-template-columns: 1fr; }
+  .hero { padding-top: 18px; }
   .table-wrap { display: none; }
   .lcards { display: block; }
 }
@@ -888,7 +911,7 @@ def _palette_css(order: dict) -> str:
     """Emit ``--ec`` rules assigning each entrant one fixed color."""
     light, dark = [], []
     for eid, index in order.items():
-        pair = _CROWD_COLORS if eid == _CROWD_ID else _PALETTE[
+        pair = _BASELINE_COLORS.get(eid) or _PALETTE[
             index % len(_PALETTE)
         ]
         light.append(f".e{index}{{--ec:{pair[0]}}}")
@@ -1044,11 +1067,15 @@ def _hero_art() -> str:
     for y in range(-radius, radius + 1, step):
         chord = int((radius * radius - y * y) ** 0.5)
         for x in range(-chord, chord + 1, step):
-            dots.append(f'<circle cx="{x}" cy="{y}" r="1.6"/>')
+            # fade toward the rim so the disc reads as a sphere
+            fade = 1 - 0.82 * ((x * x + y * y) ** 0.5 / radius)
+            dots.append(
+                f'<circle cx="{x}" cy="{y}" r="1.6" opacity="{fade:.2f}"/>'
+            )
     return (
         '<div class="hero-art" aria-hidden="true">'
-        '<svg width="210" height="210" viewBox="-104 -104 208 208" '
-        f'fill="var(--accent)" opacity="0.5">{"".join(dots)}</svg>'
+        '<svg width="300" height="300" viewBox="-104 -104 208 208" '
+        f'fill="var(--accent)" opacity="0.55">{"".join(dots)}</svg>'
         "</div>"
     )
 
@@ -1398,7 +1425,7 @@ def _open_section(board: dict, entrants: dict[str, dict], order: dict) -> str:
     )
 
 
-_MAX_DUEL_CARDS = 6
+_MAX_DUEL_CARDS = 3
 
 
 def _duel_key(d: dict, fallback: int) -> Hashable:
