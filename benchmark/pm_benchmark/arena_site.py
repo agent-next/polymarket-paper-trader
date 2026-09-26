@@ -481,7 +481,7 @@ def _leaderboard_section(board: dict, entrants: dict[str, dict]) -> str:
         if not isinstance(row, dict):
             continue
         info = _entrant_info(entrants, row.get("entrant"))
-        label = _esc(info.get("label") or row.get("entrant") or "?")
+        label = _entrant_label(entrants, row.get("entrant"))
         kind = info.get("kind") or ""
         badge = (
             f'<span class="badge badge-{escape(str(kind))}">'
