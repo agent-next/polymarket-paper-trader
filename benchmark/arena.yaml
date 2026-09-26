@@ -3,8 +3,9 @@
 # System One endpoint; kind: baseline entrants are deterministic rules
 # (crowd, coin, favorite). web_access/cutoff are disclosure metadata shown on
 # the public board; cutoffs are the vendors' published values, null when unpublished.
-# GitHub Models ids are openai/<publisher>/<model>: litellm strips the leading
-# openai/ (provider) and models.github.ai expects <publisher>/<model>.
+# OpenAI-compatible entrants use openai/<model-id> with api_base; OpenCode Zen's
+# other free models reject calls from outside OpenCode (HTTP 403, 2026-09-26),
+# and GitHub Models was retired on 2026-07-30.
 entrants:
   - id: jev
     label: Jev 1.13 (free)
@@ -12,38 +13,14 @@ entrants:
     model: opencode/jev-1.13-free
     web_access: null        # not documented by TypeSafe
     cutoff: null            # not published
-  - id: gpt-4.1
-    label: GPT-4.1
+  - id: space-bunny
+    label: Space Bunny (free, stealth)
     kind: ai
-    model: openai/openai/gpt-4.1
-    api_base: https://models.github.ai/inference
-    api_key_env: GITHUB_TOKEN
-    web_access: false
-    cutoff: "2024-06"       # openai.com/index/gpt-4-1
-  - id: deepseek-v3
-    label: DeepSeek V3 0324
-    kind: ai
-    model: openai/deepseek/DeepSeek-V3-0324
-    api_base: https://models.github.ai/inference
-    api_key_env: GITHUB_TOKEN
-    web_access: false
-    cutoff: null            # not published
-  - id: llama-4-maverick
-    label: Llama 4 Maverick
-    kind: ai
-    model: openai/meta/Llama-4-Maverick-17B-128E-Instruct-FP8
-    api_base: https://models.github.ai/inference
-    api_key_env: GITHUB_TOKEN
-    web_access: false
-    cutoff: "2024-08"       # Meta Llama 4 model card
-  - id: grok-3-mini
-    label: Grok 3 Mini
-    kind: ai
-    model: openai/xai/grok-3-mini
-    api_base: https://models.github.ai/inference
-    api_key_env: GITHUB_TOKEN
-    web_access: false
-    cutoff: null            # no xAI-published value; third-party sources disagree
+    model: openai/space-bunny-free
+    api_base: https://opencode.ai/zen/v1
+    api_key_env: ZEN_API_KEY  # "public" placeholder in CI: free tier checks no key
+    web_access: null        # stealth model: provider not disclosed
+    cutoff: null
   - id: crowd
     label: Crowd (market price)
     kind: baseline

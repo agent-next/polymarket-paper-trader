@@ -167,7 +167,7 @@ polymarket-benchmark arena build --data /tmp/arena-data --out site/
 
 Entrants live in [`arena.yaml`](arena.yaml): `id`, `label`, `kind` (`ai` or
 `baseline`), `model` (litellm id; `api_base`/`api_key_env` for custom endpoints
-like GitHub Models), plus disclosure metadata (`web_access`, `cutoff`).
+like OpenCode Zen), plus disclosure metadata (`web_access`, `cutoff`).
 
 ## Architecture
 
