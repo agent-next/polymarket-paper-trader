@@ -164,7 +164,9 @@ def query_model(
         if llm_config.api_base is not None:
             completion_kwargs["api_base"] = llm_config.api_base
         if llm_config.num_retries is not None:
-            completion_kwargs["num_retries"] = llm_config.num_retries
+            # litellm's own num_retries needs the undeclared tenacity package;
+            # max_retries is retried by the provider SDK instead.
+            completion_kwargs["max_retries"] = llm_config.num_retries
 
         response = litellm.completion(
             **completion_kwargs,
