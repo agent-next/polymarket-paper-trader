@@ -497,7 +497,7 @@ td.q a:hover { color: var(--accent); }
   top: 4px;
 }
 .mini .pdot {
-  border: 1px solid var(--card);
+  /* the base .pdot ring stays 2 px so overlapping dots separate */
   height: 10px;
   width: 10px;
 }
@@ -1402,7 +1402,8 @@ def _market_card(
         f'<span class="{_klass("chip", ccls)}">'
         f'Crowd {_fmt_prob(market.get("market_prob"))}</span>'
     ]
-    dots = []
+    # crowd first in the DOM paints it underneath the entrant dots
+    dots = [_pdot(market.get("market_prob"), ccls)]
     for eid in cols:
         cls = _eid_cls(order, eid)
         prob = _prob_of(forecasts, eid)
@@ -1411,7 +1412,6 @@ def _market_card(
             f"{_short_label(entrants, eid)} {_fmt_prob(prob)}</span>"
         )
         dots.append(_pdot(prob, cls))
-    dots.append(_pdot(market.get("market_prob"), ccls))
     return (
         f'<article class="lcard"><p class="lcard-head mkc-head">'
         f'<span class="lno">{index}</span>{title}</p>'
@@ -1491,13 +1491,13 @@ def _open_section(board: dict, entrants: dict[str, dict], order: dict) -> str:
             f'<td class="{_klass("pct", ccls)}">'
             f'{_fmt_prob(market.get("market_prob"))}</td>'
         )
-        dots = []
+        # crowd first in the DOM paints it underneath the entrant dots
+        dots = [_pdot(market.get("market_prob"), ccls)]
         for eid in cols:
             cls = _eid_cls(order, eid)
             prob = _prob_of(forecasts, eid)
             cells += f'<td class="{_klass("pct", cls)}">{_fmt_prob(prob)}</td>'
             dots.append(_pdot(prob, cls))
-        dots.append(_pdot(market.get("market_prob"), ccls))
         cells += f'<td class="mv"><span class="mini">{"".join(dots)}</span></td>'
         body.append(f"<tr>{cells}</tr>")
         cards.append(
@@ -1599,10 +1599,11 @@ def _duel_card(rows: list[dict], entrants: dict[str, dict], order: dict) -> str:
     # else reads as missing so labels, dots and the gap never disagree.
     probs = [_valid_prob(d.get("prob")) for d in rows]
     crowd_prob = _valid_prob(head.get("market_prob"))
-    dots = "".join(
+    # crowd first in the DOM paints it underneath the entrant dots
+    dots = _pdot(crowd_prob, ccls) + "".join(
         _pdot(prob, _eid_cls(order, d.get("entrant")))
         for d, prob in zip(rows, probs)
-    ) + _pdot(crowd_prob, ccls)
+    )
     track = (
         f'<div class="track" aria-hidden="true">{dots}</div>'
         '<div class="ticks" aria-hidden="true"><span>0%</span>'

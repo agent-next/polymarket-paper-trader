@@ -810,6 +810,30 @@ class TestOpenMarkets:
             px = float(re.search(rf"{dim}: ([\d.]+)px", mini).group(1))
             assert px >= 10
 
+    def test_mini_dots_share_the_card_ring(self) -> None:
+        html = render_site(sample_board())
+        # near-coincident dots stay distinguishable: every track dot
+        # carries a 2 px ring in the card background color
+        assert "border: 2px solid var(--card)" in _css_rule(html, ".pdot")
+        # the mini strip keeps that ring — no thinner override
+        assert "border" not in _css_rule(html, ".mini .pdot")
+
+    def test_crowd_dot_paints_underneath_entrant_dots(self) -> None:
+        html = render_site(sample_board())
+        # market-view strip: the crowd dot comes first in the DOM so
+        # entrant dots paint over it when they coincide
+        mini = html.split('class="mini"')[1]
+        assert mini.index("pdot e2") < mini.index("pdot e0")
+        # duel track
+        track = html.split('class="track"')[1]
+        assert track.index("pdot e2") < track.index("pdot e0")
+        # mobile market card track
+        cards = html.split('id="markets"')[1].split(
+            '<div class="lcards">'
+        )[1]
+        mtrack = cards.split('class="track mkc-track"')[1]
+        assert mtrack.index("pdot e2") < mtrack.index("pdot e0")
+
     def test_empty_state(self) -> None:
         html = render_site({"open": []})
         assert "No open forecasts yet" in html
