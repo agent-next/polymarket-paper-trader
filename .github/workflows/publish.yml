@@ -139,3 +139,11 @@ jobs:
       - name: Outsider smoke test on the PyPI release
         working-directory: ${{ runner.temp }}
         run: PATH="$PWD/user/bin:$PATH" user/bin/python "$GITHUB_WORKSPACE/scripts/outsider_smoke.py" "${GITHUB_REF_NAME#v}"
+
+  mcp-registry:
+    # List the verified release in the official MCP Registry.
+    needs: verify-pypi
+    uses: ./.github/workflows/mcp-registry.yml
+    permissions:
+      contents: read
+      id-token: write
