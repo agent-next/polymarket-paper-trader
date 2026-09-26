@@ -905,6 +905,28 @@ class TestRunPredict:
         assert "<redacted>" in row["error"]
         assert len(row["error"]) <= arena.ERROR_LIMIT
 
+    def test_short_public_key_not_redacted(self, tmp_path, monkeypatch):
+        """Zen's anonymous key "public" is not a secret: ordinary words in
+        error text stay intact."""
+        monkeypatch.setenv("ZEN_API_KEY", "public")
+        monkeypatch.setattr(
+            arena, "list_markets", MagicMock(return_value=[_info("m1")])
+        )
+        monkeypatch.setattr(
+            arena, "query_model",
+            MagicMock(side_effect=LLMError("model is not publicly listed")),
+        )
+        _mock_price(monkeypatch, 0.5)
+        config = _write_config(
+            tmp_path / "arena.yaml",
+            [{"id": "gpt", "kind": "ai", "model": "m",
+              "api_key_env": "ZEN_API_KEY"}],
+        )
+        run_predict(tmp_path, config, now=NOW)
+        raw_text = (tmp_path / "forecasts" / "2026-09-26.jsonl").read_text()
+        assert "publicly listed" in raw_text
+        assert "<redacted>" not in raw_text
+
     def test_jev_key_redacted(self, tmp_path, monkeypatch):
         """Jev reads its key from the environment, not from api_key_env."""
         secret = "jev_very-secret-key"
