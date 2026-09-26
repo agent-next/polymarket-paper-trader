@@ -487,6 +487,15 @@ class TestForecastMarket:
                               price_fetch=lambda m: 0.5)
         assert len(row["rationale"]) == 280
 
+    def test_null_reasoning_becomes_empty(self, monkeypatch):
+        monkeypatch.setattr(
+            arena, "query_model",
+            MagicMock(return_value='{"probability": 0.5, "reasoning": null}'),
+        )
+        row = forecast_market(_entrant(), _info(), now=NOW,
+                              price_fetch=lambda m: 0.5)
+        assert row["rationale"] == ""
+
     def test_parse_failure_retries_once(self, monkeypatch):
         """A malformed answer gets exactly one fixed retry (L1)."""
         mock = MagicMock(side_effect=[
@@ -644,6 +653,23 @@ class TestForecastFiles:
         assert load_resolutions(tmp_path) == {}
 
 
+    def test_load_skips_corrupt_line(self, tmp_path, capsys):
+        path = _write_forecasts(
+            tmp_path, "2026-09-20",
+            [_forecast_row("a", "gpt", 0.6, ts="2026-09-20T06:17:00Z")],
+        )
+        with path.open("a") as f:
+            f.write('{"ts": "2026-09-20T06:17:00Z", "slug": ')
+        rows = load_forecasts(tmp_path)
+        assert [r["slug"] for r in rows] == ["a"]
+        assert "skipping corrupt line 2026-09-20.jsonl:2" in capsys.readouterr().err
+
+    def test_save_resolutions_leaves_no_temp_file(self, tmp_path):
+        arena.save_resolutions(tmp_path, {"m": {"outcome": 1}})
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["resolutions.json"]
+        assert load_resolutions(tmp_path) == {"m": {"outcome": 1}}
+
+
 class TestRunPredict:
     def _config(self, tmp_path, extra_ai=None):
         entrants = [
@@ -747,6 +773,26 @@ class TestRunPredict:
         slugs = {r["slug"] for r in load_forecasts(tmp_path) if r["ts"].startswith("2026-09-26")}
         assert slugs == {"m2"}
 
+    def test_prior_day_skip_row_does_not_consume_market(self, tmp_path, monkeypatch):
+        """A market only skipped (API outage) on a prior day is re-selected."""
+        _write_forecasts(
+            tmp_path, "2026-09-25",
+            [_forecast_row("m1", "gpt", None, ts="2026-09-25T01:00:00Z",
+                           status="skip")],
+        )
+        monkeypatch.setattr(
+            arena, "list_markets",
+            MagicMock(return_value=[_info("m1"), _info("m2")]),
+        )
+        monkeypatch.setattr(
+            arena, "query_model",
+            MagicMock(return_value='{"probability": 0.7, "reasoning": "r"}'),
+        )
+        _mock_price(monkeypatch, 0.5)
+        run_predict(tmp_path, self._config(tmp_path), now=NOW)
+        slugs = {r["slug"] for r in load_forecasts(tmp_path) if r["ts"].startswith("2026-09-26")}
+        assert slugs == {"m1", "m2"}
+
     def test_resolved_slug_excluded(self, tmp_path, monkeypatch):
         """A market already resolved is never forecast again (L2)."""
         arena.save_resolutions(
@@ -837,6 +883,27 @@ class TestRunPredict:
         row = json.loads(raw_text.strip())
         assert "<redacted>" in row["error"]
         assert len(row["error"]) <= arena.ERROR_LIMIT
+
+    def test_jev_key_redacted(self, tmp_path, monkeypatch):
+        """Jev reads its key from the environment, not from api_key_env."""
+        secret = "jev_very-secret-key"
+        monkeypatch.setenv("OPENCODE_API_KEY", secret)
+        monkeypatch.setattr(
+            arena, "list_markets", MagicMock(return_value=[_info("m1")])
+        )
+        monkeypatch.setattr(
+            arena, "query_model",
+            MagicMock(side_effect=LLMError(f"401 bearer {secret}")),
+        )
+        _mock_price(monkeypatch, 0.5)
+        config = _write_config(
+            tmp_path / "arena.yaml",
+            [{"id": "gpt", "kind": "ai", "model": "m"}],
+        )
+        run_predict(tmp_path, config, now=NOW)
+        raw_text = (tmp_path / "forecasts" / "2026-09-26.jsonl").read_text()
+        assert secret not in raw_text
+        assert "<redacted>" in raw_text
 
     def test_price_fetch_failure_records_skip(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
@@ -956,14 +1023,14 @@ class TestRunResolve:
                    "resolution_source": "closed_unresolvable"}},
         )
         mock = MagicMock(
-            return_value=Resolution(outcome=0.0, closed=True, source="field")
+            return_value=Resolution(outcome=0.0, closed=True, source="uma")
         )
         monkeypatch.setattr(arena, "fetch_resolution_detail", mock)
         summary = run_resolve(tmp_path, now=NOW)
         assert summary["resolved"] == 1
         res = load_resolutions(tmp_path)
         assert res["m"]["outcome"] == 0
-        assert res["m"]["resolution_source"] == "field"
+        assert res["m"]["resolution_source"] == "uma"
 
     def test_already_resolved_not_refetched(self, tmp_path, monkeypatch):
         _write_forecasts(

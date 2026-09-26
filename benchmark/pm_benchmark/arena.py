@@ -18,6 +18,7 @@ import json
 import math
 import os
 import random
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -390,7 +391,8 @@ def _ai_forecast(
     except LLMError:
         raw = query_model(cfg, prompt, _FORECAST_SYSTEM_PROMPT, timeout=timeout)
         decision = parse_decision(raw)
-    return decision.probability, str(decision.reasoning)[:RATIONALE_LIMIT]
+    reasoning = decision.reasoning if isinstance(decision.reasoning, str) else ""
+    return decision.probability, reasoning[:RATIONALE_LIMIT]
 
 
 def forecast_market(
@@ -481,16 +483,24 @@ def _skip_row(
 
 
 def load_forecasts(data_dir: Path) -> list[dict]:
-    """Read all forecast rows from ``forecasts/*.jsonl``, oldest file first."""
+    """Read all forecast rows from ``forecasts/*.jsonl``, oldest file first.
+
+    A line that is not valid JSON (e.g. torn by a killed run) is skipped with
+    a warning on stderr, so one bad write cannot stall every later run.
+    """
     forecasts_dir = data_dir / "forecasts"
     if not forecasts_dir.is_dir():
         return []
     rows: list[dict] = []
     for path in sorted(forecasts_dir.glob("*.jsonl")):
-        for line in path.read_text().splitlines():
+        for n, line in enumerate(path.read_text().splitlines(), 1):
             line = line.strip()
-            if line:
+            if not line:
+                continue
+            try:
                 rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                print(f"arena: skipping corrupt line {path.name}:{n}", file=sys.stderr)
     return rows
 
 
@@ -515,10 +525,12 @@ def load_resolutions(data_dir: Path) -> dict[str, dict]:
 
 
 def save_resolutions(data_dir: Path, resolutions: dict[str, dict]) -> Path:
-    """Write ``resolutions.json`` with stable key ordering."""
+    """Write ``resolutions.json`` atomically with stable key ordering."""
     path = data_dir / "resolutions.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(resolutions, indent=2, sort_keys=True) + "\n")
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(resolutions, indent=2, sort_keys=True) + "\n")
+    os.replace(tmp, path)
     return path
 
 
@@ -562,7 +574,9 @@ def run_predict(
     taken_slugs = {
         r["slug"]
         for r in existing
-        if isinstance(r.get("ts"), str) and r["ts"][:10] < today
+        if isinstance(r.get("ts"), str)
+        and r["ts"][:10] < today
+        and r.get("prob") is not None
     } | resolved_slugs
     done_today = {
         r.get("entrant")
@@ -576,11 +590,9 @@ def run_predict(
     )
     selected = select_markets(markets, taken_slugs, now=now, top_n=top_n)
 
-    secrets = [
-        key
-        for e in entrants
-        if e.api_key_env and (key := os.environ.get(e.api_key_env))
-    ]
+    key_envs = {e.api_key_env for e in entrants if e.api_key_env}
+    key_envs |= {"JEV_API_KEY", "OPENCODE_API_KEY"}
+    secrets = [key for env in sorted(key_envs) if (key := os.environ.get(env))]
     fetch = price_fetch or (
         lambda m: _fetch_market_prob(m, http_client=http_client)
     )
