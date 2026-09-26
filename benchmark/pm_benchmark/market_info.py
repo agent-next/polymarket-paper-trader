@@ -98,13 +98,18 @@ def list_markets(
     closed: bool = False,
     order: str = "volumeNum",
     ascending: bool = False,
+    end_date_min: str | None = None,
+    end_date_max: str | None = None,
+    liquidity_min: float | None = None,
     http_client: httpx.Client | None = None,
 ) -> list[MarketInfo]:
     """List markets from Gamma ``/markets`` ordered by volume or liquidity.
 
     Ordering uses the camelCase ``volumeNum``/``liquidityNum`` values the
     wire accepts (snake_case variants are rejected upstream). A page is at
-    most ~100 markets; ``offset`` fetches further pages.
+    most ~100 markets; ``offset`` fetches further pages. ``end_date_min``/
+    ``end_date_max`` (ISO timestamps) and ``liquidity_min`` filter server
+    side (``liquidity_num_min``; live-probed 2026-09-26).
     """
     params = {
         "limit": limit,
@@ -114,6 +119,12 @@ def list_markets(
         "order": order,
         "ascending": "true" if ascending else "false",
     }
+    if end_date_min is not None:
+        params["end_date_min"] = end_date_min
+    if end_date_max is not None:
+        params["end_date_max"] = end_date_max
+    if liquidity_min is not None:
+        params["liquidity_num_min"] = liquidity_min
     client = http_client or httpx.Client(timeout=_TIMEOUT)
     owns_client = http_client is None
     try:

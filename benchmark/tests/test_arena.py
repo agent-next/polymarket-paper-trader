@@ -340,8 +340,12 @@ class TestListCandidateMarkets:
         page2 = [_info("m3")]
         mock = MagicMock(side_effect=[page1, page2])
         monkeypatch.setattr(arena, "list_markets", mock)
-        got = arena._list_candidate_markets(page_size=3, max_pages=5)
+        got = arena._list_candidate_markets(page_size=3, max_pages=5, now=NOW)
         assert [m.slug for m in got] == ["m0", "m1", "m2", "m3"]
+        first = mock.call_args_list[0].kwargs
+        assert first["end_date_min"] == "2026-09-27T12:00:00Z"
+        assert first["end_date_max"] == "2026-10-10T12:00:00Z"
+        assert first["liquidity_min"] == arena.MIN_LIQUIDITY
         assert mock.call_count == 2
         assert mock.call_args_list[0].kwargs["offset"] == 0
         assert mock.call_args_list[1].kwargs["offset"] == 3
