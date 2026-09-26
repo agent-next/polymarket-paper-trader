@@ -382,7 +382,9 @@ def _ai_forecast(
                 timeout=timeout if timeout is not None else JEV_TIMEOUT,
             )
             prob = noul_probability(answers, "probability")
-        return prob, f"Jev {entrant.model}"
+        # Jev answers the noul question with a probability only; there is no
+        # rationale to show.
+        return prob, ""
 
     cfg = LLMConfig(
         model=entrant.model or "",

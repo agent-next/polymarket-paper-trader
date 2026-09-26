@@ -541,7 +541,7 @@ class TestForecastMarket:
         row = forecast_market(entrant, _info(), now=NOW,
                               price_fetch=lambda m: 0.5)
         assert row["prob"] == 0.73
-        assert row["rationale"] == "Jev opencode/jev-1.13-free"
+        assert row["rationale"] == ""
         _, kwargs = q_mock.call_args
         assert q_mock.call_args.args[2] == {
             "probability": {
