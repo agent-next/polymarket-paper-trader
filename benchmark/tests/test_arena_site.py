@@ -700,3 +700,73 @@ class TestNonNumericValues:
         assert open_html.count(">—</span>") == 2
         assert open_html.count("width:0.00%") == 2
         assert ">—</td>" in html
+
+
+class TestMalformedItems:
+    def test_non_dict_items_skipped(self) -> None:
+        board = {
+            "entrants": [{"id": "a", "label": "A"}],
+            "leaderboard": [
+                "x",
+                42,
+                {"entrant": "a", "brier": 0.1, "significant": True},
+            ],
+            "open": [None, {"slug": "s", "question": "Q?", "forecasts": {}}],
+            "duels": [{"skip"}, {"slug": "d", "question": "D?"}],
+            "hall_of_wrong": [[1, 2], {"slug": "h", "question": "H?"}],
+        }
+        html = render_site(board)
+        assert ">0.100</td>" in html  # the one valid leaderboard row
+        assert ">A<" in html
+        for question in ("Q?", "D?", "H?"):
+            assert question in html
+
+    def test_non_list_sections_fall_back_to_empty(self) -> None:
+        board = {
+            "entrants": "oops",
+            "leaderboard": {"a": {}},
+            "open": 42,
+            "duels": "nope",
+            "hall_of_wrong": {"x": 1},
+            "stats": [1, 2, 3],
+        }
+        html = render_site(board)
+        for text in (
+            "First results after markets resolve.",
+            "No open forecasts yet",
+            "No large AI-vs-crowd disagreements yet.",
+            "No confident misses yet.",
+        ):
+            assert text in html
+        # a non-dict stats block renders as all em dashes
+        assert html.count('<span class="stat-num">—</span>') == 6
+
+    def test_forecasts_and_entries_not_dicts(self) -> None:
+        board = {
+            "open": [
+                {"slug": "s1", "market_prob": 0.5, "forecasts": "oops"},
+                {
+                    "slug": "s2",
+                    "forecasts": {"e": "bad", "f": {"prob": 0.4}},
+                },
+            ],
+            "entrants": [{"id": "e"}, {"id": "f", "label": "F"}],
+        }
+        html = render_site(board)
+        # the crowd bar survives a non-dict forecasts value
+        assert "width:50.00%" in html
+        # a non-dict forecast still renders its row with an em dash prob
+        assert '<span class="who">e</span>' in html
+        assert ">40%</span>" in html
+
+    def test_unhashable_entrant_id(self) -> None:
+        board = {
+            "leaderboard": [
+                {"entrant": ["x"], "brier": 0.2, "significant": True}
+            ],
+            "duels": [{"slug": "d", "entrant": ["y"]}],
+        }
+        html = render_site(board)
+        # unhashable ids skip the lookup and render escaped
+        assert "x&#x27;" in html and "y&#x27;" in html
+        assert ">0.200</td>" in html

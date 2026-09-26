@@ -7,6 +7,7 @@ JavaScript, no external assets, light and dark color schemes.
 from __future__ import annotations
 
 import math
+from collections.abc import Hashable
 from html import escape
 from typing import Any
 
@@ -369,16 +370,26 @@ def _fmt_outcome(outcome: Any) -> str:
 
 def _entrant_index(board: dict) -> dict[str, dict]:
     """Map entrant id to its record, preserving board order."""
+    entrants = board.get("entrants")
+    if not isinstance(entrants, list):
+        return {}
     return {
         e["id"]: e
-        for e in board.get("entrants") or []
+        for e in entrants
         if isinstance(e, dict) and e.get("id")
     }
 
 
+def _entrant_info(entrants: dict[str, dict], entrant_id: Any) -> dict:
+    """The entrant record for *entrant_id*; ``{}`` when unknown."""
+    if isinstance(entrant_id, Hashable):
+        return entrants.get(entrant_id) or {}
+    return {}
+
+
 def _entrant_label(entrants: dict[str, dict], entrant_id: Any) -> str:
     """Escaped display label for an entrant id, falling back to the id."""
-    info = entrants.get(entrant_id) or {}
+    info = _entrant_info(entrants, entrant_id)
     return _esc(info.get("label") or entrant_id or "?")
 
 
@@ -401,7 +412,9 @@ def _forecast_ids(forecasts: dict, entrants: dict[str, dict]) -> list:
 
 
 def _stats_section(board: dict) -> str:
-    stats = board.get("stats") or {}
+    stats = board.get("stats")
+    if not isinstance(stats, dict):
+        stats = {}
     cells = [
         ("forecasts", _fmt_count(stats.get("forecasts"))),
         ("resolved", _fmt_count(stats.get("resolved"))),
@@ -452,8 +465,8 @@ def _alpha_cell(row: dict) -> str:
 
 
 def _leaderboard_section(board: dict, entrants: dict[str, dict]) -> str:
-    rows = board.get("leaderboard") or []
-    if not rows:
+    rows = board.get("leaderboard")
+    if not isinstance(rows, list) or not rows:
         return (
             '<section id="leaderboard"><h2>Leaderboard</h2>'
             '<p class="empty">First results after markets resolve.</p>'
@@ -461,7 +474,9 @@ def _leaderboard_section(board: dict, entrants: dict[str, dict]) -> str:
         )
     body = []
     for row in rows:
-        info = entrants.get(row.get("entrant")) or {}
+        if not isinstance(row, dict):
+            continue
+        info = _entrant_info(entrants, row.get("entrant"))
         label = _esc(info.get("label") or row.get("entrant") or "?")
         kind = info.get("kind") or ""
         badge = (
@@ -497,8 +512,8 @@ def _leaderboard_section(board: dict, entrants: dict[str, dict]) -> str:
 
 
 def _open_section(board: dict, entrants: dict[str, dict]) -> str:
-    markets = board.get("open") or []
-    if not markets:
+    markets = board.get("open")
+    if not isinstance(markets, list) or not markets:
         return (
             '<section id="open"><h2>Open forecasts</h2>'
             '<p class="empty">No open forecasts yet — the next daily run '
@@ -506,17 +521,23 @@ def _open_section(board: dict, entrants: dict[str, dict]) -> str:
         )
     cards = []
     for market in markets:
+        if not isinstance(market, dict):
+            continue
         question = _esc(
             market.get("question") or market.get("slug") or "Untitled market"
         )
         title = _link_or_text(question, market.get("url"))
         rows = [_prob_row("Crowd", market.get("market_prob"), "crowd")]
         details = []
-        forecasts = market.get("forecasts") or {}
+        forecasts = market.get("forecasts")
+        if not isinstance(forecasts, dict):
+            forecasts = {}
         for eid in _forecast_ids(forecasts, entrants):
             if eid == _CROWD_ID:
                 continue  # the Crowd row already shows market_prob
-            fc = forecasts.get(eid) or {}
+            fc = forecasts.get(eid)
+            if not isinstance(fc, dict):
+                fc = {}
             label = _entrant_label(entrants, eid)
             rows.append(_prob_row(label, fc.get("prob")))
             rationale = fc.get("rationale")
@@ -539,8 +560,8 @@ def _open_section(board: dict, entrants: dict[str, dict]) -> str:
 
 
 def _duels_section(board: dict, entrants: dict[str, dict]) -> str:
-    duels = board.get("duels") or []
-    if not duels:
+    duels = board.get("duels")
+    if not isinstance(duels, list) or not duels:
         return (
             '<section id="duels"><h2>Duels: AI vs the crowd</h2>'
             '<p class="empty">No large AI-vs-crowd disagreements yet.</p>'
@@ -548,6 +569,8 @@ def _duels_section(board: dict, entrants: dict[str, dict]) -> str:
         )
     rows = []
     for d in duels:
+        if not isinstance(d, dict):
+            continue
         question = _esc(d.get("question") or d.get("slug") or "?")
         market = _link_or_text(question, d.get("url"))
         rationale = d.get("rationale")
@@ -584,14 +607,16 @@ def _duels_section(board: dict, entrants: dict[str, dict]) -> str:
 
 
 def _hall_section(board: dict, entrants: dict[str, dict]) -> str:
-    items = board.get("hall_of_wrong") or []
-    if not items:
+    items = board.get("hall_of_wrong")
+    if not isinstance(items, list) or not items:
         return (
             '<section id="hall-of-wrong"><h2>Hall of Wrong</h2>'
             '<p class="empty">No confident misses yet.</p></section>'
         )
     cards = []
     for it in items:
+        if not isinstance(it, dict):
+            continue
         question = _esc(it.get("question") or it.get("slug") or "?")
         title = _link_or_text(question, it.get("url"))
         label = _entrant_label(entrants, it.get("entrant"))
