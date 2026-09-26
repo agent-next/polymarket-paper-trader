@@ -161,13 +161,17 @@ def query_model(
             completion_kwargs["timeout"] = timeout
         if seed is not None:
             completion_kwargs["seed"] = seed
+        if llm_config.api_base is not None:
+            completion_kwargs["api_base"] = llm_config.api_base
+        if llm_config.num_retries is not None:
+            completion_kwargs["num_retries"] = llm_config.num_retries
 
         response = litellm.completion(
             **completion_kwargs,
         )
         return response.choices[0].message.content or ""
     except Exception as e:
-        raise LLMError(f"LLM call failed: {e}") from e
+        raise LLMError(f"LLM call failed: {str(e)[:300]}") from e
 
 
 def parse_decision(raw_response: str) -> MarketDecision:

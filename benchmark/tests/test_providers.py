@@ -149,6 +149,49 @@ class TestQueryModel:
         assert kwargs["timeout"] == 12.5
         assert kwargs["seed"] == 7
 
+    @patch("pm_benchmark.providers.litellm.completion")
+    def test_passes_api_base(self, mock_completion):
+        """LLMConfig.api_base is forwarded to litellm (GitHub Models et al.)."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "ok"
+        mock_completion.return_value = mock_response
+
+        cfg = LLMConfig(
+            model="openai/gpt-4.1",
+            api_base="https://models.github.ai/inference",
+        )
+        result = query_model(cfg, "analyze", "system")
+        assert result == "ok"
+        _, kwargs = mock_completion.call_args
+        assert kwargs["api_base"] == "https://models.github.ai/inference"
+
+    @patch("pm_benchmark.providers.litellm.completion")
+    def test_passes_num_retries(self, mock_completion):
+        """LLMConfig.num_retries is forwarded to litellm (backoff on 429s)."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "ok"
+        mock_completion.return_value = mock_response
+
+        cfg = LLMConfig(model="openai/gpt-4.1", num_retries=3)
+        result = query_model(cfg, "analyze", "system")
+        assert result == "ok"
+        _, kwargs = mock_completion.call_args
+        assert kwargs["num_retries"] == 3
+
+    @patch("pm_benchmark.providers.litellm.completion")
+    def test_num_retries_omitted_by_default(self, mock_completion):
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "ok"
+        mock_completion.return_value = mock_response
+
+        result = query_model(LLMConfig(model="openai/gpt-4.1"), "p", "s")
+        assert result == "ok"
+        _, kwargs = mock_completion.call_args
+        assert "num_retries" not in kwargs
+
     def test_missing_api_key_env(self, monkeypatch):
         monkeypatch.delenv("MISSING_KEY", raising=False)
         cfg = LLMConfig(model="test-model", api_key_env="MISSING_KEY")
