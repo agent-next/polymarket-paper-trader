@@ -130,6 +130,45 @@ Expected Calibration Error (ECE). Bins predictions and compares average predicte
 
 Custom sets: create a YAML file and pass the path to `--market-set`.
 
+## Forecast Arena
+
+The Forecast Arena is a daily, self-running board answering *"can AI forecast
+real-world events better than the crowd?"* AI entrants and naive baselines each
+publish one YES probability per soon-resolving Polymarket binary market —
+**before** it resolves — and are scored once outcomes land.
+
+How it works:
+
+- `predict` selects open binary markets ending in 1–14 days (liquidity ≥ $10k,
+  YES price in [0.03, 0.97], at most 2 markets per Gamma event, top 20 by
+  volume) and records one forecast per (entrant, market). AI entrants answer a
+  single-shot prompt containing question + description + end date — **no market
+  price**; the crowd is the opponent, not an input. Baselines are
+  deterministic: `crowd` records the market price, `coin` 0.5, `favorite` 0.9
+  toward the market favorite. Errors become `skip` rows, never 0.5.
+- `resolve` records outcomes for forecast markets that have resolved
+  (`resolutions.json`).
+- `build` writes `site/data.json` — the leaderboard board: per-entrant Brier,
+  ECE, alpha vs crowd with a bootstrap CI, open forecasts, duels (largest
+  AI-vs-crowd disagreements), and a Hall of Wrong. When the
+  `pm_benchmark.arena_site` renderer is installed it also writes
+  `site/index.html` + `site/CNAME`.
+
+Data is append-only JSONL under a data directory (the CI job uses a checked-out
+`arena-data` branch): `forecasts/YYYY-MM-DD.jsonl` + `resolutions.json`.
+Re-running `predict` the same day adds nothing.
+
+```bash
+# local run (hits the live Gamma API; needs model API keys for AI entrants)
+polymarket-benchmark arena predict --data /tmp/arena-data
+polymarket-benchmark arena resolve --data /tmp/arena-data
+polymarket-benchmark arena build --data /tmp/arena-data --out site/
+```
+
+Entrants live in [`arena.yaml`](arena.yaml): `id`, `label`, `kind` (`ai` or
+`baseline`), `model` (litellm id; `api_base`/`api_key_env` for custom endpoints
+like GitHub Models), plus disclosure metadata (`web_access`, `cutoff`).
+
 ## Architecture
 
 ```
