@@ -1193,6 +1193,16 @@ class TestDuels:
         )[0]
         assert "B 20%" in card
 
+    def test_gap_matches_the_printed_percentages(self) -> None:
+        # live 2026-09-26: 8.6% vs 74.2% printed as 9% / 74% but a -66 gap
+        board = {
+            "duels": [{"slug": "s", "question": "Q?", "entrant": "a",
+                       "prob": 0.086, "market_prob": 0.742}],
+            "entrants": [{"id": "a", "label": "A", "kind": "ai"}],
+        }
+        html = render_site(board)
+        assert ">A -65 pts vs crowd</span>" in html
+
     def test_out_of_range_prob_treated_as_missing(self) -> None:
         board = {
             "duels": [
