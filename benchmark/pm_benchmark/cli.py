@@ -283,6 +283,75 @@ def history_cmd(path: Path) -> None:
         sys.exit(1)
 
 
+@main.group("arena")
+def arena_group() -> None:
+    """Forecast Arena — daily AI-vs-crowd forecasting board."""
+
+
+@arena_group.command("predict")
+@click.option("--data", "data_dir", required=True,
+              type=click.Path(path_type=Path), help="Arena data directory")
+@click.option("--config", "config_path", default=None,
+              type=click.Path(path_type=Path),
+              help="Entrants YAML (default: benchmark/arena.yaml)")
+@click.option("--top", "top_n", type=int, default=20, show_default=True,
+              help="Markets to forecast per run")
+@click.option("--timeout", type=float, default=None,
+              help="Per-forecast LLM timeout in seconds")
+def arena_predict_cmd(
+    data_dir: Path,
+    config_path: Path | None,
+    top_n: int,
+    timeout: float | None,
+) -> None:
+    """Record one forecast per (entrant, market) on soon-resolving markets."""
+    from pm_benchmark import arena
+    try:
+        summary = arena.run_predict(
+            data_dir, config_path, top_n=top_n, timeout=timeout
+        )
+        click.echo(_ok(summary))
+    except Exception as e:
+        click.echo(_err(str(e)))
+        sys.exit(1)
+
+
+@arena_group.command("resolve")
+@click.option("--data", "data_dir", required=True,
+              type=click.Path(path_type=Path), help="Arena data directory")
+def arena_resolve_cmd(data_dir: Path) -> None:
+    """Record outcomes for forecast markets that have resolved."""
+    from pm_benchmark import arena
+    try:
+        click.echo(_ok(arena.run_resolve(data_dir)))
+    except Exception as e:
+        click.echo(_err(str(e)))
+        sys.exit(1)
+
+
+@arena_group.command("build")
+@click.option("--data", "data_dir", required=True,
+              type=click.Path(path_type=Path), help="Arena data directory")
+@click.option("--config", "config_path", default=None,
+              type=click.Path(path_type=Path),
+              help="Entrants YAML (default: benchmark/arena.yaml)")
+@click.option("--out", "out_dir", default=Path("site"),
+              type=click.Path(path_type=Path), show_default=True,
+              help="Output directory for the static site")
+def arena_build_cmd(
+    data_dir: Path,
+    config_path: Path | None,
+    out_dir: Path,
+) -> None:
+    """Build the leaderboard board and write site/data.json (+index.html)."""
+    from pm_benchmark import arena
+    try:
+        click.echo(_ok(arena.run_build(data_dir, config_path, out_dir)))
+    except Exception as e:
+        click.echo(_err(str(e)))
+        sys.exit(1)
+
+
 @main.command("backfill")
 @click.option("--results", required=True, type=click.Path(exists=True, path_type=Path),
               help="Path to report.json from a previous run")
