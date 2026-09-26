@@ -847,6 +847,94 @@ class TestOpenMarkets:
         assert "flex: none" in lno
         assert "border-radius" in lno
 
+    def test_rationale_disclosure_lists_ai_rationales(self) -> None:
+        html = render_site(sample_board())
+        section = html.split('id="markets"')[1].split(
+            '<div class="lcards">'
+        )[0]
+        row = section.split("fed-cut-october")[1].split("</tr>")[0]
+        assert '<details class="why"><summary>Why?</summary>' in row
+        items = row.split('<ul class="why-list">')[1]
+        # only jev has a usable rationale on this market: gpt-oss is
+        # None, coin is "", the crowd boilerplate is never listed
+        assert items.count("<li>") == 1
+        assert '<i class="kdot e0"></i>' in items
+        assert "Jev 1.13 71%" in items
+        assert (
+            '<time datetime="2026-09-26T05:58:11Z">'
+            "Sep 26, 05:58 UTC</time>" in items
+        )
+        assert "Recent FOMC minutes lean dovish." in items
+        assert "GPT-OSS" not in items
+        assert "n/a" not in items
+
+    def test_rationale_disclosure_on_mobile_cards(self) -> None:
+        html = render_site(sample_board())
+        cards = html.split('id="markets"')[1].split(
+            '<div class="lcards">'
+        )[1]
+        card = cards.split('<article class="lcard">')[1]
+        assert '<details class="why"><summary>Why?</summary>' in card
+        assert "Recent FOMC minutes lean dovish." in card
+        assert "Sep 26, 05:58 UTC" in card
+        # an entrant unknown to the board still lists its rationale,
+        # with no timestamp when none was given
+        card2 = cards.split('<article class="lcard">')[2]
+        assert '<details class="why">' in card2
+        assert "mystery-model 20%" in card2
+        assert "Edge." in card2
+
+    def test_no_disclosure_without_ai_rationale(self) -> None:
+        board = {
+            "open": [
+                {
+                    "slug": "s",
+                    "question": "Q",
+                    "market_prob": 0.5,
+                    "forecasts": {
+                        "a": {"prob": 0.6, "rationale": "   "},
+                        "coin": {
+                            "prob": 0.5,
+                            "rationale": "Uninformative 0.5 prior.",
+                        },
+                        "b": "not-a-dict",
+                    },
+                }
+            ],
+            "entrants": [
+                {"id": "a", "label": "A", "kind": "ai"},
+                {"id": "coin", "label": "Coin flip", "kind": "baseline"},
+            ],
+        }
+        html = render_site(board)
+        section = html.split('id="markets"')[1].split("</section>")[0]
+        assert "<details" not in section
+        # blank and baseline boilerplate are not shown anywhere
+        assert "Uninformative 0.5 prior." not in html
+
+    def test_label_restatement_rationale_hidden(self) -> None:
+        board = {
+            "open": [
+                {
+                    "slug": "s",
+                    "question": "Q",
+                    "forecasts": {
+                        "m": {
+                            "prob": 0.6,
+                            "rationale": "M model m-model-1",
+                        }
+                    },
+                }
+            ],
+            "entrants": [
+                {"id": "m", "label": "M", "kind": "ai", "model": "m-model-1"}
+            ],
+        }
+        html = render_site(board)
+        section = html.split('id="markets"')[1].split("</section>")[0]
+        assert "<details" not in section
+        assert "m-model-1" not in section
+
 
 class TestDuels:
     def test_cards(self) -> None:

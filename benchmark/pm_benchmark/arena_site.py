@@ -511,6 +511,20 @@ td.q a:hover { color: var(--accent); }
   text-transform: none;
 }
 
+/* rationale disclosures on open markets */
+.why { font-size: 0.78rem; margin-top: 6px; }
+.why summary {
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 600;
+}
+.why-list { list-style: none; margin: 6px 0 0; padding: 0; }
+.why-list li { border-top: 1px dashed var(--border); padding: 7px 0 8px; }
+.why-list li:first-child { border-top: 0; padding-top: 0; }
+.why-head { font-weight: 600; }
+.why-head time { color: var(--muted); font-weight: 400; }
+.why-text { color: var(--muted); margin: 3px 0 0; }
+
 /* hall of wrong */
 .wrong {
   background: var(--card);
@@ -1331,6 +1345,45 @@ def _prob_of(forecasts: dict, eid: Any) -> Any:
     return fc.get("prob") if isinstance(fc, dict) else None
 
 
+def _why_details(
+    forecasts: dict,
+    cols: list,
+    entrants: dict[str, dict],
+    order: dict,
+) -> str:
+    """A ``<details>`` listing each AI rationale; ``""`` when none show.
+
+    One item per non-empty, non-boilerplate rationale — dot, label,
+    probability and forecast time — in column order. Baselines and
+    id-restatements are filtered by :func:`_clean_rationale`, so a
+    market with nothing worth showing gets no disclosure at all.
+    """
+    items = []
+    for eid in cols:
+        fc = forecasts.get(eid)
+        if not isinstance(fc, dict):
+            continue
+        info = _entrant_info(entrants, eid)
+        rationale = _clean_rationale(fc.get("rationale"), info)
+        if rationale is None:
+            continue
+        stamp = _fmt_stamp(fc.get("ts"))
+        when = f" · {stamp}" if stamp else ""
+        items.append(
+            f'<li><span class="why-head">'
+            f'{_kdot(_eid_cls(order, eid))}'
+            f'{_short_label(entrants, eid)} {_fmt_prob(fc.get("prob"))}'
+            f"{when}</span>"
+            f'<p class="why-text">{_esc(rationale)}</p></li>'
+        )
+    if not items:
+        return ""
+    return (
+        '<details class="why"><summary>Why?</summary>'
+        f'<ul class="why-list">{"".join(items)}</ul></details>'
+    )
+
+
 def _market_card(
     index: int,
     market: dict,
@@ -1367,7 +1420,9 @@ def _market_card(
         f'<div class="track mkc-track" aria-hidden="true">'
         f'{"".join(dots)}</div>'
         '<div class="mvt" aria-hidden="true"><span>0%</span>'
-        "<span>50%</span><span>100%</span></div></article>"
+        "<span>50%</span><span>100%</span></div>"
+        + _why_details(forecasts, cols, entrants, order)
+        + "</article>"
     )
 
 
@@ -1430,7 +1485,8 @@ def _open_section(board: dict, entrants: dict[str, dict], order: dict) -> str:
         cells = (
             f'<td class="num">{index}</td>'
             f'<td class="q">'
-            f'{_link_or_text(question, market.get("url"))}</td>'
+            f'{_link_or_text(question, market.get("url"))}'
+            f'{_why_details(forecasts, cols, entrants, order)}</td>'
             f"<td>{_fmt_day(market.get('end_date'))}</td>"
             f'<td class="{_klass("pct", ccls)}">'
             f'{_fmt_prob(market.get("market_prob"))}</td>'
