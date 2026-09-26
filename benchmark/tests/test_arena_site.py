@@ -1,6 +1,8 @@
 """Tests for pm_benchmark.arena_site."""
 from __future__ import annotations
 
+import re
+
 from pm_benchmark.arena_site import _fmt_ci, render_site
 
 DISCLAIMER = (
@@ -256,6 +258,22 @@ class TestDocument:
         assert html.count("<link") == 1
         assert '<link rel="icon" href="data:' in html
 
+    def test_wide_content_column(self) -> None:
+        html = render_site(sample_board())
+        assert "max-width: 1220px" in html
+
+    def test_compact_section_spacing(self) -> None:
+        html = render_site(sample_board())
+        assert "padding: 26px" in _css_rule(html, ".hero")
+        assert "margin-top: 34px" in _css_rule(html, "section")
+
+    def test_muted_text_holds_aa_contrast_in_light_theme(self) -> None:
+        html = render_site(sample_board())
+        root = _css_rule(html, ":root")
+        tokens = dict(re.findall(r"(--[\w-]+): (#[0-9a-f]{6})", root))
+        for surface in ("--bg", "--bg2", "--card", "--gap-bg"):
+            assert _contrast(tokens["--muted"], tokens[surface]) >= 4.5
+
 
 class TestTopBar:
     def test_wordmark_nav_and_pill(self) -> None:
@@ -332,6 +350,25 @@ class TestHero:
         html = render_site({})
         assert 'class="hero-note"' not in html
 
+    def test_stats_form_one_bordered_strip(self) -> None:
+        html = render_site(sample_board())
+        stats = _css_rule(html, ".stats")
+        assert "border: 1px solid var(--border)" in stats
+        assert "gap: 1px" in stats  # the border color shows as dividers
+        # the cells themselves carry no card borders of their own
+        assert "border" not in _css_rule(html, ".stat")
+        # five cells; on narrow screens the strip wraps to two columns
+        # inside the same container and the last cell fills its row
+        block = html.split("@media (max-width: 700px)")[1].split("@media")[0]
+        assert "repeat(2, 1fr)" in block
+        assert "grid-column: 1 / -1" in block
+
+    def test_hero_art_hidden_below_900px(self) -> None:
+        html = render_site(sample_board())
+        assert '<div class="hero-art" aria-hidden="true">' in html
+        block = html.split("@media (max-width: 900px)")[1]
+        assert ".hero-art { display: none; }" in block.split("@media")[0]
+
     def test_stamp_falls_back_to_escaped_raw_text(self) -> None:
         html = render_site({"last_run": "not-a-date<"})
         assert "Updated not-a-date&lt;" in html
@@ -360,6 +397,29 @@ class TestHero:
         assert "writing-mode" not in html
 
 
+def _luminance(hex_color: str) -> float:
+    """WCAG relative luminance of a ``#rrggbb`` color."""
+    channels = [int(hex_color[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    linear = [
+        c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+        for c in channels
+    ]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def _contrast(a: str, b: str) -> float:
+    """WCAG contrast ratio between two ``#rrggbb`` colors."""
+    la, lb = _luminance(a), _luminance(b)
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
+def _css_rule(html: str, selector: str) -> str:
+    """The declaration block of a top-level CSS rule."""
+    match = re.search(rf"{re.escape(selector)} \{{([^}}]*)\}}", html)
+    assert match, f"no rule for {selector}"
+    return match.group(1)
+
+
 class TestEntrantColors:
     def test_palette_rules_emitted_in_board_order(self) -> None:
         html = render_site(sample_board())
@@ -367,10 +427,36 @@ class TestEntrantColors:
         assert ".e0{--ec:#1d4ed8}" in html
         assert ".e1{--ec:#7c3aed}" in html
         assert ".e2{--ec:#64748b}" in html  # crowd: neutral gray
-        assert ".e3{--ec:#c2410c}" in html
+        assert ".e3{--ec:#15803d}" in html  # coin flip: green
         dark = html.split("prefers-color-scheme: dark){", 1)[1]
         assert ".e0{--ec:#6ea8fe}" in dark
         assert ".e2{--ec:#9aa7b4}" in dark
+        assert ".e3{--ec:#4ade80}" in dark
+
+    def test_baseline_ids_pin_their_palette_colors(self) -> None:
+        board = {
+            "entrants": [
+                {"id": "m", "label": "M", "kind": "ai"},
+                {"id": "crowd", "kind": "baseline"},
+                {"id": "coin", "kind": "baseline"},
+                {"id": "favorite", "kind": "baseline"},
+            ]
+        }
+        html = render_site(board)
+        assert ".e0{--ec:#1d4ed8}" in html  # ai: palette by board order
+        assert ".e1{--ec:#64748b}" in html  # crowd gray
+        assert ".e2{--ec:#15803d}" in html  # coin flip green
+        assert ".e3{--ec:#c2410c}" in html  # favorite orange
+        dark = html.split("prefers-color-scheme: dark){", 1)[1]
+        assert ".e2{--ec:#4ade80}" in dark
+        assert ".e3{--ec:#fb923c}" in dark
+
+    def test_entrant_colors_hold_aa_contrast_on_chips(self) -> None:
+        # chip text pulls the accent toward the theme foreground so the
+        # washed-out 14% tint background keeps >= 4.5:1 contrast
+        html = render_site(sample_board())
+        chip = _css_rule(html, ".chip")
+        assert "color-mix(in srgb, var(--ec, var(--muted)) 82%, var(--fg))" in chip
 
     def test_palette_wraps_after_eight_entrants(self) -> None:
         board = {
@@ -645,6 +731,13 @@ class TestOpenMarkets:
         assert ">150%</td>" in html
         assert ">-20%</td>" in html
 
+    def test_market_view_dots_at_least_10px(self) -> None:
+        html = render_site(sample_board())
+        mini = _css_rule(html, ".mini .pdot")
+        for dim in ("height", "width"):
+            px = float(re.search(rf"{dim}: ([\d.]+)px", mini).group(1))
+            assert px >= 10
+
     def test_empty_state(self) -> None:
         html = render_site({"open": []})
         assert "No open forecasts yet" in html
@@ -677,14 +770,16 @@ class TestDuels:
     def test_cards(self) -> None:
         html = render_site(sample_board())
         assert "<h2>Biggest disagreements</h2>" in html
-        assert html.count('<article class="duel">') == 4
+        # the sample board's four duel groups are capped at three cards
+        # (the tie card has the smallest gap and drops off)
+        assert html.count('<article class="duel">') == 3
         assert (
             '<a href="https://polymarket.com/event/fed-cut-october">'
             "Will the Fed cut rates in October?</a>" in html
         )
         # question falls back to slug, url None -> plain text
         assert "rain-nyc" in html
-        for status in ("open", "won", "lost", "tie"):
+        for status in ("open", "won", "lost"):
             assert f"status-{status}" in html
             assert f">{status}</span>" in html
 
@@ -771,7 +866,7 @@ class TestDuels:
         assert "“The next best reason.”" in html
         assert "<cite>— B</cite>" in html
 
-    def test_six_cards_max_ordered_by_headline_gap(self) -> None:
+    def test_three_cards_max_ordered_by_headline_gap(self) -> None:
         board = {
             "duels": [
                 {
@@ -787,11 +882,12 @@ class TestDuels:
             "entrants": [{"id": "a", "label": "A", "kind": "ai"}],
         }
         html = render_site(board)
-        assert html.count('<article class="duel">') == 6
-        # largest gaps first: m7 (0.35) .. m2 (0.10); m0/m1 cut
+        assert html.count('<article class="duel">') == 3
+        # largest gaps first: m7 (0.35), m6 (0.30), m5 (0.25); m0-m4 cut
         section = html.split('id="duels"')[1]
-        assert section.index("Q7?") < section.index("Q2?")
-        assert "Q0?" not in section and "Q1?" not in section
+        assert section.index("Q7?") < section.index("Q6?")
+        assert section.index("Q6?") < section.index("Q5?")
+        assert "Q4?" not in section and "Q0?" not in section
 
     def test_duplicate_entrant_rows_deduped_per_card(self) -> None:
         board = {
@@ -820,25 +916,24 @@ class TestDuels:
         assert card.count('class="pdot e0"') == 1
 
     def test_gap_badge_neutral_open_colored_resolved(self) -> None:
-        board = {
-            "duels": [
-                {"slug": "o", "question": "O?", "entrant": "a",
-                 "prob": 0.9, "market_prob": 0.5, "status": "open"},
-                {"slug": "w", "question": "W?", "entrant": "a",
-                 "prob": 0.9, "market_prob": 0.5, "status": "won"},
-                {"slug": "l", "question": "L?", "entrant": "a",
-                 "prob": 0.9, "market_prob": 0.5, "status": "lost"},
-                {"slug": "t", "question": "T?", "entrant": "a",
-                 "prob": 0.9, "market_prob": 0.5, "status": "tie"},
-            ],
-            "entrants": [{"id": "a", "label": "A", "kind": "ai"}],
-        }
-        html = render_site(board)
-        assert 'class="gap gap-open"' in html  # neutral while open
-        assert 'class="gap gap-won"' in html
-        assert 'class="gap gap-lost"' in html
-        # tie resolves to the neutral badge, and the palette exists
-        assert html.count('class="gap gap-open"') == 2
+        # one status per board so all four fit under the 3-card cap
+        for status, cls in (
+            ("open", "gap-open"),   # neutral while open
+            ("won", "gap-won"),
+            ("lost", "gap-lost"),
+            ("tie", "gap-open"),    # tie resolves to the neutral badge
+        ):
+            board = {
+                "duels": [
+                    {"slug": "s", "question": "Q?", "entrant": "a",
+                     "prob": 0.9, "market_prob": 0.5, "status": status},
+                ],
+                "entrants": [{"id": "a", "label": "A", "kind": "ai"}],
+            }
+            html = render_site(board)
+            assert f'class="gap {cls}"' in html
+            assert f"status-{status}" in html
+        html = render_site(sample_board())
         assert ".gap-won {" in html and "var(--good)" in html
         assert ".gap-lost {" in html and "var(--bad)" in html
 
@@ -956,7 +1051,15 @@ class TestDuels:
     def test_resolved_outcome_shown(self) -> None:
         html = render_site(sample_board())
         assert "· resolved No" in html
-        assert "· resolved Yes" in html
+        board = {
+            "duels": [
+                {"slug": "s", "question": "Q?", "entrant": "a",
+                 "prob": 0.9, "market_prob": 0.5, "status": "won",
+                 "outcome": 1},
+            ],
+            "entrants": [{"id": "a", "label": "A", "kind": "ai"}],
+        }
+        assert "· resolved Yes" in render_site(board)
 
     def test_status_defaults_to_open(self) -> None:
         board = {
