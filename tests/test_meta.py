@@ -83,6 +83,11 @@ class TestVersionConsistency:
         assert data["version"] == _installed_version()
         assert data["packages"][0]["version"] == _installed_version()
 
+    def test_server_json_description_fits_registry(self) -> None:
+        # registry.modelcontextprotocol.io rejects descriptions over 100 chars (422).
+        data = json.loads((ROOT / "server.json").read_text(encoding="utf-8"))
+        assert len(data["description"]) <= 100
+
     def test_agent_manifests_match_installed(self) -> None:
         for rel in (".claude-plugin/plugin.json", "gemini-extension.json"):
             data = json.loads((ROOT / rel).read_text(encoding="utf-8"))

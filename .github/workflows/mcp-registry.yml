@@ -1,0 +1,36 @@
+name: MCP Registry
+
+# Publishes server.json to the official MCP Registry (registry.modelcontextprotocol.io).
+# Called by publish.yml after the PyPI release is verified; dispatch manually to
+# (re)publish the version already on main. GitHub OIDC grants io.github.agent-next/*.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install mcp-publisher v1.8.1 (checksum-pinned)
+        run: |
+          curl -fsSL -o mcp-publisher.tar.gz \
+            https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz
+          echo "a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc  mcp-publisher.tar.gz" | sha256sum -c -
+          tar xzf mcp-publisher.tar.gz mcp-publisher
+      - name: Publish
+        run: |
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
+      - name: Verify the listing
+        run: |
+          name=$(jq -r .name server.json); version=$(jq -r .version server.json)
+          curl -fsS "https://registry.modelcontextprotocol.io/v0/servers?search=${name#*/}" \
+            | jq -e --arg n "$name" --arg v "$version" \
+              '[.servers[].server | select(.name == $n and .version == $v)] | length > 0'
