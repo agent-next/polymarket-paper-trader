@@ -16,6 +16,14 @@ class LLMConfig(BaseModel):
         default=None,
         description="Env var name holding API key (e.g. ANTHROPIC_API_KEY)",
     )
+    api_base: str | None = Field(
+        default=None,
+        description="Custom API base URL passed to litellm (e.g. GitHub Models)",
+    )
+    num_retries: int | None = Field(
+        default=None,
+        description="litellm retry count with backoff on transient failures",
+    )
 
 
 class LeaderboardConfig(BaseModel):
