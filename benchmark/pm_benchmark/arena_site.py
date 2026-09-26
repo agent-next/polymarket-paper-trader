@@ -6,6 +6,7 @@ JavaScript, no external assets, light and dark color schemes.
 """
 from __future__ import annotations
 
+import math
 from html import escape
 from typing import Any
 
@@ -308,19 +309,31 @@ def _link_or_text(text: str, url: Any) -> str:
     return f'<a href="{safe}">{text}</a>' if safe is not None else text
 
 
+def _num(value: Any) -> float | None:
+    """Coerce *value* to a finite float; ``None`` when not numeric."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
 def _fmt_prob(prob: Any) -> str:
-    """Format a [0, 1] probability as a percentage; ``None`` as an em dash."""
-    return _EM_DASH if prob is None else f"{float(prob) * 100:.0f}%"
+    """Format a [0, 1] probability as a percentage; bad values an em dash."""
+    number = _num(prob)
+    return _EM_DASH if number is None else f"{number * 100:.0f}%"
 
 
 def _fmt_score(value: Any) -> str:
-    """Format a Brier/ECE-style score to 3 decimals; ``None`` as em dash."""
-    return _EM_DASH if value is None else f"{float(value):.3f}"
+    """Format a Brier/ECE-style score to 3 decimals; bad values an em dash."""
+    number = _num(value)
+    return _EM_DASH if number is None else f"{number:.3f}"
 
 
 def _fmt_signed(value: Any) -> str:
-    """Format a signed metric to 3 decimals; ``None`` as an em dash."""
-    return _EM_DASH if value is None else f"{float(value):+.3f}"
+    """Format a signed metric to 3 decimals; bad values an em dash."""
+    number = _num(value)
+    return _EM_DASH if number is None else f"{number:+.3f}"
 
 
 def _fmt_count(value: Any) -> str:
@@ -332,10 +345,10 @@ def _fmt_ci(ci: Any) -> str | None:
     """Format a ``[lo, hi]`` confidence interval; ``None`` when absent."""
     if not isinstance(ci, (list, tuple)) or len(ci) != 2:
         return None
-    lo, hi = ci
+    lo, hi = (_num(v) for v in ci)
     if lo is None or hi is None:
         return None
-    return f"[{float(lo):+.3f}, {float(hi):+.3f}]"
+    return f"[{lo:+.3f}, {hi:+.3f}]"
 
 
 def _fmt_date(ts: Any) -> str:
@@ -371,9 +384,8 @@ def _entrant_label(entrants: dict[str, dict], entrant_id: Any) -> str:
 
 def _prob_row(who: str, prob: Any, kind: str = "") -> str:
     """One labeled probability bar; *who* must be escaped already."""
-    width = 0.0
-    if isinstance(prob, (int, float)):
-        width = min(max(float(prob), 0.0), 1.0) * 100
+    number = _num(prob)
+    width = 0.0 if number is None else min(max(number, 0.0), 1.0) * 100
     cls = f"prob-row {kind}" if kind else "prob-row"
     return (
         f'<div class="{cls}"><span class="who">{who}</span>'
