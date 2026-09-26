@@ -2,7 +2,7 @@ name: Forecast Arena
 
 # Daily: resolve past forecasts, record new ones, rebuild and deploy the public page.
 # Data lives on the append-only `arena-data` branch; the page is served by Cloudflare Pages
-# (project forecast-arena), with the GitHub Pages deploy kept as the rollback target.
+# (project forecast-arena). GitHub Pages is still deployed on every run as the rollback target.
 on:
   schedule:
     - cron: "17 6 * * *"
