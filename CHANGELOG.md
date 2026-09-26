@@ -4,6 +4,13 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- Arena first live run: GitHub Models entrants failed because litellm's `num_retries`
+  path imports `tenacity`, which litellm does not declare; retries now go to the provider
+  SDK (`max_retries`). Market selection now asks Gamma to filter by end date and liquidity
+  (`end_date_min`/`end_date_max`/`liquidity_num_min`, live-probed 2026-09-26) instead of
+  scanning the all-time volume leaders, which left only 5 eligible markets.
+
 ### Added
 - **Forecast Arena** (`benchmark/`): `polymarket-benchmark arena predict|resolve|build`
   records daily probability forecasts from free AI models (Jev via OpenCode Zen, GitHub
