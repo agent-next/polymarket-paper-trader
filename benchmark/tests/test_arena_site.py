@@ -286,14 +286,14 @@ class TestLeaderboard:
             "Brier",
             "ECE",
             "N",
-            "Markets",
+            "Events",
             "Coverage",
             "Since",
         ):
             assert f"<th" in html and header in html
         # raw board keys are humanized before they reach the header row
         assert "n_markets" not in html
-        assert ">N</th>" in html and ">Markets</th>" in html
+        assert ">N</th>" in html and ">Events</th>" in html
         assert "Jev 1.13 (free)" in html
         assert "badge-ai" in html
         assert "AI" in html
@@ -333,7 +333,7 @@ class TestLeaderboard:
             }
         )
         html = render_site(board)
-        assert "too few markets" in html
+        assert "too few events" in html
         # newcomer is not in entrants: label falls back to the id, no badge
         assert "newcomer" in html
 
@@ -360,7 +360,7 @@ class TestLeaderboard:
         assert '<td class="num hide-sm">' in html
         assert '<td class="hide-sm">' in html
         # Entrant/Kind/Alpha/Markets/Coverage stay visible
-        assert '<th class="num">Markets</th>' in html
+        assert '<th class="num">Events</th>' in html
         assert '<th class="num">Coverage</th>' in html
         assert '<th>Since</th>' not in html
 
@@ -501,7 +501,7 @@ class TestMethodology:
         assert "clustered by market event" in html
         assert "no multiplicity correction" in html
         assert "≥30" in html
-        assert "too few markets" in html
+        assert "too few events" in html
         assert "10 equal-width bins" in html
         assert "≥100 resolved forecasts" in html
         assert "at most 2 markets per event" in html
@@ -738,6 +738,13 @@ class TestNonNumericValues:
         assert "width:90.00%" in html
         assert ">90%</span>" in html
         assert "width:30.00%" in html
+
+    def test_non_finite_counts_render_em_dash(self) -> None:
+        html = render_site(
+            {"leaderboard": [{"entrant": "a", "n": float("nan"), "n_markets": float("inf")}],
+             "stats": {"forecasts": float("nan")}}
+        )
+        assert ">nan<" not in html and ">inf<" not in html
 
     def test_non_finite_renders_em_dash(self) -> None:
         board = {

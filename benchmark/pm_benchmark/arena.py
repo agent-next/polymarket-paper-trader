@@ -729,7 +729,7 @@ def _leaderboard(
     the count of distinct resolved events (cluster bootstrap units); the
     crowd row is computed over the union of AI-scored markets so the board
     compares like with like. ``significant`` is null when fewer than
-    SIG_MIN_MARKETS distinct events resolved ("too few markets").
+    SIG_MIN_MARKETS distinct events resolved ("too few events").
     """
     resolved = _resolved_slugs(resolutions)
     resolved_ok = [r for r in ok_rows if r["slug"] in resolved]
@@ -966,7 +966,12 @@ def build_board(
                 "id": e.id,
                 "label": e.label,
                 "kind": e.kind,
-                "model": e.model,
+                # drop litellm's provider routing prefix for display
+                "model": (
+                    e.model.removeprefix("openai/")
+                    if e.model and e.api_base
+                    else e.model
+                ),
                 "web_access": e.web_access,
                 "cutoff": e.cutoff,
             }
@@ -993,15 +998,6 @@ def build_board(
     }
 
 
-def _load_renderer() -> Callable[[dict], str] | None:
-    """Return ``arena_site.render_site`` when the renderer module is present."""
-    try:
-        from pm_benchmark.arena_site import render_site
-    except ImportError:
-        return None
-    return render_site
-
-
 def run_build(
     data_dir: Path,
     config_path: Path | None = None,
@@ -1009,12 +1005,9 @@ def run_build(
     *,
     now: datetime | None = None,
 ) -> dict:
-    """Build the board and write ``site/data.json`` (+ ``index.html``, CNAME).
+    """Build the board and write ``site/`` (data.json, index.html, CNAME)."""
+    from pm_benchmark.arena_site import render_site
 
-    When ``pm_benchmark.arena_site`` is importable its ``render_site`` produces
-    ``index.html`` and the ``CNAME`` file is written; otherwise only
-    ``data.json`` is emitted.
-    """
     now = now or _utc_now()
     board = build_board(
         load_forecasts(data_dir),
@@ -1027,16 +1020,13 @@ def run_build(
     data_path = out_dir / "data.json"
     data_path.write_text(json.dumps(board, indent=2) + "\n")
 
-    index_path = None
-    render = _load_renderer()
-    if render is not None:
-        index_path = out_dir / "index.html"
-        index_path.write_text(render(board))
-        (out_dir / "CNAME").write_text(f"{CNAME_DOMAIN}\n")
+    index_path = out_dir / "index.html"
+    index_path.write_text(render_site(board))
+    (out_dir / "CNAME").write_text(f"{CNAME_DOMAIN}\n")
 
     return {
         "data_json": str(data_path),
-        "index_html": str(index_path) if index_path else None,
+        "index_html": str(index_path),
         "markets_open": len(board["open"]),
         "leaderboard": len(board["leaderboard"]),
     }

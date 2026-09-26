@@ -282,8 +282,8 @@ _METHODOLOGY = f"""
     The 95% confidence interval is a fixed-seed bootstrap
     (1,000 resamples, clustered by market event); one interval per
     entrant, no multiplicity correction. Significance is only reported
-    with ≥30 unique resolved markets — below that the column reads
-    <em>too few markets</em>. The crowd row's Brier covers the union
+    with ≥30 distinct resolved events — below that the column reads
+    <em>too few events</em>. The crowd row's Brier covers the union
     of rows scored against AI entrants.</li>
   <li><strong>Calibration error (ECE).</strong> Mean gap between forecast
     probability and observed frequency across 10 equal-width bins.
@@ -343,8 +343,10 @@ def _fmt_signed(value: Any) -> str:
 
 
 def _fmt_count(value: Any) -> str:
-    """Format a count like ``n``; ``None`` as an em dash."""
-    return _EM_DASH if value is None else _esc(value)
+    """Format a count like ``n``; missing or non-finite as an em dash."""
+    if value is None or (isinstance(value, float) and not math.isfinite(value)):
+        return _EM_DASH
+    return _esc(value)
 
 
 def _fmt_ci(ci: Any) -> str | None:
@@ -466,7 +468,7 @@ def _alpha_cell(row: dict) -> str:
         # Significance is withheld below the unique-market floor (M1); the
         # crowd row is the reference and gets no marker.
         if row.get("entrant") != _CROWD_ID:
-            cell += ' <span class="ns">too few markets</span>'
+            cell += ' <span class="ns">too few events</span>'
     elif not significant:
         cell += ' <span class="ns">not significant</span>'
     return cell
@@ -512,7 +514,7 @@ def _leaderboard_section(board: dict, entrants: dict[str, dict]) -> str:
         '<div class="table-wrap"><table><thead><tr><th>Entrant</th>'
         '<th>Kind</th><th>Alpha vs crowd (95% CI)</th>'
         '<th class="num hide-sm">Brier</th><th class="num hide-sm">ECE</th>'
-        '<th class="num hide-sm">N</th><th class="num">Markets</th>'
+        '<th class="num hide-sm">N</th><th class="num">Events</th>'
         '<th class="num">Coverage</th><th class="hide-sm">Since</th>'
         "</tr></thead><tbody>" + "".join(body) + "</tbody></table></div>"
         "</section>"
