@@ -12,6 +12,9 @@ All notable changes to `polymarket-paper-trader` are documented here.
   event-clustered bootstrap CI), and renders a static, script-free leaderboard page. The
   model prompt never contains the market price. A daily `arena.yml` workflow appends data
   to the `arena-data` branch and deploys the page to GitHub Pages.
+  Resolution is read from the wire, live-probed 2026-09-26: Gamma has no explicit winner
+  field; a settled market carries `umaResolutionStatus: "resolved"` and exact `0`/`1`
+  `outcomePrices`, so a closed market whose oracle has not settled stays pending.
 - `LLMConfig` gains optional `api_base` and `num_retries`, so any OpenAI-compatible
   endpoint (e.g. GitHub Models with `GITHUB_TOKEN`) can be evaluated.
 

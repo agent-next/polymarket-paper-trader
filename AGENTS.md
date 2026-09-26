@@ -89,6 +89,10 @@ live API after the documented example failed:
   has_more, next_cursor}}`; a documented miss is `data: null`; points are oldest-first.
   The v1 `fidelity` parameter does not exist on v2. The cursor's page size wins over a
   `limit` sent alongside it.
+- Resolution (Gamma): there is no explicit winner field (`winningOutcome` etc. do not
+  exist). A settled market has `closed: true`, `umaResolutionStatus: "resolved"` and
+  `outcomePrices` of exactly `"0"`/`"1"`; before settlement the status is e.g.
+  `"proposed"`, so a closing price alone is not a resolution.
 - Fees: `fee = C × feeRate × p × (1-p)` per match, rounded to 5 decimals (minimum charge
   0.00001), taker-only — makers are never charged. Rates come from each market's
   `feeSchedule` on the wire (never hardcode category rates); zero-fee categories
