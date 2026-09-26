@@ -1021,12 +1021,16 @@ def _valid_prob(value: Any) -> float | None:
 
 
 def _gap_text(label: str, prob: Any, market_prob: Any) -> str:
-    """Signed AI-minus-crowd gap in points, labelled with the entrant."""
+    """Signed AI-minus-crowd gap in points, labelled with the entrant.
+
+    Computed from the rounded percentages the page prints, so the label always
+    equals the difference a reader can check.
+    """
     ai, crowd = _valid_prob(prob), _valid_prob(market_prob)
     gap = (
         _EM_DASH
         if ai is None or crowd is None
-        else f"{(ai - crowd) * 100:+.0f}"
+        else f"{round(ai * 100) - round(crowd * 100):+d}"
     )
     return f"{label} {gap} pts vs crowd"
 
