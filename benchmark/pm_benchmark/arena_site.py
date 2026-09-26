@@ -202,6 +202,7 @@ tr.baseline td { background: var(--bg); color: var(--muted); }
 details { font-size: 0.85rem; margin-top: 6px; }
 summary { color: var(--accent); cursor: pointer; }
 details p { color: var(--muted); margin: 6px 0 0; }
+.fc-ts { font-size: 0.75rem; }
 .status {
   border: 1px solid currentColor;
   border-radius: 999px;
@@ -432,8 +433,11 @@ def _stats_section(board: dict) -> str:
 
 
 def _entrant_meta(info: dict) -> str:
-    """Small metadata line under an entrant label: web access + cutoff."""
+    """Small metadata line under an entrant label: model, access, cutoff."""
     bits = []
+    model = info.get("model")
+    if model:
+        bits.append(_esc(model))
     web = info.get("web_access")
     if web is True:
         bits.append("web access")
@@ -540,11 +544,20 @@ def _open_section(board: dict, entrants: dict[str, dict]) -> str:
                 fc = {}
             label = _entrant_label(entrants, eid)
             rows.append(_prob_row(label, fc.get("prob")))
+            bits = []
+            ts = fc.get("ts")
+            if ts:
+                bits.append(
+                    f'<p class="fc-ts">forecast at {_esc(ts)} UTC</p>'
+                )
             rationale = fc.get("rationale")
             if rationale:
+                bits.append(f"<p>{_esc(rationale)}</p>")
+            if bits:
+                summary = "rationale" if rationale else "forecast"
                 details.append(
-                    f"<details><summary>{label} — rationale</summary>"
-                    f"<p>{_esc(rationale)}</p></details>"
+                    f"<details><summary>{label} — {summary}</summary>"
+                    + "".join(bits) + "</details>"
                 )
         cards.append(
             f'<div class="market"><h3>{title}</h3>'

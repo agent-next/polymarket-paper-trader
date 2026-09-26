@@ -339,6 +339,12 @@ class TestLeaderboard:
         assert "no web access · cutoff 2025-09" in html
         assert "web access · cutoff 2024-06" in html
 
+    def test_entrant_model_in_meta(self) -> None:
+        html = render_site(sample_board())
+        # model id is part of the audit trail under the label
+        assert "opencode/jev-1.13-free · no web access" in html
+        assert "openai/gpt-oss-120b · web access · cutoff 2024-06" in html
+
     def test_empty_state(self) -> None:
         html = render_site({"leaderboard": []})
         assert "First results after markets resolve." in html
@@ -375,6 +381,42 @@ class TestOpenForecasts:
     def test_untitled_market(self) -> None:
         html = render_site({"open": [{"forecasts": {}}]})
         assert "Untitled market" in html
+
+    def test_forecast_ts_inside_details(self) -> None:
+        html = render_site(sample_board())
+        summary = "<details><summary>Jev 1.13 (free) — rationale</summary>"
+        start = html.index(summary)
+        end = html.index("</details>", start)
+        assert "forecast at 2026-09-26T05:58:11Z UTC" in html[start:end]
+        assert "Recent FOMC minutes lean dovish." in html[start:end]
+
+    def test_forecast_ts_only_still_renders(self) -> None:
+        board = {
+            "open": [
+                {
+                    "slug": "s",
+                    "forecasts": {
+                        "e": {"prob": 0.5, "ts": "2026-09-26T01:02:03Z"}
+                    },
+                }
+            ],
+            "entrants": [{"id": "e", "label": "E"}],
+        }
+        html = render_site(board)
+        assert "forecast at 2026-09-26T01:02:03Z UTC" in html
+
+    def test_forecast_ts_escaped(self) -> None:
+        board = {
+            "open": [
+                {
+                    "slug": "s",
+                    "forecasts": {"e": {"prob": 0.5, "ts": "<b>x</b>"}},
+                }
+            ]
+        }
+        html = render_site(board)
+        assert "forecast at &lt;b&gt;x&lt;/b&gt; UTC" in html
+        assert "<b>x</b>" not in html
 
     def test_empty_state(self) -> None:
         html = render_site({"open": []})
@@ -483,6 +525,7 @@ class TestSecurity:
         board["hall_of_wrong"][0]["question"] = payload
         board["hall_of_wrong"][0]["rationale"] = payload
         board["entrants"][0]["label"] = payload
+        board["entrants"][0]["model"] = payload
         board["entrants"][0]["cutoff"] = payload
         html = render_site(board)
         assert payload not in html
