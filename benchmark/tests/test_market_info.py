@@ -153,6 +153,18 @@ class TestListMarkets:
         assert list_markets() == []
 
     @respx.mock
+    def test_malformed_records_skipped(self):
+        respx.get(f"{GAMMA_BASE}/markets").mock(
+            return_value=httpx.Response(200, json=[
+                "not-a-dict",
+                {**SAMPLE_API_RESPONSE, "volume": None},
+                {**SAMPLE_API_RESPONSE, "outcomePrices": '["x"]'},
+                SAMPLE_API_RESPONSE,
+            ])
+        )
+        assert [m.slug for m in list_markets()] == [SAMPLE_API_RESPONSE["slug"]]
+
+    @respx.mock
     def test_http_error(self):
         respx.get(f"{GAMMA_BASE}/markets").mock(
             return_value=httpx.Response(500, text="Server Error")
