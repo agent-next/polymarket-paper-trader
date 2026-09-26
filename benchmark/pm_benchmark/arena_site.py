@@ -33,6 +33,7 @@ META_DESCRIPTION = (
     "vs the crowd. Unofficial, paper forecasts only."
 )
 REPO_URL = "https://github.com/agent-next/polymarket-paper-trader"
+ARENA_DOCS_URL = f"{REPO_URL}/blob/main/benchmark/README.md#forecast-arena"
 DATA_BRANCH = "arena-data"
 # No JavaScript on this page at all: style/img are the only allowed sources.
 CSP = (
@@ -85,7 +86,9 @@ _CSS = """
   --good: #15803d;
   --bad: #b91c1c;
   --open: #b45309;
-  --gap-bg: #fbe4e4;
+  --gap-bg: #e7ecf3;
+  --gap-won-bg: #d9f2e2;
+  --gap-lost-bg: #fbe4e4;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -101,7 +104,9 @@ _CSS = """
     --good: #4ade80;
     --bad: #f87171;
     --open: #fbbf24;
-    --gap-bg: #381624;
+    --gap-bg: #1b2431;
+    --gap-won-bg: #12291e;
+    --gap-lost-bg: #381624;
   }
 }
 * { box-sizing: border-box; }
@@ -195,16 +200,8 @@ h1 .ai { color: var(--accent); }
   margin: 0 0 22px;
   max-width: 46ch;
 }
-.hero-art { align-items: center; display: flex; gap: 12px; }
+.hero-art { align-items: center; display: flex; }
 .hero-art svg { display: block; }
-.vt {
-  font-size: 0.66rem;
-  font-weight: 700;
-  letter-spacing: 0.28em;
-  opacity: 0.7;
-  text-transform: uppercase;
-  writing-mode: vertical-rl;
-}
 .stats {
   display: grid;
   gap: 10px;
@@ -368,7 +365,12 @@ td.q a:hover { color: var(--accent); }
 .lb-empty-s { color: var(--muted); font-size: 0.83rem; margin: 0; }
 
 /* duel cards */
-.duels { display: grid; gap: 14px; grid-template-columns: repeat(3, 1fr); }
+.duels {
+  align-items: start;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, 1fr);
+}
 .duel {
   background: var(--card);
   border: 1px solid var(--border);
@@ -435,16 +437,18 @@ td.q a:hover { color: var(--accent); }
 }
 .leg { white-space: nowrap; }
 .leg .kdot { margin-right: 5px; }
-.duel-gap { margin: auto 0 0; }
+.duel-gap { margin: 4px 0 0; }
 .gap {
   background: var(--gap-bg);
   border-radius: 999px;
-  color: var(--bad);
+  color: var(--fg);
   display: inline-block;
   font-size: 0.78rem;
   font-weight: 800;
   padding: 3px 10px;
 }
+.gap-won { background: var(--gap-won-bg); color: var(--good); }
+.gap-lost { background: var(--gap-lost-bg); color: var(--bad); }
 .quote {
   background: var(--bg2);
   border-left: 3px solid var(--ec, var(--border));
@@ -501,6 +505,36 @@ td.q a:hover { color: var(--accent); }
 .wrong-q a { color: var(--fg); }
 .wrong-q a:hover { color: var(--accent); }
 .wrong-line { color: var(--muted); font-size: 0.83rem; margin: 0; }
+
+/* stacked cards: replace tables on narrow screens */
+.lcards { display: none; }
+.lcard { border-top: 1px solid var(--border); padding: 13px 14px; }
+.lcards > .lcard:first-child { border-top: 0; }
+.lcard-head {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  font-weight: 700;
+  gap: 4px 8px;
+  margin: 0;
+}
+.lcard-head a { color: var(--fg); }
+.lcard-head a:hover { color: var(--accent); }
+.lno { color: var(--muted); font-variant-numeric: tabular-nums; }
+.lc-alpha { margin: 8px 0 0; }
+.lc-stats {
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  gap: 2px 14px;
+  margin: 8px 0 0;
+}
+.lc-stats b { color: var(--fg); font-variant-numeric: tabular-nums; }
+.mkc-meta { color: var(--muted); font-size: 0.78rem; margin: 4px 0 0; }
+.mkc-meta b { color: var(--fg); font-variant-numeric: tabular-nums; }
+.mkc-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; }
+.mkc-track { margin-top: 12px; }
 
 /* empty panels */
 .empty {
@@ -584,6 +618,8 @@ td.q a:hover { color: var(--accent); }
 }
 @media (max-width: 640px) {
   .duels { grid-template-columns: 1fr; }
+  .table-wrap { display: none; }
+  .lcards { display: block; }
 }
 @media (max-width: 600px) {
   .hide-sm { display: none; }
@@ -748,6 +784,19 @@ def _fmt_dt(day: datetime) -> str:
     return f"{_MONTHS[day.month - 1]} {day.day}"
 
 
+def _fmt_stamp(ts: Any) -> str:
+    """Human timestamp in a ``<time>`` tag; escaped raw text if unparseable."""
+    parsed = _parse_ts(ts)
+    if parsed is None:
+        return _esc(ts)
+    stamp = parsed.astimezone(timezone.utc)
+    return (
+        f'<time datetime="{escape(str(ts), quote=True)}">'
+        f"{_MONTHS[stamp.month - 1]} {stamp.day}, "
+        f"{stamp:%H:%M} UTC</time>"
+    )
+
+
 def _fmt_outcome(outcome: Any) -> str:
     """Render a binary resolution (``0``/``1``) as No/Yes or an em dash."""
     if outcome == 1:
@@ -902,12 +951,24 @@ def _clean_rationale(rationale: Any, info: dict) -> str | None:
     return text
 
 
-def _gap_text(prob: Any, market_prob: Any) -> str:
-    """Signed AI-minus-crowd gap in percentage points."""
+def _gap_text(label: str, prob: Any, market_prob: Any) -> str:
+    """Signed AI-minus-crowd gap in points, labelled with the entrant."""
     ai, crowd = _num(prob), _num(market_prob)
-    if ai is None or crowd is None:
-        return f"{_EM_DASH} pts vs crowd"
-    return f"{(ai - crowd) * 100:+.0f} pts vs crowd"
+    gap = (
+        _EM_DASH
+        if ai is None or crowd is None
+        else f"{(ai - crowd) * 100:+.0f}"
+    )
+    return f"{label} {gap} pts vs crowd"
+
+
+def _duel_gap(d: dict) -> float:
+    """Absolute AI-vs-crowd gap for ordering; -1 when uncomputable."""
+    ai, crowd = _num(d.get("prob")), _num(d.get("market_prob"))
+    if ai is not None and crowd is not None:
+        return abs(ai - crowd)
+    gap = _num(d.get("gap"))
+    return gap if gap is not None else -1.0
 
 
 def _whisker(row: dict, cls: str) -> str:
@@ -974,7 +1035,7 @@ def _hero_art() -> str:
         '<div class="hero-art" aria-hidden="true">'
         '<svg width="210" height="210" viewBox="-104 -104 208 208" '
         f'fill="var(--accent)" opacity="0.5">{"".join(dots)}</svg>'
-        '<span class="vt">Same questions. Brighter answers.</span></div>'
+        "</div>"
     )
 
 
@@ -1006,7 +1067,7 @@ def _stats_strip(board: dict) -> str:
     if stats.get("since"):
         note.append(f"tracking since {_fmt_date(stats['since'])}")
     if board.get("last_run"):
-        note.append(f"last pipeline run {_esc(board['last_run'])}")
+        note.append(f"Updated {_fmt_stamp(board['last_run'])}")
     note_html = (
         f'<p class="hero-note">{" · ".join(note)}</p>' if note else ""
     )
@@ -1047,6 +1108,46 @@ def _ghost_row(index: int, entrants: dict[str, dict], order: dict, eid: str) -> 
         '<td class="num">—</td><td class="num hide-sm">—</td>'
         '<td class="num">—</td><td class="num">—</td>'
         '<td class="hide-sm">—</td></tr>'
+    )
+
+
+def _lb_card(
+    index: int,
+    row: dict | None,
+    entrants: dict[str, dict],
+    order: dict,
+    eid: Any,
+) -> str:
+    """Stacked leaderboard card shown in place of the table on mobile."""
+    info = _entrant_info(entrants, eid)
+    cls = _eid_cls(order, eid)
+    kind = info.get("kind") or ""
+    chip = (
+        f'<span class="{_klass("chip", cls)}">{_esc(str(kind).upper())}</span>'
+        if kind
+        else _EM_DASH
+    )
+    if row is None:
+        alpha = '<span class="aval">—</span>'
+        brier = ece = n_markets = coverage = since = _EM_DASH
+    else:
+        alpha = _alpha_cell(row, cls)
+        brier = _fmt_score(row.get("brier"))
+        ece = _fmt_score(row.get("ece"))
+        n_markets = _fmt_count(row.get("n_markets"))
+        coverage = _fmt_prob(row.get("coverage"))
+        since = _fmt_date(row.get("since"))
+    return (
+        f'<article class="lcard"><p class="lcard-head">'
+        f'<span class="lno">{index}</span>'
+        f'{_kdot(cls)}{_entrant_label(entrants, eid)}{chip}</p>'
+        f"{_entrant_meta(info)}"
+        f'<p class="lc-alpha">Alpha vs crowd {alpha}</p>'
+        f'<p class="lc-stats"><span>Brier <b>{brier}</b></span>'
+        f'<span>ECE <b>{ece}</b></span>'
+        f'<span>Markets <b>{n_markets}</b></span>'
+        f'<span>Coverage <b>{coverage}</b></span>'
+        f'<span>Since <b>{since}</b></span></p></article>'
     )
 
 
@@ -1093,11 +1194,17 @@ def _leaderboard_section(board: dict, entrants: dict[str, dict], order: dict) ->
             _ghost_row(i, entrants, order, eid)
             for i, eid in enumerate(order, start=1)
         )
+        cards = "".join(
+            _lb_card(i, None, entrants, order, eid)
+            for i, eid in enumerate(order, start=1)
+        )
         return head + (
             '<div class="panel">' + _lb_table_inner(ghosts)
+            + f'<div class="lcards">{cards}</div>'
             + _lb_empty_panel(board) + "</div></section>"
         )
     body = []
+    cards = []
     for i, row in enumerate(valid, start=1):
         eid = row.get("entrant")
         info = _entrant_info(entrants, eid)
@@ -1122,8 +1229,10 @@ def _leaderboard_section(board: dict, entrants: dict[str, dict], order: dict) ->
             f'<td class="num">{_fmt_prob(row.get("coverage"))}</td>'
             f'<td class="hide-sm">{_fmt_date(row.get("since"))}</td></tr>'
         )
+        cards.append(_lb_card(i, row, entrants, order, eid))
     return head + (
         '<div class="panel">' + _lb_table_inner("".join(body))
+        + f'<div class="lcards">{"".join(cards)}</div>'
         + "</div></section>"
     )
 
@@ -1144,6 +1253,46 @@ def _prob_of(forecasts: dict, eid: Any) -> Any:
     """The forecast probability for *eid*; ``None`` for bad shapes."""
     fc = forecasts.get(eid)
     return fc.get("prob") if isinstance(fc, dict) else None
+
+
+def _market_card(
+    index: int,
+    market: dict,
+    forecasts: dict,
+    cols: list,
+    entrants: dict[str, dict],
+    order: dict,
+    ccls: str,
+) -> str:
+    """Stacked open-market card shown in place of the table on mobile."""
+    question = _esc(
+        market.get("question") or market.get("slug") or "Untitled market"
+    )
+    title = _link_or_text(question, market.get("url"))
+    chips = [
+        f'<span class="{_klass("chip", ccls)}">'
+        f'Crowd {_fmt_prob(market.get("market_prob"))}</span>'
+    ]
+    dots = []
+    for eid in cols:
+        cls = _eid_cls(order, eid)
+        prob = _prob_of(forecasts, eid)
+        chips.append(
+            f'<span class="{_klass("chip", cls)}">'
+            f"{_short_label(entrants, eid)} {_fmt_prob(prob)}</span>"
+        )
+        dots.append(_pdot(prob, cls))
+    dots.append(_pdot(market.get("market_prob"), ccls))
+    return (
+        f'<article class="lcard"><p class="lcard-head">'
+        f'<span class="lno">{index}</span>{title}</p>'
+        f'<p class="mkc-meta">Closes {_fmt_day(market.get("end_date"))}</p>'
+        f'<p class="mkc-chips">{"".join(chips)}</p>'
+        f'<div class="track mkc-track" aria-hidden="true">'
+        f'{"".join(dots)}</div>'
+        '<div class="mvt" aria-hidden="true"><span>0%</span>'
+        "<span>50%</span><span>100%</span></div></article>"
+    )
 
 
 def _open_section(board: dict, entrants: dict[str, dict], order: dict) -> str:
@@ -1190,6 +1339,7 @@ def _open_section(board: dict, entrants: dict[str, dict], order: dict) -> str:
         "<span>100%</span></span></th>"
     )
     body = []
+    cards = []
     index = 0
     for market in markets:
         if not isinstance(market, dict):
@@ -1218,6 +1368,9 @@ def _open_section(board: dict, entrants: dict[str, dict], order: dict) -> str:
         dots.append(_pdot(market.get("market_prob"), ccls))
         cells += f'<td class="mv"><span class="mini">{"".join(dots)}</span></td>'
         body.append(f"<tr>{cells}</tr>")
+        cards.append(
+            _market_card(index, market, forecasts, cols, entrants, order, ccls)
+        )
     return (
         '<section id="markets"><div class="sec-head"><h2>Open markets</h2>'
         '<p class="sec-note">YES probabilities at forecast time · '
@@ -1225,55 +1378,120 @@ def _open_section(board: dict, entrants: dict[str, dict], order: dict) -> str:
         '<div class="panel"><div class="table-wrap"><table class="mkt">'
         f"<thead><tr>{head_cells}</tr></thead><tbody>"
         + "".join(body)
-        + "</tbody></table></div></div></section>"
+        + '</tbody></table></div><div class="lcards">'
+        + "".join(cards)
+        + "</div></div></section>"
     )
 
 
-def _duel_card(d: dict, entrants: dict[str, dict], order: dict) -> str:
-    question = _esc(d.get("question") or d.get("slug") or "?")
-    title = _link_or_text(question, d.get("url"))
-    eid = d.get("entrant")
-    info = _entrant_info(entrants, eid)
-    cls = _eid_cls(order, eid)
+_MAX_DUEL_CARDS = 6
+
+
+def _duel_key(d: dict, fallback: int) -> Hashable:
+    """Grouping key for a duel row: market slug, else question."""
+    for key in (d.get("slug"), d.get("question")):
+        if isinstance(key, Hashable) and key:
+            return key
+    return ("__row__", fallback)
+
+
+def _duel_groups(duels: list) -> list[list[dict]]:
+    """Group duel rows by market, preserving first-seen order."""
+    seen: dict[Hashable, int] = {}
+    groups: list[list[dict]] = []
+    for i, d in enumerate(duels):
+        if not isinstance(d, dict):
+            continue
+        key = _duel_key(d, i)
+        index = seen.get(key)
+        if index is None:
+            index = len(groups)
+            seen[key] = index
+            groups.append([])
+        groups[index].append(d)
+    return groups
+
+
+def _duel_rows(group: list[dict]) -> list[dict]:
+    """One row per entrant, largest |AI - crowd| gap first."""
+    rows = sorted(group, key=_duel_gap, reverse=True)
+    uniq: list[dict] = []
+    have: set = set()
+    for d in rows:
+        eid = d.get("entrant")
+        key = eid if isinstance(eid, Hashable) else id(d)
+        if key in have:
+            continue
+        have.add(key)
+        uniq.append(d)
+    return uniq
+
+
+def _duel_card(rows: list[dict], entrants: dict[str, dict], order: dict) -> str:
+    """One card per market: every entrant's dot on a shared 0-100% track."""
+    head = rows[0]
+    question: Any = "?"
+    for d in rows:
+        q = d.get("question") or d.get("slug")
+        if q:
+            question = q
+            break
+    title = _link_or_text(_esc(question), head.get("url"))
     ccls = _eid_cls(order, _CROWD_ID)
-    short = _short_label(entrants, eid)
-    status = str(d.get("status") or "open")
+    head_label = _short_label(entrants, head.get("entrant"))
+    status = str(head.get("status") or "open")
     chip = (
         f'<span class="status status-{escape(status)}">'
         f"{escape(status)}</span>"
     )
+    if len(rows) == 1:
+        who = f"{head_label} vs crowd"
+    else:
+        who = f"{len(rows)} entrants vs crowd"
     resolved = ""
-    if d.get("outcome") in (0, 1):
-        resolved = f"<span>· resolved {_fmt_outcome(d.get('outcome'))}</span>"
+    if head.get("outcome") in (0, 1):
+        resolved = f"<span>· resolved {_fmt_outcome(head.get('outcome'))}</span>"
     meta = (
-        f'<p class="duel-meta">{chip}<span>{short} vs crowd</span>'
-        f"{resolved}</p>"
+        f'<p class="duel-meta">{chip}<span>{who}</span>{resolved}</p>'
     )
+    dots = "".join(
+        _pdot(d.get("prob"), _eid_cls(order, d.get("entrant")))
+        for d in rows
+    ) + _pdot(head.get("market_prob"), ccls)
     track = (
-        f'<div class="track" aria-hidden="true">'
-        f'{_pdot(d.get("prob"), cls)}'
-        f'{_pdot(d.get("market_prob"), ccls)}</div>'
+        f'<div class="track" aria-hidden="true">{dots}</div>'
         '<div class="ticks" aria-hidden="true"><span>0%</span>'
         "<span>25%</span><span>50%</span><span>75%</span>"
         "<span>100%</span></div>"
     )
-    legend = (
-        f'<div class="dlegend"><span class="{_klass("leg", cls)}">'
-        f'{_kdot()}{short} {_fmt_prob(d.get("prob"))}</span>'
+    legs = "".join(
+        f'<span class="{_klass("leg", _eid_cls(order, d.get("entrant")))}">'
+        f'{_kdot()}{_short_label(entrants, d.get("entrant"))} '
+        f'{_fmt_prob(d.get("prob"))}</span>'
+        for d in rows
+    ) + (
         f'<span class="{_klass("leg", ccls)}">{_kdot()}Crowd '
-        f'{_fmt_prob(d.get("market_prob"))}</span></div>'
+        f'{_fmt_prob(head.get("market_prob"))}</span>'
     )
+    legend = f'<div class="dlegend">{legs}</div>'
+    gap_cls = {"won": "gap-won", "lost": "gap-lost"}.get(status, "gap-open")
     gap = (
-        f'<p class="duel-gap"><span class="gap">'
-        f'{_gap_text(d.get("prob"), d.get("market_prob"))}</span></p>'
+        f'<p class="duel-gap"><span class="{_klass("gap", gap_cls)}">'
+        f'{_gap_text(head_label, head.get("prob"), head.get("market_prob"))}'
+        "</span></p>"
     )
-    rationale = _clean_rationale(d.get("rationale"), info)
+    # Show the headline entrant's rationale; else the next AI's non-empty one.
     quote = ""
-    if rationale is not None:
-        quote = (
-            f'<blockquote class="{_klass("quote", cls)}">'
-            f"<p>“{_esc(rationale)}”</p><cite>— {short}</cite></blockquote>"
-        )
+    for d in rows:
+        info = _entrant_info(entrants, d.get("entrant"))
+        rationale = _clean_rationale(d.get("rationale"), info)
+        if rationale is not None:
+            short = _short_label(entrants, d.get("entrant"))
+            quote = (
+                f'<blockquote class="{_klass("quote", _eid_cls(order, d.get("entrant")))}">'
+                f"<p>“{_esc(rationale)}”</p><cite>— {short}</cite></blockquote>"
+            )
+            break
     return (
         f'<article class="duel"><h3 class="duel-q">{title}</h3>{meta}'
         f"{track}{legend}{gap}{quote}</article>"
@@ -1289,10 +1507,14 @@ def _duels_section(board: dict, entrants: dict[str, dict], order: dict) -> str:
             '<p class="empty">No large AI-vs-crowd disagreements yet.</p>'
             "</section>"
         )
+    groups = sorted(
+        (_duel_rows(g) for g in _duel_groups(duels)),
+        key=lambda rows: _duel_gap(rows[0]),
+        reverse=True,
+    )
     cards = "".join(
-        _duel_card(d, entrants, order)
-        for d in duels
-        if isinstance(d, dict)
+        _duel_card(rows, entrants, order)
+        for rows in groups[:_MAX_DUEL_CARDS]
     )
     return (
         '<section id="duels"><div class="sec-head">'
@@ -1354,10 +1576,10 @@ def _footer(board: dict) -> str:
     bits = []
     generated = board.get("generated_at")
     if generated:
-        bits.append(f"Board generated {_esc(generated)}")
+        bits.append(f"Generated {_fmt_stamp(generated)}")
     last_run = board.get("last_run")
     if last_run:
-        bits.append(f"last pipeline run {_esc(last_run)}")
+        bits.append(f"Updated {_fmt_stamp(last_run)}")
     stats = board.get("stats")
     if not isinstance(stats, dict):
         stats = {}
@@ -1380,7 +1602,7 @@ def _footer(board: dict) -> str:
         f"<h3>{_ICON_AGENT}Add your agent</h3>"
         "<p>Build a forecasting agent? Join Forecast Arena — open, "
         "reproducible, and community-driven.</p>"
-        f'<p><a class="btn" href="{REPO_URL}">Get started →</a></p></div>'
+        f'<p><a class="btn" href="{ARENA_DOCS_URL}">Get started →</a></p></div>'
         '<div class="fcol">'
         f"<h3>{_ICON_CODE}Open source</h3>"
         "<p>Code, data, and analysis are on GitHub. Suggestions and "
