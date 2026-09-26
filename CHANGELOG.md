@@ -4,6 +4,17 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Forecast Arena** (`benchmark/`): `polymarket-benchmark arena predict|resolve|build`
+  records daily probability forecasts from free AI models (Jev via OpenCode Zen, GitHub
+  Models) and naive baselines (crowd, coin, favorite) on soon-resolving Polymarket binary
+  markets, scores them once markets resolve (Brier, paired alpha vs the crowd with an
+  event-clustered bootstrap CI), and renders a static, script-free leaderboard page. The
+  model prompt never contains the market price. A daily `arena.yml` workflow appends data
+  to the `arena-data` branch and deploys the page to GitHub Pages.
+- `LLMConfig` gains optional `api_base` and `num_retries`, so any OpenAI-compatible
+  endpoint (e.g. GitHub Models with `GITHUB_TOKEN`) can be evaluated.
+
 ## [0.4.1] - 2026-09-25
 
 ### Security
