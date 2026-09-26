@@ -792,14 +792,13 @@ def _fmt_date(ts: Any) -> str:
 
 
 def _fmt_day(ts: Any) -> str:
-    """Format an ISO date/timestamp like ``Sep 30``; bad values an em dash."""
-    if not isinstance(ts, str):
-        return _EM_DASH
-    try:
-        day = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-    except ValueError:
-        return _EM_DASH
-    return f"{_MONTHS[day.month - 1]} {day.day}"
+    """Format an ISO date/timestamp like ``Sep 30``; bad values an em dash.
+
+    The shown day is the UTC calendar day: offset-aware values are
+    converted first (``2025-10-01T00:30:00+02:00`` reads ``Sep 30``).
+    """
+    day = _parse_ts(ts)
+    return _EM_DASH if day is None else _fmt_dt(day)
 
 
 def _fmt_dt(day: datetime) -> str:
@@ -998,14 +997,20 @@ def _gap_text(label: str, prob: Any, market_prob: Any) -> str:
     return f"{label} {gap} pts vs crowd"
 
 
-def _duel_gap(d: dict) -> float:
-    """Absolute AI-vs-crowd gap for ordering; -1 when uncomputable."""
+def _duel_gap(d: dict) -> tuple[int, float]:
+    """Ordering key: absolute AI-vs-crowd gap, computable rows first.
+
+    Rows whose ``prob``/``market_prob`` can't be clamped into [0, 1]
+    sort below every row with a real gap — a ``— pts`` headline never
+    outranks a computable one. Among themselves they still fall back
+    to the board's ``gap`` field.
+    """
     ai = _clamp_prob(d.get("prob"))
     crowd = _clamp_prob(d.get("market_prob"))
     if ai is not None and crowd is not None:
-        return abs(ai - crowd)
+        return (1, abs(ai - crowd))
     gap = _num(d.get("gap"))
-    return gap if gap is not None else -1.0
+    return (0, gap if gap is not None else -1.0)
 
 
 def _whisker(row: dict, cls: str) -> str:
@@ -1426,21 +1431,20 @@ def _open_section(board: dict, entrants: dict[str, dict], order: dict) -> str:
 
 
 _MAX_DUEL_CARDS = 3
+# Statuses that map to a styling class; anything else gets open styling.
+_STATUS_CLASSES = frozenset({"open", "won", "lost", "tie"})
 
 
 def _duel_key(d: dict, fallback: int) -> Hashable:
-    """Grouping key for a duel row: market slug, else question.
+    """Grouping key for a duel row: market slug, else the row itself.
 
-    Keys are namespaced so a slug can never merge with a question
-    fallback that happens to carry the same text.
+    Question text is not an identifier — slugless rows never merge;
+    each keys by its own position so it becomes its own card.
     """
     slug = d.get("slug")
     if isinstance(slug, Hashable) and slug:
         return ("slug", slug)
-    question = d.get("question")
-    if isinstance(question, Hashable) and question:
-        return ("q", question)
-    return ("__row__", fallback)
+    return ("row", fallback)
 
 
 def _duel_groups(duels: list) -> list[list[dict]]:
@@ -1488,8 +1492,11 @@ def _duel_card(rows: list[dict], entrants: dict[str, dict], order: dict) -> str:
     ccls = _eid_cls(order, _CROWD_ID)
     head_label = _short_label(entrants, head.get("entrant"))
     status = str(head.get("status") or "open")
+    # the class comes from an allowlist — an untrusted status can't
+    # inject a second styling token; the text still renders verbatim
+    status_cls = status if status in _STATUS_CLASSES else "open"
     chip = (
-        f'<span class="status status-{escape(status)}">'
+        f'<span class="status status-{status_cls}">'
         f"{escape(status)}</span>"
     )
     if len(rows) == 1:

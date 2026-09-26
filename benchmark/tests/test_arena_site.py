@@ -692,6 +692,21 @@ class TestOpenMarkets:
         board2 = {"stats": {"resolved": 0}, "open": board["open"]}
         assert '<span class="stat-num">—</span>' in render_site(board2)
 
+    def test_close_date_uses_utc_calendar_day(self) -> None:
+        for ts, day in (
+            ("2025-10-01T00:30:00+02:00", "Sep 30"),
+            ("2025-09-30T23:30:00-02:00", "Oct 1"),
+            ("2025-10-01T00:30:00Z", "Oct 1"),
+            ("2025-10-01", "Oct 1"),
+        ):
+            board = {
+                "open": [{"slug": "s", "question": "Q?",
+                          "end_date": ts, "forecasts": {}}]
+            }
+            html = render_site(board)
+            assert f"<td>{day}</td>" in html
+            assert f"Closes {day}" in html
+
     def test_naive_end_date_counts_for_first_resolution(self) -> None:
         board = {
             "stats": {"resolved": 0},
@@ -951,13 +966,15 @@ class TestDuels:
         section = html.split('id="duels"')[1]
         assert section.index("Big?") < section.index("Small?")
 
-    def test_grouping_falls_back_to_question_then_row(self) -> None:
+    def test_slugless_rows_never_merge_by_question(self) -> None:
         board = {
             "duels": [
                 {"slug": None, "question": "Same Q?", "entrant": "a",
-                 "prob": 0.9, "market_prob": 0.5},
+                 "prob": 0.9, "market_prob": 0.5,
+                 "url": "https://polymarket.com/event/first"},
                 {"slug": "", "question": "Same Q?", "entrant": "b",
-                 "prob": 0.8, "market_prob": 0.5},
+                 "prob": 0.8, "market_prob": 0.5,
+                 "url": "https://polymarket.com/event/second"},
                 {"question": None, "slug": [], "entrant": "a"},
             ],
             "entrants": [
@@ -966,8 +983,11 @@ class TestDuels:
             ],
         }
         html = render_site(board)
-        # two cards: the question-grouped pair + the keyless row
-        assert html.count('<article class="duel">') == 2
+        # question text is not an identifier: each slugless row is its
+        # own card, keeping the two distinct urls separate
+        assert html.count('<article class="duel">') == 3
+        assert 'href="https://polymarket.com/event/first"' in html
+        assert 'href="https://polymarket.com/event/second"' in html
         assert "A 90%" in html and "B 80%" in html
         # the keyless card still renders its title fallback
         assert '<h3 class="duel-q">?</h3>' in html
@@ -1022,6 +1042,60 @@ class TestDuels:
         assert 'class="pdot e0" style="left:100.00%"' in wild
         assert "A 100%" in wild
         assert "A 200%" not in wild
+
+    def test_headline_prefers_computable_gap(self) -> None:
+        board = {
+            "duels": [
+                # a huge board gap field must not outrank a real gap
+                {"slug": "s", "question": "Q?", "entrant": "a",
+                 "prob": None, "market_prob": 0.5, "gap": 0.9},
+                {"slug": "s", "question": "Q?", "entrant": "b",
+                 "prob": 0.8, "market_prob": 0.5, "gap": 0.3},
+            ],
+            "entrants": [
+                {"id": "a", "label": "A", "kind": "ai"},
+                {"id": "b", "label": "B", "kind": "ai"},
+            ],
+        }
+        html = render_site(board)
+        card = html.split('<article class="duel">')[1].split(
+            "</article>"
+        )[0]
+        assert ">B +30 pts vs crowd</span>" in card
+        assert "— pts vs crowd" not in card
+
+    def test_uncomputable_groups_sort_below_real_gaps(self) -> None:
+        board = {
+            "duels": [
+                {"slug": "mystery", "question": "Mystery?", "entrant": "a",
+                 "gap": 0.99},
+                {"slug": "real", "question": "Real?", "entrant": "a",
+                 "prob": 0.55, "market_prob": 0.5, "gap": 0.05},
+            ],
+            "entrants": [{"id": "a", "label": "A", "kind": "ai"}],
+        }
+        html = render_site(board)
+        section = html.split('id="duels"')[1]
+        assert section.index("Real?") < section.index("Mystery?")
+
+    def test_status_text_escaped_but_class_allowlisted(self) -> None:
+        board = {
+            "duels": [
+                {"slug": "s", "question": "Q?", "entrant": "a",
+                 "prob": 0.9, "market_prob": 0.5,
+                 "status": "won status-lost"},
+            ],
+            "entrants": [{"id": "a", "label": "A", "kind": "ai"}],
+        }
+        html = render_site(board)
+        card = html.split('<article class="duel">')[1].split(
+            "</article>"
+        )[0]
+        # the untrusted status can't inject a second styling class:
+        # it falls back to open styling while the text shows verbatim
+        assert 'class="status status-open"' in card
+        assert ">won status-lost</span>" in card
+        assert 'class="gap gap-open"' in card
 
     def test_gap_em_dash_when_uncomputable(self) -> None:
         board = {
