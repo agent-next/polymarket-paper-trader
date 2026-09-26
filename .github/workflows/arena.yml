@@ -1,0 +1,75 @@
+name: Forecast Arena
+
+# Daily: resolve past forecasts, record new ones, rebuild and deploy the public page.
+# Data lives on the append-only `arena-data` branch; the page is served by GitHub Pages.
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arena
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write  # push forecasts to arena-data (accepted risk: token is repo-wide)
+      models: read     # GitHub Models, free tier, no secret
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check out arena-data (created on first run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --heads "$url" arena-data >/dev/null; then
+            git clone --quiet --single-branch --branch arena-data "$url" data
+          else
+            git init --quiet -b arena-data data && git -C data remote add origin "$url"
+          fi
+          git -C data config user.name "forecast-arena[bot]"
+          git -C data config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - run: pip install -e . -e ./benchmark
+      - name: Resolve and predict
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          polymarket-benchmark arena resolve --data data || echo "::warning::resolve failed"
+          polymarket-benchmark arena predict --data data || echo "::warning::predict failed (partial results kept)"
+      - name: Commit data
+        run: |
+          cd data
+          git add -A
+          if git diff --cached --quiet; then echo "no new data"; exit 0; fi
+          git commit --quiet -m "arena: $(date -u +%Y-%m-%d) run ${GITHUB_RUN_ID}"
+          git push --quiet origin arena-data || { git pull --quiet --rebase origin arena-data && git push --quiet origin arena-data; }
+      - name: Build site
+        run: polymarket-benchmark arena build --data data --out site
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+
+  deploy:
+    needs: run
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
