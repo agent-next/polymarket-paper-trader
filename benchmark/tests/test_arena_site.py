@@ -840,3 +840,25 @@ class TestMalformedItems:
         # unhashable ids skip the lookup and render escaped
         assert "x&#x27;" in html and "y&#x27;" in html
         assert ">0.200</td>" in html
+
+
+def _one_row_board(kind: str, significant: bool | None) -> dict:
+    return {
+        "entrants": [{"id": "x", "label": "X", "kind": kind, "model": "m"}],
+        "leaderboard": [
+            {"entrant": "x", "n": 3, "brier": 0.2, "ece": None, "alpha": -0.2,
+             "alpha_ci": [-0.25, -0.15], "significant": significant,
+             "n_markets": 2, "coverage": 1.0, "since": "2026-09-26"}
+        ],
+    }
+
+
+def test_ci_withheld_below_event_floor() -> None:
+    assert 'class="ci"' not in render_site(_one_row_board("ai", None))
+    assert 'class="ci"' in render_site(_one_row_board("ai", False))
+
+
+def test_kind_badge_uppercased_before_escaping() -> None:
+    html = render_site(_one_row_board('a"i', None))
+    assert "A&quot;I" in html
+    assert "&QUOT;" not in html

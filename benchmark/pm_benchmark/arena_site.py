@@ -460,10 +460,12 @@ def _entrant_meta(info: dict) -> str:
 def _alpha_cell(row: dict) -> str:
     """Headline alpha-vs-crowd cell: value, CI, and significance marker."""
     cell = _fmt_signed(row.get("alpha"))
-    ci = _fmt_ci(row.get("alpha_ci"))
+    significant = row.get("significant")
+    # A CI over too few events reads as false certainty; show it only once
+    # significance is assessed.
+    ci = _fmt_ci(row.get("alpha_ci")) if significant is not None else ""
     if ci:
         cell += f' <span class="ci">{ci}</span>'
-    significant = row.get("significant")
     if significant is None:
         # Significance is withheld below the unique-market floor (M1); the
         # crowd row is the reference and gets no marker.
@@ -491,7 +493,7 @@ def _leaderboard_section(board: dict, entrants: dict[str, dict]) -> str:
         kind = info.get("kind") or ""
         badge = (
             f'<span class="badge badge-{escape(str(kind))}">'
-            f"{_esc(kind).upper()}</span>"
+            f"{_esc(str(kind).upper())}</span>"
             if kind
             else ""
         )
