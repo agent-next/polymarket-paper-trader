@@ -246,15 +246,19 @@ details p { color: var(--muted); margin: 6px 0 0; }
 @media (min-width: 640px) {
   .site-header h1 { font-size: 2.3rem; }
 }
+@media (max-width: 600px) {
+  .hide-sm { display: none; }
+}
 """
 
 _METHODOLOGY = f"""
 <ul class="method">
   <li><strong>Population.</strong> Each daily run selects open binary
     Polymarket markets ending in 1–14 days, with liquidity ≥ $10k and a
-    market price in [0.03, 0.97], top 20 by volume — excluding markets
-    already forecast, closed, or already resolved. Results describe
-    this population of high-volume, near-resolution markets only —
+    market price in [0.03, 0.97], at most 2 markets per event,
+    top 20 by volume — excluding markets already forecast, closed, or
+    already resolved. Results describe this population of high-volume,
+    near-resolution markets only —
     not forecasting ability in general.</li>
   <li><strong>No market price in prompts.</strong> Entrants see only the
     market question, description and closing date in a single-shot call
@@ -493,12 +497,12 @@ def _leaderboard_section(board: dict, entrants: dict[str, dict]) -> str:
         body.append(
             f"<tr{tr}><td>{label}{_entrant_meta(info)}</td><td>{badge}</td>"
             f"<td>{_alpha_cell(row)}</td>"
-            f'<td class="num">{_fmt_score(row.get("brier"))}</td>'
-            f'<td class="num">{_fmt_score(row.get("ece"))}</td>'
-            f'<td class="num">{_fmt_count(row.get("n"))}</td>'
+            f'<td class="num hide-sm">{_fmt_score(row.get("brier"))}</td>'
+            f'<td class="num hide-sm">{_fmt_score(row.get("ece"))}</td>'
+            f'<td class="num hide-sm">{_fmt_count(row.get("n"))}</td>'
             f'<td class="num">{_fmt_count(row.get("n_markets"))}</td>'
             f'<td class="num">{_fmt_prob(row.get("coverage"))}</td>'
-            f"<td>{_fmt_date(row.get('since'))}</td></tr>"
+            f'<td class="hide-sm">{_fmt_date(row.get("since"))}</td></tr>'
         )
     return (
         '<section id="leaderboard"><h2>Leaderboard</h2>'
@@ -507,9 +511,9 @@ def _leaderboard_section(board: dict, entrants: dict[str, dict]) -> str:
         "metric: negative beats the crowd; Brier is descriptive.</p>"
         '<div class="table-wrap"><table><thead><tr><th>Entrant</th>'
         '<th>Kind</th><th>Alpha vs crowd (95% CI)</th>'
-        '<th class="num">Brier</th><th class="num">ECE</th>'
-        '<th class="num">n</th><th class="num">n_markets</th>'
-        '<th class="num">Coverage</th><th>Since</th>'
+        '<th class="num hide-sm">Brier</th><th class="num hide-sm">ECE</th>'
+        '<th class="num hide-sm">N</th><th class="num">Markets</th>'
+        '<th class="num">Coverage</th><th class="hide-sm">Since</th>'
         "</tr></thead><tbody>" + "".join(body) + "</tbody></table></div>"
         "</section>"
     )

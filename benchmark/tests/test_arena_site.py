@@ -285,12 +285,15 @@ class TestLeaderboard:
             "Alpha vs crowd (95% CI)",
             "Brier",
             "ECE",
-            "n",
-            "n_markets",
+            "N",
+            "Markets",
             "Coverage",
             "Since",
         ):
             assert f"<th" in html and header in html
+        # raw board keys are humanized before they reach the header row
+        assert "n_markets" not in html
+        assert ">N</th>" in html and ">Markets</th>" in html
         assert "Jev 1.13 (free)" in html
         assert "badge-ai" in html
         assert "AI" in html
@@ -344,6 +347,22 @@ class TestLeaderboard:
         # model id is part of the audit trail under the label
         assert "opencode/jev-1.13-free · no web access" in html
         assert "openai/gpt-oss-120b · web access · cutoff 2024-06" in html
+
+    def test_auxiliary_columns_hidden_on_narrow(self) -> None:
+        html = render_site(sample_board())
+        assert "@media (max-width: 600px)" in html
+        assert ".hide-sm" in html
+        # Brier/ECE/N/Since hide below 600px in both header and cells
+        assert '<th class="num hide-sm">Brier</th>' in html
+        assert '<th class="num hide-sm">ECE</th>' in html
+        assert '<th class="num hide-sm">N</th>' in html
+        assert '<th class="hide-sm">Since</th>' in html
+        assert '<td class="num hide-sm">' in html
+        assert '<td class="hide-sm">' in html
+        # Entrant/Kind/Alpha/Markets/Coverage stay visible
+        assert '<th class="num">Markets</th>' in html
+        assert '<th class="num">Coverage</th>' in html
+        assert '<th>Since</th>' not in html
 
     def test_empty_state(self) -> None:
         html = render_site({"leaderboard": []})
@@ -485,6 +504,7 @@ class TestMethodology:
         assert "too few markets" in html
         assert "10 equal-width bins" in html
         assert "≥100 resolved forecasts" in html
+        assert "at most 2 markets per event" in html
         assert "top 20 by volume" in html
         assert "[0.03, 0.97]" in html
         assert "liquidity ≥ $10k" in html
