@@ -337,6 +337,23 @@ class TestHero:
         assert "Updated not-a-date&lt;" in html
         assert "<time" not in html
 
+    def test_stamp_falls_back_when_utc_conversion_overflows(self) -> None:
+        # parses fine, but astimezone(UTC) lands before year 1
+        html = render_site({"generated_at": "0001-01-01T00:00:00+14:00"})
+        assert "Generated 0001-01-01T00:00:00+14:00" in html
+        assert "<time" not in html
+
+    def test_unconvertible_end_date_skipped_in_first_resolution(self) -> None:
+        board = {
+            "stats": {"resolved": 0},
+            "open": [
+                {"slug": "a", "end_date": "0001-01-01T00:00:00+14:00"},
+                {"slug": "b", "end_date": "2026-10-05T00:00:00Z"},
+            ],
+        }
+        html = render_site(board)
+        assert '<span class="stat-num">Oct 5</span>' in html
+
     def test_no_vertical_side_text(self) -> None:
         html = render_site(sample_board())
         assert "Brighter answers" not in html
@@ -859,6 +876,57 @@ class TestDuels:
         assert "A 90%" in html and "B 80%" in html
         # the keyless card still renders its title fallback
         assert '<h3 class="duel-q">?</h3>' in html
+
+    def test_slug_and_question_keys_never_collide(self) -> None:
+        board = {
+            "duels": [
+                {"slug": "same", "question": "First market", "entrant": "a",
+                 "prob": 0.8, "market_prob": 0.5},
+                {"question": "same", "entrant": "b",
+                 "prob": 0.2, "market_prob": 0.5},
+            ],
+            "entrants": [
+                {"id": "a", "label": "A", "kind": "ai"},
+                {"id": "b", "label": "B", "kind": "ai"},
+            ],
+        }
+        html = render_site(board)
+        # a slug and a question fallback with equal text stay two markets
+        assert html.count('<article class="duel">') == 2
+        assert "First market" in html
+        card = html.split('<h3 class="duel-q">same</h3>')[1].split(
+            "</article>"
+        )[0]
+        assert "B 20%" in card
+
+    def test_out_of_range_prob_clamped_before_gap_and_sort(self) -> None:
+        board = {
+            "duels": [
+                {"slug": "wild", "question": "Wild?", "entrant": "a",
+                 "prob": 2, "market_prob": 0.5},
+                {"slug": "valid", "question": "Valid?", "entrant": "a",
+                 "prob": 1.0, "market_prob": 0.35},
+                {"slug": "neg", "question": "Neg?", "entrant": "a",
+                 "prob": -0.4, "market_prob": 0.5},
+            ],
+            "entrants": [{"id": "a", "label": "A", "kind": "ai"}],
+        }
+        html = render_site(board)
+        # the headline gap uses the clamped probability, like the dot does
+        assert "+150 pts" not in html
+        assert "-90 pts" not in html
+        assert "200%" not in html and "-40%" not in html
+        assert ">A +50 pts vs crowd</span>" in html
+        assert ">A +65 pts vs crowd</span>" in html
+        assert ">A -50 pts vs crowd</span>" in html
+        # the clamped gap, not the raw one, decides the card order
+        section = html.split('id="duels"')[1]
+        assert section.index("Valid?") < section.index("Wild?")
+        assert section.index("Wild?") < section.index("Neg?")
+        wild = section.split("Wild?")[1].split("</article>")[0]
+        assert 'class="pdot e0" style="left:100.00%"' in wild
+        assert "A 100%" in wild
+        assert "A 200%" not in wild
 
     def test_gap_em_dash_when_uncomputable(self) -> None:
         board = {
