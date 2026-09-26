@@ -767,7 +767,7 @@ def _num(value: Any) -> float | None:
 
 def _fmt_prob(prob: Any) -> str:
     """Format a [0, 1] probability as a percentage; bad values an em dash."""
-    number = _num(prob)
+    number = _valid_prob(prob)
     return _EM_DASH if number is None else f"{number * 100:.0f}%"
 
 
@@ -945,12 +945,14 @@ def _kdot(cls: str = "") -> str:
 
 
 def _pdot(prob: Any, cls: str = "") -> str:
-    """A positioned dot on a 0-100% track; ``""`` when prob is missing."""
-    number = _num(prob)
+    """A positioned dot on a 0-100% track; ``""`` unless prob is in [0, 1]."""
+    number = _valid_prob(prob)
     if number is None:
         return ""
-    pos = min(max(number, 0.0), 1.0) * 100
-    return f'<i class="{_klass("pdot", cls)}" style="left:{pos:.2f}%"></i>'
+    return (
+        f'<i class="{_klass("pdot", cls)}" '
+        f'style="left:{number * 100:.2f}%"></i>'
+    )
 
 
 def _entrant_meta(info: dict) -> str:
@@ -996,15 +998,17 @@ def _clean_rationale(rationale: Any, info: dict) -> str | None:
     return text
 
 
-def _clamp_prob(value: Any) -> float | None:
-    """A probability clamped into [0, 1]; ``None`` when not numeric."""
+def _valid_prob(value: Any) -> float | None:
+    """A finite probability inside [0, 1]; ``None`` otherwise."""
     number = _num(value)
-    return None if number is None else min(max(number, 0.0), 1.0)
+    if number is None or not 0.0 <= number <= 1.0:
+        return None
+    return number
 
 
 def _gap_text(label: str, prob: Any, market_prob: Any) -> str:
     """Signed AI-minus-crowd gap in points, labelled with the entrant."""
-    ai, crowd = _clamp_prob(prob), _clamp_prob(market_prob)
+    ai, crowd = _valid_prob(prob), _valid_prob(market_prob)
     gap = (
         _EM_DASH
         if ai is None or crowd is None
@@ -1016,13 +1020,13 @@ def _gap_text(label: str, prob: Any, market_prob: Any) -> str:
 def _duel_gap(d: dict) -> tuple[int, float]:
     """Ordering key: absolute AI-vs-crowd gap, computable rows first.
 
-    Rows whose ``prob``/``market_prob`` can't be clamped into [0, 1]
+    Rows whose ``prob``/``market_prob`` aren't probabilities in [0, 1]
     sort below every row with a real gap — a ``— pts`` headline never
     outranks a computable one. Among themselves they still fall back
     to the board's ``gap`` field.
     """
-    ai = _clamp_prob(d.get("prob"))
-    crowd = _clamp_prob(d.get("market_prob"))
+    ai = _valid_prob(d.get("prob"))
+    crowd = _valid_prob(d.get("market_prob"))
     if ai is not None and crowd is not None:
         return (1, abs(ai - crowd))
     gap = _num(d.get("gap"))
@@ -1535,10 +1539,10 @@ def _duel_card(rows: list[dict], entrants: dict[str, dict], order: dict) -> str:
     meta = (
         f'<p class="duel-meta">{chip}<span>{who}</span>{resolved}</p>'
     )
-    # Clamp probabilities into [0, 1] so the text agrees with the dot
-    # positions and a bad value can't print a nonsense gap or percent.
-    probs = [_clamp_prob(d.get("prob")) for d in rows]
-    crowd_prob = _clamp_prob(head.get("market_prob"))
+    # Only probabilities inside [0, 1] print or draw a dot; anything
+    # else reads as missing so labels, dots and the gap never disagree.
+    probs = [_valid_prob(d.get("prob")) for d in rows]
+    crowd_prob = _valid_prob(head.get("market_prob"))
     dots = "".join(
         _pdot(prob, _eid_cls(order, d.get("entrant")))
         for d, prob in zip(rows, probs)
