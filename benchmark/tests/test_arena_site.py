@@ -323,11 +323,24 @@ class TestHero:
     def test_hero_note(self) -> None:
         html = render_site(sample_board())
         assert "tracking since 2026-09-26" in html
-        assert "last pipeline run 2026-09-26T05:58:11Z" in html
+        assert (
+            'Updated <time datetime="2026-09-26T05:58:11Z">'
+            "Sep 26, 05:58 UTC</time>" in html
+        )
 
     def test_hero_note_absent_without_stamps(self) -> None:
         html = render_site({})
         assert 'class="hero-note"' not in html
+
+    def test_stamp_falls_back_to_escaped_raw_text(self) -> None:
+        html = render_site({"last_run": "not-a-date<"})
+        assert "Updated not-a-date&lt;" in html
+        assert "<time" not in html
+
+    def test_no_vertical_side_text(self) -> None:
+        html = render_site(sample_board())
+        assert "Brighter answers" not in html
+        assert "writing-mode" not in html
 
 
 class TestEntrantColors:
@@ -449,6 +462,34 @@ class TestLeaderboard:
         assert '<td class="hide-sm">' in html
         assert '<th class="num">Coverage</th>' in html
         assert '<th>Since</th>' not in html
+
+    def test_mobile_stacked_cards(self) -> None:
+        html = render_site(sample_board())
+        # the media query swaps tables for stacked cards
+        assert "@media (max-width: 640px)" in html
+        assert ".table-wrap { display: none; }" in html
+        assert ".lcards { display: block; }" in html
+        section = html.split('id="leaderboard"')[1].split("</section>")[0]
+        cards = section.split('<div class="lcards">')[1]
+        assert cards.count('<article class="lcard">') == 4
+        assert "Alpha vs crowd" in cards
+        assert '<span class="chip e0">AI</span>' in cards
+        assert "Brier <b>0.182</b>" in cards
+        assert "Coverage <b>90%</b>" in cards
+        assert "Since <b>2026-09-26</b>" in cards
+        # the alpha whisker markup carries over to the card
+        assert 'class="ci-dot e0"' in cards
+
+    def test_mobile_ghost_cards_when_no_resolved(self) -> None:
+        board = sample_board()
+        board["leaderboard"] = []
+        html = render_site(board)
+        section = html.split('id="leaderboard"')[1].split("</section>")[0]
+        cards = section.split('<div class="lcards">')[1]
+        assert cards.count('<article class="lcard">') == 4
+        assert "Alpha vs crowd" in cards
+        assert "Brier <b>—</b>" in cards
+        assert "Scores appear when the first markets resolve" in cards
 
     def test_ghost_rows_when_no_resolved(self) -> None:
         board = sample_board()
@@ -591,6 +632,29 @@ class TestOpenMarkets:
         html = render_site({"open": []})
         assert "No open forecasts yet" in html
 
+    def test_mobile_stacked_cards(self) -> None:
+        html = render_site(sample_board())
+        section = html.split('id="markets"')[1].split("</section>")[0]
+        cards = section.split('<div class="lcards">')[1]
+        assert cards.count('<article class="lcard">') == 2
+        card = cards.split('<article class="lcard">')[1]
+        # question, closes, crowd %, entrant chips, dot strip
+        assert "Will the Fed cut rates in October?" in card
+        assert "Closes Oct 1" in card
+        assert '<span class="chip e2">Crowd 62%</span>' in card
+        assert '<span class="chip e0">Jev 1.13 71%</span>' in card
+        assert '<span class="chip e1">GPT-OSS 120B 55%</span>' in card
+        assert '<span class="chip e3">Coin flip 50%</span>' in card
+        track = card.split('class="track mkc-track"')[1]
+        assert 'class="pdot e0" style="left:71.00%"' in track
+        assert 'class="pdot e2" style="left:62.00%"' in track
+        # the second card falls back to the slug and an unknown entrant chip
+        card2 = cards.split('<article class="lcard">')[2]
+        assert "shutdown-over" in card2
+        assert "Closes —" in card2
+        assert '<span class="chip">mystery-model 20%</span>' in card2
+        assert '<span class="chip e2">Crowd —</span>' in card2
+
 
 class TestDuels:
     def test_cards(self) -> None:
@@ -618,9 +682,183 @@ class TestDuels:
 
     def test_gap_is_signed_ai_minus_crowd(self) -> None:
         html = render_site(sample_board())
-        assert ">+42 pts vs crowd</span>" in html  # 0.72 - 0.30
-        assert ">-40 pts vs crowd</span>" in html  # 0.20 - 0.60
-        assert ">+35 pts vs crowd</span>" in html  # 0.45 - 0.10
+        # badge is labelled with the headline entrant
+        assert ">Jev 1.13 +42 pts vs crowd</span>" in html  # 0.72 - 0.30
+        assert ">GPT-OSS 120B -40 pts vs crowd</span>" in html  # 0.20 - 0.60
+        assert ">Jev 1.13 +35 pts vs crowd</span>" in html  # 0.45 - 0.10
+
+    def test_one_card_per_market_groups_entrants(self) -> None:
+        board = sample_board()
+        board["duels"][3] = {  # same market as row 0, second entrant
+            "slug": "fed-cut-october",
+            "question": "Will the Fed cut rates in October?",
+            "url": "https://polymarket.com/event/fed-cut-october",
+            "market_prob": 0.30,
+            "entrant": "gpt-oss",
+            "prob": 0.55,
+            "gap": 0.25,
+            "rationale": "Rates stay put.",
+            "status": "open",
+            "outcome": None,
+        }
+        html = render_site(board)
+        assert html.count('<article class="duel">') == 3
+        card = html.split("Will the Fed cut rates in October?")[1].split(
+            "</article>"
+        )[0]
+        # one track carrying both AI dots plus the crowd dot
+        track = card.split('class="track"')[1].split("</div>")[0]
+        assert track.count("pdot") == 3
+        assert 'class="pdot e0" style="left:72.00%"' in track
+        assert 'class="pdot e1" style="left:55.00%"' in track
+        assert 'class="pdot e2" style="left:30.00%"' in track
+        # the legend lists every AI on the card plus the crowd
+        assert "Jev 1.13 72%" in card
+        assert "GPT-OSS 120B 55%" in card
+        assert "Crowd 30%" in card
+        assert "2 entrants vs crowd" in card
+        # the headline gap is the largest |AI - crowd| on the market
+        assert ">Jev 1.13 +42 pts vs crowd</span>" in card
+        assert "GPT-OSS 120B +25 pts" not in card
+        # headline entrant's non-empty rationale wins
+        assert "“Doves are underpriced.”" in card
+        assert "Rates stay put." not in card
+
+    def test_rationale_falls_back_to_next_ai(self) -> None:
+        board = {
+            "duels": [
+                {
+                    "slug": "s",
+                    "question": "Q?",
+                    "market_prob": 0.5,
+                    "entrant": "a",
+                    "prob": 0.9,
+                    "gap": 0.4,
+                    "rationale": None,
+                    "status": "open",
+                },
+                {
+                    "slug": "s",
+                    "entrant": "b",
+                    "prob": 0.2,
+                    "gap": 0.3,
+                    "rationale": "The next best reason.",
+                },
+            ],
+            "entrants": [
+                {"id": "a", "label": "A", "kind": "ai"},
+                {"id": "b", "label": "B", "kind": "ai"},
+            ],
+        }
+        html = render_site(board)
+        assert "“The next best reason.”" in html
+        assert "<cite>— B</cite>" in html
+
+    def test_six_cards_max_ordered_by_headline_gap(self) -> None:
+        board = {
+            "duels": [
+                {
+                    "slug": f"m{i}",
+                    "question": f"Q{i}?",
+                    "market_prob": 0.5,
+                    "entrant": "a",
+                    "prob": 0.5 + i * 0.05,
+                    "gap": i * 0.05,
+                }
+                for i in range(8)
+            ],
+            "entrants": [{"id": "a", "label": "A", "kind": "ai"}],
+        }
+        html = render_site(board)
+        assert html.count('<article class="duel">') == 6
+        # largest gaps first: m7 (0.35) .. m2 (0.10); m0/m1 cut
+        section = html.split('id="duels"')[1]
+        assert section.index("Q7?") < section.index("Q2?")
+        assert "Q0?" not in section and "Q1?" not in section
+
+    def test_duplicate_entrant_rows_deduped_per_card(self) -> None:
+        board = {
+            "duels": [
+                {
+                    "slug": "s",
+                    "question": "Q?",
+                    "market_prob": 0.5,
+                    "entrant": "a",
+                    "prob": 0.9,
+                    "gap": 0.4,
+                },
+                {
+                    "slug": "s",
+                    "entrant": "a",
+                    "prob": 0.1,
+                    "gap": 0.4,
+                },
+            ],
+            "entrants": [{"id": "a", "label": "A", "kind": "ai"}],
+        }
+        html = render_site(board)
+        assert html.count('<article class="duel">') == 1
+        card = html.split('<article class="duel">')[1]
+        # one dot per entrant, not per duel row
+        assert card.count('class="pdot e0"') == 1
+
+    def test_gap_badge_neutral_open_colored_resolved(self) -> None:
+        board = {
+            "duels": [
+                {"slug": "o", "question": "O?", "entrant": "a",
+                 "prob": 0.9, "market_prob": 0.5, "status": "open"},
+                {"slug": "w", "question": "W?", "entrant": "a",
+                 "prob": 0.9, "market_prob": 0.5, "status": "won"},
+                {"slug": "l", "question": "L?", "entrant": "a",
+                 "prob": 0.9, "market_prob": 0.5, "status": "lost"},
+                {"slug": "t", "question": "T?", "entrant": "a",
+                 "prob": 0.9, "market_prob": 0.5, "status": "tie"},
+            ],
+            "entrants": [{"id": "a", "label": "A", "kind": "ai"}],
+        }
+        html = render_site(board)
+        assert 'class="gap gap-open"' in html  # neutral while open
+        assert 'class="gap gap-won"' in html
+        assert 'class="gap gap-lost"' in html
+        # tie resolves to the neutral badge, and the palette exists
+        assert html.count('class="gap gap-open"') == 2
+        assert ".gap-won {" in html and "var(--good)" in html
+        assert ".gap-lost {" in html and "var(--bad)" in html
+
+    def test_gap_falls_back_to_board_gap_field(self) -> None:
+        board = {
+            "duels": [
+                {"slug": "x", "question": "Big?", "entrant": "a",
+                 "gap": 0.9},
+                {"slug": "y", "question": "Small?", "entrant": "a",
+                 "gap": 0.1},
+            ],
+            "entrants": [{"id": "a", "label": "A", "kind": "ai"}],
+        }
+        html = render_site(board)
+        section = html.split('id="duels"')[1]
+        assert section.index("Big?") < section.index("Small?")
+
+    def test_grouping_falls_back_to_question_then_row(self) -> None:
+        board = {
+            "duels": [
+                {"slug": None, "question": "Same Q?", "entrant": "a",
+                 "prob": 0.9, "market_prob": 0.5},
+                {"slug": "", "question": "Same Q?", "entrant": "b",
+                 "prob": 0.8, "market_prob": 0.5},
+                {"question": None, "slug": [], "entrant": "a"},
+            ],
+            "entrants": [
+                {"id": "a", "label": "A", "kind": "ai"},
+                {"id": "b", "label": "B", "kind": "ai"},
+            ],
+        }
+        html = render_site(board)
+        # two cards: the question-grouped pair + the keyless row
+        assert html.count('<article class="duel">') == 2
+        assert "A 90%" in html and "B 80%" in html
+        # the keyless card still renders its title fallback
+        assert '<h3 class="duel-q">?</h3>' in html
 
     def test_gap_em_dash_when_uncomputable(self) -> None:
         board = {
@@ -723,12 +961,29 @@ class TestFooter:
             'href="https://github.com/agent-next/polymarket-paper-trader"'
             in html
         )
+        # Get started points at the arena docs anchor, not a bare link
+        assert (
+            '<a class="btn" '
+            'href="https://github.com/agent-next/polymarket-paper-trader'
+            '/blob/main/benchmark/README.md#forecast-arena">'
+            "Get started →</a>" in html
+        )
+        # every in-page anchor target exists
+        for anchor in ("leaderboard", "markets", "method"):
+            assert f'href="#{anchor}"' in html
+            assert f'id="{anchor}"' in html
         assert "A more open future for forecasting." in html
 
     def test_stamps(self) -> None:
         html = render_site(sample_board())
-        assert "Board generated 2026-09-26T06:00:00Z" in html
-        assert "last pipeline run 2026-09-26T05:58:11Z" in html
+        assert (
+            'Generated <time datetime="2026-09-26T06:00:00Z">'
+            "Sep 26, 06:00 UTC</time>" in html
+        )
+        assert (
+            'Updated <time datetime="2026-09-26T05:58:11Z">'
+            "Sep 26, 05:58 UTC</time>" in html
+        )
         assert "tracking since 2026-09-26" in html
         assert "2 unresolvable" in html
         assert "data branch" in html
@@ -736,8 +991,8 @@ class TestFooter:
     def test_no_timestamps_still_renders(self) -> None:
         html = render_site({})
         assert "polymarket-paper-trader" in html
-        assert "Board generated" not in html
-        assert "last pipeline run" not in html
+        assert "Generated <time" not in html
+        assert "Updated <time" not in html
         assert "data branch" in html
 
 
