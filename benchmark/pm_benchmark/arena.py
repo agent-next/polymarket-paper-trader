@@ -947,12 +947,13 @@ def _board_entrants(
 
     An entrant removed from the config keeps its recorded model and shows up
     under its own id, so history is neither dropped nor silently relabelled.
+    One that never produced a forecast (skip rows only) is not shown.
     """
     seen = {e.id for e in entrants}
     merged = list(entrants)
     for row in forecasts:
         rid = row.get("entrant")
-        if not rid or rid in seen:
+        if not rid or rid in seen or row.get("prob") is None:
             continue
         seen.add(rid)
         merged.append(

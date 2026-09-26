@@ -20,7 +20,6 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: write  # push forecasts to arena-data (accepted risk: token is repo-wide)
-      models: read     # GitHub Models, free tier, no secret
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -43,7 +42,7 @@ jobs:
       - run: pip install -e . -e ./benchmark
       - name: Resolve and predict
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          ZEN_API_KEY: public  # Zen free models check no key; litellm requires one
         run: |
           polymarket-benchmark arena resolve --data data || echo "::warning::resolve failed"
           polymarket-benchmark arena predict --data data || echo "::warning::predict failed (partial results kept)"

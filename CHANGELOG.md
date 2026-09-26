@@ -5,6 +5,11 @@ All notable changes to `polymarket-paper-trader` are documented here.
 ## [Unreleased]
 
 ### Fixed
+- Arena entrants: GitHub Models was retired on 2026-07-30 (its endpoint now answers
+  `200 text/plain "OK"`), so its four entrants are replaced by OpenCode Zen's
+  `space-bunny-free`, the only Zen free chat model that answers outside the OpenCode
+  client (the others return HTTP 403, probed 2026-09-26). Entrants that never produced a
+  forecast are no longer listed on the page.
 - Arena first live run: GitHub Models entrants failed because litellm's `num_retries`
   path imports `tenacity`, which litellm does not declare; retries now go to the provider
   SDK (`max_retries`). Market selection now asks Gamma to filter by end date and liquidity
@@ -13,8 +18,7 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ### Added
 - **Forecast Arena** (`benchmark/`): `polymarket-benchmark arena predict|resolve|build`
-  records daily probability forecasts from free AI models (Jev via OpenCode Zen, GitHub
-  Models) and naive baselines (crowd, coin, favorite) on soon-resolving Polymarket binary
+  records daily probability forecasts from free AI models (via OpenCode Zen) and naive baselines (crowd, coin, favorite) on soon-resolving Polymarket binary
   markets, scores them once markets resolve (Brier, paired alpha vs the crowd with an
   event-clustered bootstrap CI), and renders a static, script-free leaderboard page. The
   model prompt never contains the market price. A daily `arena.yml` workflow appends data
@@ -23,7 +27,7 @@ All notable changes to `polymarket-paper-trader` are documented here.
   field; a settled market carries `umaResolutionStatus: "resolved"` and exact `0`/`1`
   `outcomePrices`, so a closed market whose oracle has not settled stays pending.
 - `LLMConfig` gains optional `api_base` and `num_retries`, so any OpenAI-compatible
-  endpoint (e.g. GitHub Models with `GITHUB_TOKEN`) can be evaluated.
+  endpoint can be evaluated.
 
 ## [0.4.1] - 2026-09-25
 

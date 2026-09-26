@@ -123,21 +123,15 @@ class TestLoadEntrants:
     def test_loads_bundled_config(self):
         entrants = load_entrants(_default_config())
         ids = [e.id for e in entrants]
-        assert ids == [
-            "jev", "gpt-4.1", "deepseek-v3", "llama-4-maverick",
-            "grok-3-mini", "crowd", "coin", "favorite",
-        ]
+        assert ids == ["jev", "space-bunny", "crowd", "coin", "favorite"]
         by_id = {e.id: e for e in entrants}
         assert by_id["jev"].model == "opencode/jev-1.13-free"
         assert by_id["jev"].web_access is None  # undocumented upstream
         assert by_id["jev"].cutoff is None
-        gh = by_id["gpt-4.1"]
-        # litellm strips the provider prefix; GitHub Models wants <publisher>/<model>
-        assert gh.model == "openai/openai/gpt-4.1"
-        assert by_id["grok-3-mini"].model == "openai/xai/grok-3-mini"
-        assert gh.api_base == "https://models.github.ai/inference"
-        assert gh.api_key_env == "GITHUB_TOKEN"
-        assert gh.cutoff == "2024-06"
+        bunny = by_id["space-bunny"]
+        assert bunny.model == "openai/space-bunny-free"
+        assert bunny.api_base == "https://opencode.ai/zen/v1"
+        assert bunny.api_key_env == "ZEN_API_KEY"
         assert by_id["crowd"].kind == "baseline"
         assert by_id["crowd"].model is None
 
@@ -1303,6 +1297,11 @@ class TestBoard:
         assert e["model"] == "openai/old"
         assert e["kind"] == "ai"
         assert any(r["entrant"] == "oldmodel" for r in board["leaderboard"])
+
+    def test_removed_skip_only_entrant_hidden(self):
+        rows = [_forecast_row("a", "gone", None, ts="t", status="skip")]
+        board = self._board(rows, {})
+        assert "gone" not in {e["id"] for e in board["entrants"]}
 
     def test_last_run_is_latest_row_ts(self):
         rows = [
