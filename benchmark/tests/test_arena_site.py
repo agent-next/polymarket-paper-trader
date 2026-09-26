@@ -606,3 +606,97 @@ class TestEdgeCases:
             "No confident misses yet.",
         ):
             assert text in html
+
+
+class TestNonNumericValues:
+    def test_bad_numbers_render_em_dash(self) -> None:
+        board = {
+            "leaderboard": [
+                {
+                    "entrant": "a",
+                    "alpha": "bad",
+                    "alpha_ci": ["x", 0.1],
+                    "brier": "oops",
+                    "ece": float("nan"),
+                    "coverage": "wide",
+                    "significant": False,
+                }
+            ],
+            "open": [
+                {
+                    "slug": "s",
+                    "question": "Q",
+                    "market_prob": "high",
+                    "forecasts": {"a": {"prob": "bad"}},
+                }
+            ],
+            "duels": [
+                {"slug": "d", "prob": "x", "market_prob": "y", "gap": "z"}
+            ],
+            "hall_of_wrong": [
+                {"slug": "h", "prob": "hi", "market_prob": "lo"}
+            ],
+        }
+        html = render_site(board)
+        assert ">bad</td>" not in html and ">oops</td>" not in html
+        # the malformed CI pair drops entirely (0.1 must not render alone)
+        assert "+0.100" not in html
+        assert ">—</td>" in html  # alpha, brier, ece, duel cells
+        assert "crowd was at —" in html
+        # both prob bars fall back to the em dash with a 0-width bar
+        open_html = html.split('<section id="open">')[1].split("</section>")[0]
+        assert open_html.count(">—</span>") == 2
+        assert "width:0.00%" in open_html
+        assert "not significant" in html
+
+    def test_numeric_strings_coerce(self) -> None:
+        board = {
+            "leaderboard": [
+                {
+                    "entrant": "a",
+                    "alpha": "-0.01",
+                    "alpha_ci": ["-0.05", "0.01"],
+                    "brier": "0.2",
+                    "significant": True,
+                }
+            ],
+            "open": [
+                {
+                    "slug": "s",
+                    "market_prob": "0.3",
+                    "forecasts": {"a": {"prob": "0.9"}},
+                }
+            ],
+        }
+        html = render_site(board)
+        assert "-0.010" in html
+        assert "[-0.050, +0.010]" in html
+        assert ">0.200</td>" in html
+        assert "width:90.00%" in html
+        assert ">90%</span>" in html
+        assert "width:30.00%" in html
+
+    def test_non_finite_renders_em_dash(self) -> None:
+        board = {
+            "leaderboard": [
+                {
+                    "entrant": "a",
+                    "alpha": float("inf"),
+                    "brier": float("nan"),
+                    "significant": True,
+                }
+            ],
+            "open": [
+                {
+                    "slug": "s",
+                    "market_prob": float("inf"),
+                    "forecasts": {"a": {"prob": float("nan")}},
+                }
+            ],
+        }
+        html = render_site(board)
+        assert ">nan<" not in html and ">inf<" not in html
+        open_html = html.split('<section id="open">')[1].split("</section>")[0]
+        assert open_html.count(">—</span>") == 2
+        assert open_html.count("width:0.00%") == 2
+        assert ">—</td>" in html
