@@ -359,71 +359,46 @@ class TestFetchResolutionDetail:
         assert res.closed is True
 
     @respx.mock
-    def test_explicit_field_beats_price_rule(self):
-        """An explicit winner field wins over a divergent final price."""
+    def test_uma_resolved_non_yes_no_market(self):
+        """Shape of a live UMA-settled payload (probed 2026-09-26): exact 0/1
+        prices, ``umaResolutionStatus: "resolved"``, non-Yes/No labels."""
         payload = {
-            **CLOSED_AMBIGUOUS_RESPONSE,   # prices 0.50/0.50: no price signal
-            "winner": "No",
+            **SAMPLE_API_RESPONSE,
+            "closed": True,
+            "outcomes": '["Over", "Under"]',
+            "outcomePrices": '["0", "1"]',
+            "umaResolutionStatus": "resolved",
         }
         respx.get(f"{GAMMA_BASE}/markets").mock(
             return_value=httpx.Response(200, json=[payload])
         )
         res = fetch_resolution_detail("test")
         assert res.outcome == 0.0
-        assert res.source == "field"
+        assert res.source == "uma"
+        assert res.closed is True
 
     @respx.mock
-    def test_explicit_field_overrides_price(self):
-        """UMA oracle result can diverge from the last traded price."""
-        payload = {**RESOLVED_YES_RESPONSE, "winningOutcome": "No"}
+    def test_uma_pending_stays_pending(self):
+        """Closed at an extreme price but the oracle has not settled: a
+        closing price is not a settlement, so the market stays pending."""
+        payload = {**RESOLVED_YES_RESPONSE, "umaResolutionStatus": "proposed"}
         respx.get(f"{GAMMA_BASE}/markets").mock(
             return_value=httpx.Response(200, json=[payload])
         )
         res = fetch_resolution_detail("test")
-        assert res.outcome == 0.0
-        assert res.source == "field"
+        assert res.outcome is None
+        assert res.closed is False
+        assert res.source is None
 
     @respx.mock
-    def test_unrecognized_field_falls_back_to_price(self):
-        payload = {**RESOLVED_YES_RESPONSE, "winner": "inconclusive"}
+    def test_uma_resolved_fifty_fifty_is_unresolvable(self):
+        payload = {**CLOSED_AMBIGUOUS_RESPONSE, "umaResolutionStatus": "resolved"}
         respx.get(f"{GAMMA_BASE}/markets").mock(
             return_value=httpx.Response(200, json=[payload])
         )
         res = fetch_resolution_detail("test")
-        assert res.outcome == 1.0
-        assert res.source == "price"
-
-    @respx.mock
-    def test_explicit_field_on_non_yes_no_market(self):
-        """Without a 'Yes' label the index falls back to 0 — 'Team B' at
-        index 1 therefore resolves to outcome 0."""
-        payload = {
-            **CLOSED_AMBIGUOUS_RESPONSE,
-            "outcomes": '["Team A", "Team B"]',
-            "winningOutcome": "Team B",
-        }
-        respx.get(f"{GAMMA_BASE}/markets").mock(
-            return_value=httpx.Response(200, json=[payload])
-        )
-        res = fetch_resolution_detail("test")
-        assert res.outcome == 0.0
-        assert res.source == "field"
-
-    @respx.mock
-    def test_explicit_booleanish_fields(self):
-        """'true'/'false' winner values resolve without a label match."""
-        respx.get(f"{GAMMA_BASE}/markets").mock(
-            side_effect=[
-                httpx.Response(
-                    200, json=[{**CLOSED_AMBIGUOUS_RESPONSE, "result": "true"}]
-                ),
-                httpx.Response(
-                    200, json=[{**CLOSED_AMBIGUOUS_RESPONSE, "result": "false"}]
-                ),
-            ]
-        )
-        assert fetch_resolution_detail("a").outcome == 1.0
-        assert fetch_resolution_detail("b").outcome == 0.0
+        assert res.outcome is None
+        assert res.closed is True
 
     @respx.mock
     def test_closed_unresolvable(self):
@@ -445,3 +420,16 @@ class TestFetchResolutionDetail:
         assert res.outcome is None
         assert res.closed is False
         assert res.source is None
+
+
+@pytest.mark.live
+def test_live_uma_settled_market_resolves():
+    """Pins the resolution path to the wire: a market UMA-settled on
+    2026-09-26 (outcomes "Cherevko Roman"/"Masko Yevhen", prices 0/1)."""
+    try:
+        res = fetch_resolution_detail("setkameua-cherevk-yevhen-2026-09-26")
+    except MarketInfoError as exc:
+        pytest.skip(f"Gamma unreachable: {exc}")
+    assert res.closed is True
+    assert res.source == "uma"
+    assert res.outcome == 0.0
