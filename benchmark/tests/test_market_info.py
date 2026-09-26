@@ -11,9 +11,12 @@ from pm_benchmark.market_info import (
     MarketInfoError,
     _parse_list,
     _parse_market,
+    _to_bool,
     fetch_market_info,
     fetch_prices,
     fetch_resolution,
+    fetch_resolution_detail,
+    list_markets,
 )
 
 
@@ -66,6 +69,125 @@ class TestParseMarket:
         assert info.outcomes == []
         assert info.outcome_prices == []
         assert info.volume == 0.0
+
+    def test_string_booleans(self):
+        """Gamma sends booleans as strings; "false" must parse as False."""
+        info = _parse_market({
+            **SAMPLE_API_RESPONSE, "active": "false", "closed": "true",
+        })
+        assert info.active is False
+        assert info.closed is True
+        info = _parse_market({
+            **SAMPLE_API_RESPONSE, "active": "true", "closed": "false",
+        })
+        assert info.active is True
+        assert info.closed is False
+
+    def test_event_id_from_field(self):
+        info = _parse_market({**SAMPLE_API_RESPONSE, "eventId": 12345})
+        assert info.event_id == "12345"
+
+    def test_event_id_from_events_list(self):
+        info = _parse_market({
+            **SAMPLE_API_RESPONSE,
+            "events": [{"id": "ev-9", "slug": "big-event"}],
+        })
+        assert info.event_id == "ev-9"
+
+    def test_event_id_absent(self):
+        assert _parse_market(SAMPLE_API_RESPONSE).event_id is None
+
+
+class TestToBool:
+    def test_strings(self):
+        assert _to_bool("true") is True
+        assert _to_bool("false") is False
+        assert _to_bool("True") is True
+        assert _to_bool("1") is True
+        assert _to_bool("yes") is True
+        assert _to_bool("0") is False
+        assert _to_bool("") is False
+
+    def test_non_strings(self):
+        assert _to_bool(True) is True
+        assert _to_bool(False) is False
+        assert _to_bool(None) is False
+        assert _to_bool(1) is True
+
+
+class TestListMarkets:
+    @respx.mock
+    def test_success(self):
+        respx.get(f"{GAMMA_BASE}/markets").mock(
+            return_value=httpx.Response(200, json=[SAMPLE_API_RESPONSE])
+        )
+        markets = list_markets(limit=50)
+        assert len(markets) == 1
+        assert markets[0].slug == "will-bitcoin-hit-100k-2025"
+        req = respx.calls.last.request
+        assert req.url.params["order"] == "volumeNum"
+        assert req.url.params["active"] == "true"
+        assert req.url.params["closed"] == "false"
+        assert req.url.params["ascending"] == "false"
+        assert req.url.params["limit"] == "50"
+
+    @respx.mock
+    def test_dict_envelope(self):
+        respx.get(f"{GAMMA_BASE}/markets").mock(
+            return_value=httpx.Response(200, json={"markets": [SAMPLE_API_RESPONSE]})
+        )
+        assert len(list_markets()) == 1
+
+    @respx.mock
+    def test_data_envelope(self):
+        respx.get(f"{GAMMA_BASE}/markets").mock(
+            return_value=httpx.Response(200, json={"data": [SAMPLE_API_RESPONSE]})
+        )
+        assert len(list_markets()) == 1
+
+    @respx.mock
+    def test_non_list_returns_empty(self):
+        respx.get(f"{GAMMA_BASE}/markets").mock(
+            return_value=httpx.Response(200, json=42)
+        )
+        assert list_markets() == []
+
+    @respx.mock
+    def test_http_error(self):
+        respx.get(f"{GAMMA_BASE}/markets").mock(
+            return_value=httpx.Response(500, text="Server Error")
+        )
+        with pytest.raises(MarketInfoError, match="API error 500"):
+            list_markets()
+
+    @respx.mock
+    def test_request_error(self):
+        respx.get(f"{GAMMA_BASE}/markets").mock(
+            side_effect=httpx.ConnectError("refused")
+        )
+        with pytest.raises(MarketInfoError, match="Request failed"):
+            list_markets()
+
+    @respx.mock
+    def test_with_custom_client(self):
+        respx.get(f"{GAMMA_BASE}/markets").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        client = httpx.Client()
+        try:
+            assert list_markets(http_client=client) == []
+        finally:
+            client.close()
+
+    @respx.mock
+    def test_offset_param(self):
+        """``offset`` pages past the 100-per-page cap (v1.2)."""
+        respx.get(f"{GAMMA_BASE}/markets").mock(
+            return_value=httpx.Response(200, json=[SAMPLE_API_RESPONSE])
+        )
+        assert len(list_markets(limit=100, offset=200)) == 1
+        req = respx.calls.last.request
+        assert req.url.params["offset"] == "200"
 
 
 class TestFetchMarketInfo:
@@ -203,3 +325,123 @@ class TestFetchResolution:
         )
         with pytest.raises(MarketInfoError):
             fetch_resolution("test")
+
+    @respx.mock
+    def test_closed_market_found_via_retry(self):
+        """Gamma defaults closed=false — a closed market needs the retry."""
+        route = respx.get(f"{GAMMA_BASE}/markets").mock(
+            side_effect=[
+                httpx.Response(200, json=[]),
+                httpx.Response(200, json=[RESOLVED_YES_RESPONSE]),
+            ]
+        )
+        assert fetch_resolution("test") == 1.0
+        assert route.call_count == 2
+        assert route.calls[1].request.url.params["closed"] == "true"
+
+
+class TestFetchResolutionDetail:
+    @respx.mock
+    def test_yes_mapped_by_outcome_label(self):
+        """YES is read by label, not position (M7): outcomes ["No","Yes"]."""
+        payload = {
+            **SAMPLE_API_RESPONSE,
+            "closed": True,
+            "outcomes": '["No", "Yes"]',
+            "outcomePrices": '["0.01", "0.99"]',
+        }
+        respx.get(f"{GAMMA_BASE}/markets").mock(
+            return_value=httpx.Response(200, json=[payload])
+        )
+        res = fetch_resolution_detail("test")
+        assert res.outcome == 1.0
+        assert res.source == "price"
+        assert res.closed is True
+
+    @respx.mock
+    def test_explicit_field_beats_price_rule(self):
+        """An explicit winner field wins over a divergent final price."""
+        payload = {
+            **CLOSED_AMBIGUOUS_RESPONSE,   # prices 0.50/0.50: no price signal
+            "winner": "No",
+        }
+        respx.get(f"{GAMMA_BASE}/markets").mock(
+            return_value=httpx.Response(200, json=[payload])
+        )
+        res = fetch_resolution_detail("test")
+        assert res.outcome == 0.0
+        assert res.source == "field"
+
+    @respx.mock
+    def test_explicit_field_overrides_price(self):
+        """UMA oracle result can diverge from the last traded price."""
+        payload = {**RESOLVED_YES_RESPONSE, "winningOutcome": "No"}
+        respx.get(f"{GAMMA_BASE}/markets").mock(
+            return_value=httpx.Response(200, json=[payload])
+        )
+        res = fetch_resolution_detail("test")
+        assert res.outcome == 0.0
+        assert res.source == "field"
+
+    @respx.mock
+    def test_unrecognized_field_falls_back_to_price(self):
+        payload = {**RESOLVED_YES_RESPONSE, "winner": "inconclusive"}
+        respx.get(f"{GAMMA_BASE}/markets").mock(
+            return_value=httpx.Response(200, json=[payload])
+        )
+        res = fetch_resolution_detail("test")
+        assert res.outcome == 1.0
+        assert res.source == "price"
+
+    @respx.mock
+    def test_explicit_field_on_non_yes_no_market(self):
+        """Without a 'Yes' label the index falls back to 0 — 'Team B' at
+        index 1 therefore resolves to outcome 0."""
+        payload = {
+            **CLOSED_AMBIGUOUS_RESPONSE,
+            "outcomes": '["Team A", "Team B"]',
+            "winningOutcome": "Team B",
+        }
+        respx.get(f"{GAMMA_BASE}/markets").mock(
+            return_value=httpx.Response(200, json=[payload])
+        )
+        res = fetch_resolution_detail("test")
+        assert res.outcome == 0.0
+        assert res.source == "field"
+
+    @respx.mock
+    def test_explicit_booleanish_fields(self):
+        """'true'/'false' winner values resolve without a label match."""
+        respx.get(f"{GAMMA_BASE}/markets").mock(
+            side_effect=[
+                httpx.Response(
+                    200, json=[{**CLOSED_AMBIGUOUS_RESPONSE, "result": "true"}]
+                ),
+                httpx.Response(
+                    200, json=[{**CLOSED_AMBIGUOUS_RESPONSE, "result": "false"}]
+                ),
+            ]
+        )
+        assert fetch_resolution_detail("a").outcome == 1.0
+        assert fetch_resolution_detail("b").outcome == 0.0
+
+    @respx.mock
+    def test_closed_unresolvable(self):
+        """Closed with no signal: outcome None, closed True, source None."""
+        respx.get(f"{GAMMA_BASE}/markets").mock(
+            return_value=httpx.Response(200, json=[CLOSED_AMBIGUOUS_RESPONSE])
+        )
+        res = fetch_resolution_detail("test")
+        assert res.outcome is None
+        assert res.closed is True
+        assert res.source is None
+
+    @respx.mock
+    def test_not_closed(self):
+        respx.get(f"{GAMMA_BASE}/markets").mock(
+            return_value=httpx.Response(200, json=[SAMPLE_API_RESPONSE])
+        )
+        res = fetch_resolution_detail("test")
+        assert res.outcome is None
+        assert res.closed is False
+        assert res.source is None

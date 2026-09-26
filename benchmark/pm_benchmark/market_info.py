@@ -27,27 +27,48 @@ class MarketInfo:
     end_date: str
     active: bool
     closed: bool
+    event_id: str | None = None
 
 
-def fetch_market_info(
+@dataclass(frozen=True)
+class Resolution:
+    """Resolution state for a market.
+
+    ``outcome`` is 1.0 when Yes won, 0.0 when No won, None when the outcome
+    cannot be determined. ``closed`` is the market's Gamma closed flag, so a
+    closed market with ``outcome=None`` is detectable as unresolvable.
+    ``source`` records how the outcome was read: ``"field"`` (explicit
+    resolution field) or ``"price"`` (0.99/0.01 price rule).
+    """
+
+    outcome: float | None
+    closed: bool
+    source: str | None
+
+
+def _fetch_market_raw(
     slug: str,
     *,
     http_client: httpx.Client | None = None,
-) -> MarketInfo:
-    """Fetch market info from Polymarket Gamma API."""
+) -> dict:
+    """GET the raw Gamma ``/markets`` payload for a slug.
+
+    Gamma defaults ``closed`` to false, so a closed market needs a
+    ``closed=true`` retry before it can be considered missing.
+    """
     client = http_client or httpx.Client(timeout=_TIMEOUT)
     owns_client = http_client is None
     try:
-        resp = client.get(f"{GAMMA_BASE}/markets", params={"slug": slug})
-        resp.raise_for_status()
-        data = resp.json()
-
-        if isinstance(data, list):
-            if not data:
-                raise MarketInfoError(f"Market not found: {slug}")
-            data = data[0]
-
-        return _parse_market(data)
+        for params in ({"slug": slug}, {"slug": slug, "closed": "true"}):
+            resp = client.get(f"{GAMMA_BASE}/markets", params=params)
+            resp.raise_for_status()
+            data = resp.json()
+            if isinstance(data, list):
+                if data:
+                    return data[0]
+            elif isinstance(data, dict):
+                return data
+        raise MarketInfoError(f"Market not found: {slug}")
     except httpx.HTTPStatusError as e:
         raise MarketInfoError(
             f"API error {e.response.status_code}: {e.response.text[:200]}"
@@ -57,6 +78,62 @@ def fetch_market_info(
     finally:
         if owns_client:
             client.close()
+
+
+def fetch_market_info(
+    slug: str,
+    *,
+    http_client: httpx.Client | None = None,
+) -> MarketInfo:
+    """Fetch market info from Polymarket Gamma API."""
+    return _parse_market(_fetch_market_raw(slug, http_client=http_client))
+
+
+def list_markets(
+    *,
+    limit: int = 100,
+    offset: int = 0,
+    active: bool = True,
+    closed: bool = False,
+    order: str = "volumeNum",
+    ascending: bool = False,
+    http_client: httpx.Client | None = None,
+) -> list[MarketInfo]:
+    """List markets from Gamma ``/markets`` ordered by volume or liquidity.
+
+    Ordering uses the camelCase ``volumeNum``/``liquidityNum`` values the
+    wire accepts (snake_case variants are rejected upstream). A page is at
+    most ~100 markets; ``offset`` fetches further pages.
+    """
+    params = {
+        "limit": limit,
+        "offset": offset,
+        "active": "true" if active else "false",
+        "closed": "true" if closed else "false",
+        "order": order,
+        "ascending": "true" if ascending else "false",
+    }
+    client = http_client or httpx.Client(timeout=_TIMEOUT)
+    owns_client = http_client is None
+    try:
+        resp = client.get(f"{GAMMA_BASE}/markets", params=params)
+        resp.raise_for_status()
+        data = resp.json()
+    except httpx.HTTPStatusError as e:
+        raise MarketInfoError(
+            f"API error {e.response.status_code}: {e.response.text[:200]}"
+        ) from e
+    except httpx.RequestError as e:
+        raise MarketInfoError(f"Request failed: {e}") from e
+    finally:
+        if owns_client:
+            client.close()
+
+    if isinstance(data, dict):
+        data = data.get("markets", data.get("data", []))
+    if not isinstance(data, list):
+        return []
+    return [_parse_market(m) for m in data]
 
 
 def fetch_prices(
@@ -84,16 +161,70 @@ def fetch_resolution(
         Resolution is inferred from a closed market whose Yes price
         is near 1.0 (≥0.99) or near 0.0 (≤0.01).
     """
-    info = fetch_market_info(slug, http_client=http_client)
+    return fetch_resolution_detail(slug, http_client=http_client).outcome
+
+
+# Raw payload keys that may carry an explicit winning outcome. An explicit
+# field is preferred over the price rule — a UMA-oracle resolution can diverge
+# from the final traded price.
+_RESOLUTION_FIELD_KEYS = ("winningOutcome", "winner", "result", "resolutionOutcome")
+
+
+def fetch_resolution_detail(
+    slug: str,
+    *,
+    http_client: httpx.Client | None = None,
+) -> Resolution:
+    """Fetch resolution state for a market.
+
+    The YES side is mapped by outcome label (not by list position). The
+    outcome comes from an explicit resolution field when the payload carries
+    one, else from the 0.99/0.01 rule on the YES price. Only closed markets
+    can resolve; a closed market whose outcome cannot be determined returns
+    ``outcome=None, closed=True`` (unresolvable) rather than staying pending.
+    """
+    data = _fetch_market_raw(slug, http_client=http_client)
+    info = _parse_market(data)
     if not info.closed:
-        return None
-    if not info.outcome_prices:
-        return None
-    yes_price = info.outcome_prices[0]
-    if yes_price >= 0.99:
-        return 1.0
-    if yes_price <= 0.01:
-        return 0.0
+        return Resolution(outcome=None, closed=False, source=None)
+
+    outcome = _explicit_outcome(data, info)
+    if outcome is not None:
+        return Resolution(outcome=outcome, closed=True, source="field")
+
+    yes_idx = _yes_index(info.outcomes)
+    if yes_idx < len(info.outcome_prices):
+        yes_price = info.outcome_prices[yes_idx]
+        if yes_price >= 0.99:
+            return Resolution(outcome=1.0, closed=True, source="price")
+        if yes_price <= 0.01:
+            return Resolution(outcome=0.0, closed=True, source="price")
+    return Resolution(outcome=None, closed=True, source=None)
+
+
+def _yes_index(outcomes: list[str]) -> int:
+    """Index of the Yes outcome by label; defaults to 0."""
+    for i, outcome in enumerate(outcomes):
+        if outcome.strip().lower() == "yes":
+            return i
+    return 0
+
+
+def _explicit_outcome(data: dict, info: MarketInfo) -> float | None:
+    """Map an explicit winner field to an outcome via outcome labels."""
+    yes_idx = _yes_index(info.outcomes)
+    lowered = [o.strip().lower() for o in info.outcomes]
+    for key in _RESOLUTION_FIELD_KEYS:
+        value = data.get(key)
+        if not isinstance(value, str) or not value.strip():
+            continue
+        label = value.strip().lower()
+        if label in lowered:
+            return 1.0 if lowered.index(label) == yes_idx else 0.0
+        if label in ("yes", "true", "1"):
+            return 1.0
+        if label in ("no", "false", "0"):
+            return 0.0
     return None
 
 
@@ -112,9 +243,31 @@ def _parse_market(data: dict) -> MarketInfo:
         volume=float(data.get("volume", 0)),
         liquidity=float(data.get("liquidity", 0)),
         end_date=data.get("endDate", ""),
-        active=bool(data.get("active", False)),
-        closed=bool(data.get("closed", False)),
+        active=_to_bool(data.get("active", False)),
+        closed=_to_bool(data.get("closed", False)),
+        event_id=_parse_event_id(data),
     )
+
+
+def _parse_event_id(data: dict) -> str | None:
+    """Gamma event id for cluster grouping: ``eventId`` or ``events[0].id``."""
+    for key in ("eventId", "event_id"):
+        value = data.get(key)
+        if value not in (None, ""):
+            return str(value)
+    events = data.get("events")
+    if isinstance(events, list) and events and isinstance(events[0], dict):
+        value = events[0].get("id")
+        if value not in (None, ""):
+            return str(value)
+    return None
+
+
+def _to_bool(value: object) -> bool:
+    """String-aware bool parse — Gamma sends booleans as strings."""
+    if isinstance(value, str):
+        return value.strip().lower() in ("true", "1", "yes")
+    return bool(value)
 
 
 def _parse_list(raw: str | list) -> list[str]:
