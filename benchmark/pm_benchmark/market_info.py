@@ -37,8 +37,9 @@ class Resolution:
     ``outcome`` is 1.0 when Yes won, 0.0 when No won, None when the outcome
     cannot be determined. ``closed`` is the market's Gamma closed flag, so a
     closed market with ``outcome=None`` is detectable as unresolvable.
-    ``source`` records how the outcome was read: ``"field"`` (explicit
-    resolution field) or ``"price"`` (0.99/0.01 price rule).
+    ``source`` records how the outcome was read: ``"uma"`` (UMA-settled,
+    ``umaResolutionStatus == "resolved"``) or ``"price"`` (no oracle status on
+    the payload; 0.99/0.01 price rule only).
     """
 
     outcome: float | None
@@ -164,12 +165,6 @@ def fetch_resolution(
     return fetch_resolution_detail(slug, http_client=http_client).outcome
 
 
-# Raw payload keys that may carry an explicit winning outcome. An explicit
-# field is preferred over the price rule — a UMA-oracle resolution can diverge
-# from the final traded price.
-_RESOLUTION_FIELD_KEYS = ("winningOutcome", "winner", "result", "resolutionOutcome")
-
-
 def fetch_resolution_detail(
     slug: str,
     *,
@@ -177,28 +172,33 @@ def fetch_resolution_detail(
 ) -> Resolution:
     """Fetch resolution state for a market.
 
-    The YES side is mapped by outcome label (not by list position). The
-    outcome comes from an explicit resolution field when the payload carries
-    one, else from the 0.99/0.01 rule on the YES price. Only closed markets
-    can resolve; a closed market whose outcome cannot be determined returns
-    ``outcome=None, closed=True`` (unresolvable) rather than staying pending.
+    The YES side is mapped by outcome label (not by list position). Gamma
+    carries no explicit winner field; a UMA-settled market has
+    ``umaResolutionStatus: "resolved"`` and final prices of exactly 0/1
+    (live-probed 2026-09-26). A closed market whose oracle status is present
+    but not yet ``resolved`` stays pending (a closing price is not a
+    settlement). When the status is resolved, or absent, the outcome comes
+    from the 0.99/0.01 rule on the YES price; a closed market whose outcome
+    cannot be determined (e.g. a 50-50 settlement) returns
+    ``outcome=None, closed=True`` (unresolvable).
     """
     data = _fetch_market_raw(slug, http_client=http_client)
     info = _parse_market(data)
     if not info.closed:
         return Resolution(outcome=None, closed=False, source=None)
 
-    outcome = _explicit_outcome(data, info)
-    if outcome is not None:
-        return Resolution(outcome=outcome, closed=True, source="field")
+    uma_status = data.get("umaResolutionStatus")
+    if isinstance(uma_status, str) and uma_status and uma_status != "resolved":
+        return Resolution(outcome=None, closed=False, source=None)
+    source = "uma" if uma_status == "resolved" else "price"
 
     yes_idx = _yes_index(info.outcomes)
     if yes_idx < len(info.outcome_prices):
         yes_price = info.outcome_prices[yes_idx]
         if yes_price >= 0.99:
-            return Resolution(outcome=1.0, closed=True, source="price")
+            return Resolution(outcome=1.0, closed=True, source=source)
         if yes_price <= 0.01:
-            return Resolution(outcome=0.0, closed=True, source="price")
+            return Resolution(outcome=0.0, closed=True, source=source)
     return Resolution(outcome=None, closed=True, source=None)
 
 
@@ -208,24 +208,6 @@ def _yes_index(outcomes: list[str]) -> int:
         if outcome.strip().lower() == "yes":
             return i
     return 0
-
-
-def _explicit_outcome(data: dict, info: MarketInfo) -> float | None:
-    """Map an explicit winner field to an outcome via outcome labels."""
-    yes_idx = _yes_index(info.outcomes)
-    lowered = [o.strip().lower() for o in info.outcomes]
-    for key in _RESOLUTION_FIELD_KEYS:
-        value = data.get(key)
-        if not isinstance(value, str) or not value.strip():
-            continue
-        label = value.strip().lower()
-        if label in lowered:
-            return 1.0 if lowered.index(label) == yes_idx else 0.0
-        if label in ("yes", "true", "1"):
-            return 1.0
-        if label in ("no", "false", "0"):
-            return 0.0
-    return None
 
 
 def _parse_market(data: dict) -> MarketInfo:
