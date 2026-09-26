@@ -267,6 +267,19 @@ class TestDocument:
         assert "padding: 26px" in _css_rule(html, ".hero")
         assert "margin-top: 34px" in _css_rule(html, "section")
 
+    def test_legibility_floor(self) -> None:
+        html = render_site(sample_board())
+        sizes = [
+            float(s) for s in re.findall(r"font-size: ([\d.]+)rem", html)
+        ]
+        # nothing below 12px at the 16px root
+        assert sizes and min(sizes) >= 0.75
+        # leaderboard/market table cells and quotes are >= 14px
+        assert "font-size: 0.875rem" in _css_rule(html, "th, td")
+        quote = _css_rule(html, ".quote")
+        assert "font-size: 0.875rem" in quote
+        assert "line-height: 1.5" in quote
+
     def test_muted_text_holds_aa_contrast_in_light_theme(self) -> None:
         html = render_site(sample_board())
         root = _css_rule(html, ":root")
@@ -363,11 +376,30 @@ class TestHero:
         assert "repeat(2, 1fr)" in block
         assert "grid-column: 1 / -1" in block
 
-    def test_hero_art_hidden_below_900px(self) -> None:
+    def test_hero_art_shrinks_above_the_headline_below_1100px(self) -> None:
         html = render_site(sample_board())
         assert '<div class="hero-art" aria-hidden="true">' in html
-        block = html.split("@media (max-width: 900px)")[1]
-        assert ".hero-art { display: none; }" in block.split("@media")[0]
+        # desktop: a full-size globe sits right of the hero copy
+        svg = _css_rule(html, ".hero-art svg")
+        assert "width: 320px" in svg and "height: 320px" in svg
+        block = html.split("@media (max-width: 1099px)")[1]
+        block = block.split("@media")[0]
+        # small screens: a compact globe above the headline, not hidden
+        assert "order: -1" in block
+        assert "display: none" not in block
+        assert float(re.search(r"width: ([\d.]+)px", block).group(1)) <= 120
+
+    def test_hero_globe_is_a_shaded_dot_sphere(self) -> None:
+        html = render_site(sample_board())
+        svg = html.split('class="hero-art"')[1].split("</svg>")[0]
+        radii = [float(r) for r in re.findall(r'r="([\d.]+)"', svg)]
+        opacities = [
+            float(o) for o in re.findall(r'opacity="([\d.]+)"', svg)
+        ]
+        assert len(radii) == len(opacities) > 300
+        # contrast: lit dots much larger and brighter than dark-side dots
+        assert max(radii) >= 2 * min(radii)
+        assert max(opacities) >= 3 * min(opacities)
 
     def test_stamp_falls_back_to_escaped_raw_text(self) -> None:
         html = render_site({"last_run": "not-a-date<"})
@@ -779,6 +811,16 @@ class TestOpenMarkets:
         assert "Closes —" in card2
         assert '<span class="chip">mystery-model 20%</span>' in card2
         assert '<span class="chip e2">Crowd —</span>' in card2
+
+    def test_market_card_head_keeps_number_on_the_title_row(self) -> None:
+        html = render_site(sample_board())
+        assert '<p class="lcard-head mkc-head">' in html
+        # the number is a fixed badge and the title can't drop to its
+        # own flex line no matter how long the question is
+        assert "flex-wrap: nowrap" in _css_rule(html, ".mkc-head")
+        lno = _css_rule(html, ".lno")
+        assert "flex: none" in lno
+        assert "border-radius" in lno
 
 
 class TestDuels:

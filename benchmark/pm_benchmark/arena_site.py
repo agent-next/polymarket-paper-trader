@@ -131,7 +131,7 @@ a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.9em;
+  font-size: 1em;
 }
 .wrap { margin: 0 auto; max-width: 1220px; padding: 0 18px; }
 
@@ -170,7 +170,7 @@ a.wordmark:hover { text-decoration: none; }
   border: 1px solid var(--border);
   border-radius: 999px;
   color: var(--muted);
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   font-weight: 600;
   margin-left: auto;
   padding: 5px 12px;
@@ -187,7 +187,7 @@ a.wordmark:hover { text-decoration: none; }
 }
 .eyebrow {
   color: var(--accent);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   font-weight: 800;
   letter-spacing: 0.18em;
   margin: 0 0 10px;
@@ -208,7 +208,7 @@ h1 .ai { color: var(--accent); }
   max-width: 46ch;
 }
 .hero-art { align-items: center; display: flex; }
-.hero-art svg { display: block; }
+.hero-art svg { display: block; height: 320px; width: 320px; }
 /* one bordered strip; the border color shows through 1px gaps as
    dividers. Exactly five cells, so the last spans the row once the
    strip wraps to two columns. */
@@ -234,7 +234,7 @@ h1 .ai { color: var(--accent); }
 }
 .stat-label {
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -268,7 +268,7 @@ h2 { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
 table { border-collapse: collapse; min-width: 720px; width: 100%; }
 .mkt { min-width: 880px; }
 th, td {
-  font-size: 0.86rem;
+  font-size: 0.875rem;
   padding: 10px 14px;
   text-align: left;
   vertical-align: middle;
@@ -276,7 +276,7 @@ th, td {
 th {
   border-bottom: 1px solid var(--border);
   color: var(--muted);
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -302,7 +302,7 @@ td.q a:hover { color: var(--accent); }
 .who-meta {
   color: var(--muted);
   display: block;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   font-weight: 400;
   margin-top: 2px;
 }
@@ -313,7 +313,7 @@ td.q a:hover { color: var(--accent); }
      theme's foreground so chip labels keep AA contrast */
   color: color-mix(in srgb, var(--ec, var(--muted)) 82%, var(--fg));
   display: inline-block;
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   font-weight: 800;
   letter-spacing: 0.06em;
   padding: 2px 8px;
@@ -371,7 +371,7 @@ td.q a:hover { color: var(--accent); }
   transform: translateX(-50%);
   width: 8px;
 }
-.ns { color: var(--muted); display: block; font-size: 0.7rem; }
+.ns { color: var(--muted); display: block; font-size: 0.75rem; }
 
 /* leaderboard empty state */
 .lb-empty { border-top: 1px dashed var(--border); padding: 24px 16px 26px; text-align: center; }
@@ -401,14 +401,14 @@ td.q a:hover { color: var(--accent); }
   color: var(--muted);
   display: flex;
   flex-wrap: wrap;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   gap: 7px;
   margin: 0 0 4px;
 }
 .status {
   border: 1px solid currentColor;
   border-radius: 999px;
-  font-size: 0.64rem;
+  font-size: 0.75rem;
   font-weight: 800;
   letter-spacing: 0.06em;
   padding: 1px 8px;
@@ -438,14 +438,14 @@ td.q a:hover { color: var(--accent); }
 .ticks {
   color: var(--muted);
   display: flex;
-  font-size: 0.64rem;
+  font-size: 0.75rem;
   justify-content: space-between;
   margin: 3px 1px 9px;
 }
 .dlegend {
   display: flex;
   flex-wrap: wrap;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   gap: 4px 14px;
   margin: 0 0 10px;
 }
@@ -457,7 +457,7 @@ td.q a:hover { color: var(--accent); }
   border-radius: 999px;
   color: var(--fg);
   display: inline-block;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   font-weight: 800;
   padding: 3px 10px;
 }
@@ -468,7 +468,8 @@ td.q a:hover { color: var(--accent); }
   border-left: 3px solid var(--ec, var(--border));
   border-radius: 0 8px 8px 0;
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
   margin: 10px 0 0;
   padding: 9px 12px;
 }
@@ -476,7 +477,7 @@ td.q a:hover { color: var(--accent); }
 .quote cite {
   color: var(--fg);
   display: block;
-  font-size: 0.74rem;
+  font-size: 0.75rem;
   font-style: normal;
   font-weight: 700;
   margin-top: 6px;
@@ -503,7 +504,7 @@ td.q a:hover { color: var(--accent); }
 .mvt {
   color: var(--muted);
   display: flex;
-  font-size: 0.58rem;
+  font-size: 0.75rem;
   font-weight: 400;
   justify-content: space-between;
   letter-spacing: 0;
@@ -538,7 +539,20 @@ td.q a:hover { color: var(--accent); }
 }
 .lcard-head a { color: var(--fg); }
 .lcard-head a:hover { color: var(--accent); }
-.lno { color: var(--muted); font-variant-numeric: tabular-nums; }
+.lno {
+  background: var(--bg2);
+  border-radius: 6px;
+  color: var(--muted);
+  flex: none;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 7px;
+}
+/* market card titles stay on one flex row with their number badge:
+   nowrap keeps a long question inside the same row where it wraps
+   internally instead of dropping the title to its own line */
+.mkc-head { flex-wrap: nowrap; }
+.mkc-head a { min-width: 0; }
 .lc-alpha { margin: 8px 0 0; }
 .lc-stats {
   color: var(--muted);
@@ -617,14 +631,16 @@ td.q a:hover { color: var(--accent); }
 }
 .botbar .pill { margin-left: auto; }
 .tagline { color: var(--muted); font-size: 0.8rem; }
-.stamps { color: var(--muted); font-size: 0.72rem; margin: 0; padding-bottom: 18px; }
+.stamps { color: var(--muted); font-size: 0.75rem; margin: 0; padding-bottom: 18px; }
 
 @media (max-width: 960px) {
   .duels { grid-template-columns: repeat(2, 1fr); }
 }
-@media (max-width: 900px) {
+@media (max-width: 1099px) {
   .hero { grid-template-columns: 1fr; }
-  .hero-art { display: none; }
+  /* the globe drops above the headline, shrunk to a marker size */
+  .hero-art { justify-content: center; order: -1; }
+  .hero-art svg { height: 112px; width: 112px; }
 }
 @media (max-width: 760px) {
   .cols3 { grid-template-columns: 1fr; }
@@ -1066,21 +1082,31 @@ def _alpha_cell(row: dict, cls: str) -> str:
 
 
 def _hero_art() -> str:
-    """Decorative dotted-globe SVG beside the hero copy."""
-    radius, step = 92, 9
+    """Decorative dotted-globe SVG beside the hero copy.
+
+    A halftone sphere lit from the upper left: dots grow and brighten
+    toward the light and thin out on the far side, so the disc reads
+    as a globe in both themes.
+    """
+    radius, step = 96, 8
     dots = []
-    for y in range(-radius, radius + 1, step):
+    for row, y in enumerate(range(-radius, radius + 1, step)):
         chord = int((radius * radius - y * y) ** 0.5)
-        for x in range(-chord, chord + 1, step):
-            # fade toward the rim so the disc reads as a sphere
-            fade = 1 - 0.82 * ((x * x + y * y) ** 0.5 / radius)
+        offset = (step // 2) if row % 2 else 0
+        for x in range(-chord + offset, chord + 1, step):
+            edge = math.hypot(x, y) / radius
+            lit = min(
+                max(0.5 - (x + y) / (2 * radius * 2 ** 0.5), 0.0), 1.0
+            )
+            shade = lit * (1 - 0.2 * edge)
             dots.append(
-                f'<circle cx="{x}" cy="{y}" r="1.6" opacity="{fade:.2f}"/>'
+                f'<circle cx="{x}" cy="{y}" r="{1.2 + 1.8 * shade:.1f}" '
+                f'opacity="{0.25 + 0.75 * shade:.2f}"/>'
             )
     return (
         '<div class="hero-art" aria-hidden="true">'
-        '<svg width="300" height="300" viewBox="-104 -104 208 208" '
-        f'fill="var(--accent)" opacity="0.55">{"".join(dots)}</svg>'
+        '<svg width="320" height="320" viewBox="-104 -104 208 208" '
+        f'fill="var(--accent)">{"".join(dots)}</svg>'
         "</div>"
     )
 
@@ -1330,7 +1356,7 @@ def _market_card(
         dots.append(_pdot(prob, cls))
     dots.append(_pdot(market.get("market_prob"), ccls))
     return (
-        f'<article class="lcard"><p class="lcard-head">'
+        f'<article class="lcard"><p class="lcard-head mkc-head">'
         f'<span class="lno">{index}</span>{title}</p>'
         f'<p class="mkc-meta">Closes {_fmt_day(market.get("end_date"))}</p>'
         f'<p class="mkc-chips">{"".join(chips)}</p>'
