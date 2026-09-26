@@ -789,11 +789,10 @@ def _fmt_stamp(ts: Any) -> str:
     parsed = _parse_ts(ts)
     if parsed is None:
         return _esc(ts)
-    stamp = parsed.astimezone(timezone.utc)
     return (
         f'<time datetime="{escape(str(ts), quote=True)}">'
-        f"{_MONTHS[stamp.month - 1]} {stamp.day}, "
-        f"{stamp:%H:%M} UTC</time>"
+        f"{_MONTHS[parsed.month - 1]} {parsed.day}, "
+        f"{parsed:%H:%M} UTC</time>"
     )
 
 
@@ -807,7 +806,11 @@ def _fmt_outcome(outcome: Any) -> str:
 
 
 def _parse_ts(ts: Any) -> datetime | None:
-    """Parse an ISO timestamp (naive values treated as UTC)."""
+    """Parse an ISO timestamp to UTC (naive values treated as UTC).
+
+    ``None`` also when the offset conversion itself overflows the
+    datetime range (e.g. ``0001-01-01T00:00:00+14:00``).
+    """
     if not isinstance(ts, str) or not ts:
         return None
     try:
@@ -816,7 +819,11 @@ def _parse_ts(ts: Any) -> datetime | None:
         return None
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed
+        return parsed
+    try:
+        return parsed.astimezone(timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        return None
 
 
 def _first_end(board: dict) -> datetime | None:
@@ -951,9 +958,15 @@ def _clean_rationale(rationale: Any, info: dict) -> str | None:
     return text
 
 
+def _clamp_prob(value: Any) -> float | None:
+    """A probability clamped into [0, 1]; ``None`` when not numeric."""
+    number = _num(value)
+    return None if number is None else min(max(number, 0.0), 1.0)
+
+
 def _gap_text(label: str, prob: Any, market_prob: Any) -> str:
     """Signed AI-minus-crowd gap in points, labelled with the entrant."""
-    ai, crowd = _num(prob), _num(market_prob)
+    ai, crowd = _clamp_prob(prob), _clamp_prob(market_prob)
     gap = (
         _EM_DASH
         if ai is None or crowd is None
@@ -964,7 +977,8 @@ def _gap_text(label: str, prob: Any, market_prob: Any) -> str:
 
 def _duel_gap(d: dict) -> float:
     """Absolute AI-vs-crowd gap for ordering; -1 when uncomputable."""
-    ai, crowd = _num(d.get("prob")), _num(d.get("market_prob"))
+    ai = _clamp_prob(d.get("prob"))
+    crowd = _clamp_prob(d.get("market_prob"))
     if ai is not None and crowd is not None:
         return abs(ai - crowd)
     gap = _num(d.get("gap"))
@@ -1388,10 +1402,17 @@ _MAX_DUEL_CARDS = 6
 
 
 def _duel_key(d: dict, fallback: int) -> Hashable:
-    """Grouping key for a duel row: market slug, else question."""
-    for key in (d.get("slug"), d.get("question")):
-        if isinstance(key, Hashable) and key:
-            return key
+    """Grouping key for a duel row: market slug, else question.
+
+    Keys are namespaced so a slug can never merge with a question
+    fallback that happens to carry the same text.
+    """
+    slug = d.get("slug")
+    if isinstance(slug, Hashable) and slug:
+        return ("slug", slug)
+    question = d.get("question")
+    if isinstance(question, Hashable) and question:
+        return ("q", question)
     return ("__row__", fallback)
 
 
@@ -1454,10 +1475,14 @@ def _duel_card(rows: list[dict], entrants: dict[str, dict], order: dict) -> str:
     meta = (
         f'<p class="duel-meta">{chip}<span>{who}</span>{resolved}</p>'
     )
+    # Clamp probabilities into [0, 1] so the text agrees with the dot
+    # positions and a bad value can't print a nonsense gap or percent.
+    probs = [_clamp_prob(d.get("prob")) for d in rows]
+    crowd_prob = _clamp_prob(head.get("market_prob"))
     dots = "".join(
-        _pdot(d.get("prob"), _eid_cls(order, d.get("entrant")))
-        for d in rows
-    ) + _pdot(head.get("market_prob"), ccls)
+        _pdot(prob, _eid_cls(order, d.get("entrant")))
+        for d, prob in zip(rows, probs)
+    ) + _pdot(crowd_prob, ccls)
     track = (
         f'<div class="track" aria-hidden="true">{dots}</div>'
         '<div class="ticks" aria-hidden="true"><span>0%</span>'
@@ -1467,11 +1492,11 @@ def _duel_card(rows: list[dict], entrants: dict[str, dict], order: dict) -> str:
     legs = "".join(
         f'<span class="{_klass("leg", _eid_cls(order, d.get("entrant")))}">'
         f'{_kdot()}{_short_label(entrants, d.get("entrant"))} '
-        f'{_fmt_prob(d.get("prob"))}</span>'
-        for d in rows
+        f'{_fmt_prob(prob)}</span>'
+        for d, prob in zip(rows, probs)
     ) + (
         f'<span class="{_klass("leg", ccls)}">{_kdot()}Crowd '
-        f'{_fmt_prob(head.get("market_prob"))}</span>'
+        f'{_fmt_prob(crowd_prob)}</span>'
     )
     legend = f'<div class="dlegend">{legs}</div>'
     gap_cls = {"won": "gap-won", "lost": "gap-lost"}.get(status, "gap-open")
