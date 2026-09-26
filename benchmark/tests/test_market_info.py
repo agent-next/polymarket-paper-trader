@@ -130,6 +130,22 @@ class TestListMarkets:
         assert req.url.params["closed"] == "false"
         assert req.url.params["ascending"] == "false"
         assert req.url.params["limit"] == "50"
+        assert "end_date_min" not in req.url.params
+
+    @respx.mock
+    def test_server_side_filters(self):
+        respx.get(f"{GAMMA_BASE}/markets").mock(
+            return_value=httpx.Response(200, json=[SAMPLE_API_RESPONSE])
+        )
+        list_markets(
+            end_date_min="2026-09-27T12:00:00Z",
+            end_date_max="2026-10-10T12:00:00Z",
+            liquidity_min=10000.0,
+        )
+        params = respx.calls.last.request.url.params
+        assert params["end_date_min"] == "2026-09-27T12:00:00Z"
+        assert params["end_date_max"] == "2026-10-10T12:00:00Z"
+        assert params["liquidity_num_min"] == "10000.0"
 
     @respx.mock
     def test_dict_envelope(self):

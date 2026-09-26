@@ -230,6 +230,7 @@ def _list_candidate_markets(
     *,
     page_size: int = FETCH_LIMIT,
     max_pages: int = MAX_PAGES,
+    now: datetime | None = None,
     http_client: httpx.Client | None = None,
 ) -> list[MarketInfo]:
     """Fetch candidate markets with bounded offset paging (v1.2).
@@ -240,12 +241,16 @@ def _list_candidate_markets(
     deduping by slug — offset paging can overlap when ordering shifts
     mid-scan.
     """
+    now = now or _utc_now()
     seen: set[str] = set()
     markets: list[MarketInfo] = []
     for page in range(max_pages):
         batch = list_markets(
             limit=page_size,
             offset=page * page_size,
+            end_date_min=_iso(now + timedelta(days=MIN_DAYS)),
+            end_date_max=_iso(now + timedelta(days=MAX_DAYS)),
+            liquidity_min=MIN_LIQUIDITY,
             http_client=http_client,
         )
         for m in batch:
@@ -590,7 +595,8 @@ def run_predict(
     }
 
     markets = _list_candidate_markets(
-        page_size=fetch_limit, max_pages=max_pages, http_client=http_client
+        page_size=fetch_limit, max_pages=max_pages, now=now,
+        http_client=http_client,
     )
     selected = select_markets(markets, taken_slugs, now=now, top_n=top_n)
 
