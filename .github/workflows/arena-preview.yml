@@ -8,6 +8,7 @@ on:
   pull_request:
     paths:
       - "benchmark/pm_benchmark/arena*.py"
+      - "benchmark/pm_benchmark/arena_static/**"
       - ".github/workflows/arena-preview.yml"
 
 permissions:
