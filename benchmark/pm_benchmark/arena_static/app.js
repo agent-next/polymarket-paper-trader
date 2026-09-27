@@ -3,7 +3,8 @@
  * Progressive enhancement over the fully server-rendered page:
  *   1. WebGL globe hero (three.js; the bare specifier "three" resolves via
  *      the page's import map, whose "integrity" field — plus the
- *      modulepreload link's integrity attribute — enforces the pin's SRI).
+ *      modulepreload links' integrity attributes — enforces the pin's SRI
+ *      on both three.module.js and its ./three.core.js import).
  *   2. D3 scatter "AI vs the crowd" replacing the static SVG fallback.
  *   3. D3 leaderboard charts (alpha forest plot + calibration).
  * Every step is optional: any failure leaves the static markup untouched.
@@ -210,7 +211,7 @@ async function initGlobe(board, meta) {
   const css = getComputedStyle(document.documentElement);
   const theme = () => ({
     accent: new THREE.Color(css.getPropertyValue("--accent").trim() || "#6ea8fe"),
-    muted: new THREE.Color(css.getPropertyValue("--muted").trim() || "#93a0b0"),
+    fg: new THREE.Color(css.getPropertyValue("--fg").trim() || "#e8edf4"),
   });
 
   const scene = new THREE.Scene();
@@ -222,56 +223,82 @@ async function initGlobe(board, meta) {
 
   const disc = makeDiscTexture(THREE);
 
-  // base dot sphere: ~4200 points shaded toward a light at upper left
-  const N = 4200;
+  // dot sphere: a fibonacci shell drawn as small hard-edged points. The
+  // shader fades alpha and size with view depth, so the far hemisphere
+  // dims instead of filling the disc — normal blending, capped alpha,
+  // and no interior fill, so the globe stays a transparent point shell.
+  const N = 2800;
   const pos = fibSphere(N, new Float32Array(N * 3));
-  const colAttr = new THREE.BufferAttribute(new Float32Array(N * 3), 3);
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-  geo.setAttribute("color", colAttr);
-  const dotMat = new THREE.PointsMaterial({
-    size: 0.024,
-    map: disc,
-    vertexColors: true,
+  const dotMat = new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
-    alphaTest: 0.02,
+    uniforms: {
+      uColor: { value: new THREE.Color("#93a0b0") },
+      uPx: { value: 3 },
+      uDist: { value: camera.position.z },
+    },
+    vertexShader: [
+      "uniform float uPx;",
+      "uniform float uDist;",
+      "varying float vFace;",
+      "void main() {",
+      "  vec4 mv = modelViewMatrix * vec4(position, 1.0);",
+      "  // 1 at the point nearest the camera, 0 on the far hemisphere",
+      "  vFace = clamp((uDist + 1.0 + mv.z) * 0.5, 0.0, 1.0);",
+      "  gl_PointSize = uPx * (uDist / -mv.z);",
+      "  gl_Position = projectionMatrix * mv;",
+      "}",
+    ].join("\n"),
+    fragmentShader: [
+      "uniform vec3 uColor;",
+      "varying float vFace;",
+      "void main() {",
+      "  float d = length(gl_PointCoord - vec2(0.5));",
+      "  float edge = smoothstep(0.5, 0.42, d);",
+      "  if (edge <= 0.0) discard;",
+      "  float f = vFace * vFace * (3.0 - 2.0 * vFace);",
+      "  gl_FragColor = vec4(uColor, edge * mix(0.12, 0.9, f));",
+      "}",
+    ].join("\n"),
   });
   const dots = new THREE.Points(geo, dotMat);
   globe.add(dots);
 
-  // soft fresnel halo hugging the sphere
-  const atmMat = new THREE.ShaderMaterial({
+  // thin fresnel rim hugging the silhouette — the exponent keeps it to a
+  // narrow band and the capped alpha/normal blending means it can only
+  // glow at the edge, never fill the ball
+  const rimMat = new THREE.ShaderMaterial({
     transparent: true,
-    side: THREE.BackSide,
-    blending: THREE.AdditiveBlending,
     depthWrite: false,
     uniforms: {
       uColor: { value: new THREE.Color("#6ea8fe") },
-      uStrength: { value: 0.5 },
+      uStrength: { value: 0.4 },
     },
     vertexShader: [
       "varying vec3 vN;",
+      "varying vec3 vV;",
       "void main() {",
       "  vN = normalize(normalMatrix * normal);",
-      "  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);",
+      "  vec4 mv = modelViewMatrix * vec4(position, 1.0);",
+      "  vV = -mv.xyz;",
+      "  gl_Position = projectionMatrix * mv;",
       "}",
     ].join("\n"),
     fragmentShader: [
       "varying vec3 vN;",
+      "varying vec3 vV;",
       "uniform vec3 uColor;",
       "uniform float uStrength;",
       "void main() {",
-      "  float i = pow(clamp(0.72 - dot(vN, vec3(0.0, 0.0, 1.0)), 0.0, 1.4), 2.4) * uStrength;",
-      "  gl_FragColor = vec4(uColor * i, i);",
+      "  float rim = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 3.5);",
+      "  gl_FragColor = vec4(uColor, rim * uStrength);",
       "}",
     ].join("\n"),
   });
-  const atmosphere = new THREE.Mesh(
-    new THREE.SphereGeometry(1.24, 48, 48),
-    atmMat
-  );
-  scene.add(atmosphere);
+  const rim = new THREE.Mesh(new THREE.SphereGeometry(1.03, 48, 48), rimMat);
+  globe.add(rim);
 
   // one looping pulse per open AI forecast, in the entrant's color
   const pulseEids = openForecastEntrants(board, meta);
@@ -282,33 +309,24 @@ async function initGlobe(board, meta) {
       transparent: true,
       opacity: 0,
       depthWrite: false,
-      blending: THREE.AdditiveBlending,
     });
     const s = new THREE.Sprite(mat);
     const v = fibDir(i, Math.max(1, pulseEids.length));
-    s.position.set(v[0] * 1.02, v[1] * 1.02, v[2] * 1.02);
+    s.position.set(v[0] * 1.03, v[1] * 1.03, v[2] * 1.03);
     s.userData.phase = pulseEids.length ? i / pulseEids.length : 0;
     globe.add(s);
     return s;
   });
 
-  function paintPoints() {
+  function paint() {
     const t = theme();
-    const light = new THREE.Vector3(-0.55, 0.75, 0.55).normalize();
-    const dark = t.muted.clone().multiplyScalar(darkScheme.matches ? 0.4 : 0.3);
-    for (let i = 0; i < N; i += 1) {
-      const lit = Math.max(
-        0,
-        pos[i * 3] * light.x + pos[i * 3 + 1] * light.y + pos[i * 3 + 2] * light.z
-      );
-      const c = dark.clone().lerp(t.accent, 0.15 + 0.85 * lit);
-      colAttr.setXYZ(i, c.r, c.g, c.b);
-    }
-    colAttr.needsUpdate = true;
-    atmMat.uniforms.uColor.value.copy(t.accent);
+    // ink-leaning dots: pale slate on dark, dark ink on light theme
+    dotMat.uniforms.uColor.value.copy(t.fg).lerp(t.accent, 0.35);
+    rimMat.uniforms.uColor.value.copy(t.accent);
+    rimMat.uniforms.uStrength.value = darkScheme.matches ? 0.4 : 0.28;
   }
 
-  paintPoints();
+  paint();
 
   // swap the static SVG for the canvas in the same reserved box; keep the
   // detached nodes so a bfcache restore (after pagehide dispose) can put
@@ -322,6 +340,8 @@ async function initGlobe(board, meta) {
     if (!w || !h) return;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(w, h, false);
+    // gl_PointSize is in device px — scale the base dot with the DPR
+    dotMat.uniforms.uPx.value = 2.3 * renderer.getPixelRatio();
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.render(scene, camera);
@@ -339,9 +359,9 @@ async function initGlobe(board, meta) {
     const t = clock.elapsedTime;
     globe.rotation.y += dt * 0.12;
     for (const s of pulses) {
-      const k = (t * 0.45 + s.userData.phase) % 1;
-      s.material.opacity = Math.sin(Math.PI * k) * 0.85;
-      const g = 0.05 + 0.2 * k;
+      const k = (t * 0.4 + s.userData.phase) % 1;
+      s.material.opacity = Math.sin(Math.PI * k) * 0.55;
+      const g = 0.04 + 0.11 * k;
       s.scale.set(g, g, 1);
     }
     renderer.render(scene, camera);
@@ -377,7 +397,7 @@ async function initGlobe(board, meta) {
   };
   const onScheme = () => {
     meta.refreshColors();
-    paintPoints();
+    paint();
     pulses.forEach((s, i) => {
       const c = meta.color.get(pulseEids[i]);
       if (c) s.material.color.set(c);
@@ -400,8 +420,8 @@ async function initGlobe(board, meta) {
     darkScheme.removeEventListener("change", onScheme);
     geo.dispose();
     dotMat.dispose();
-    atmosphere.geometry.dispose();
-    atmMat.dispose();
+    rim.geometry.dispose();
+    rimMat.dispose();
     for (const s of pulses) s.material.dispose();
     disc.dispose();
     renderer.dispose();
