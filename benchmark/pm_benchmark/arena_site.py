@@ -647,7 +647,7 @@ td.q a:hover { color: var(--accent); }
 #versus-viz .viz-plot svg { margin: 0 auto; max-width: 620px; }
 .viz-frame { fill: none; stroke: var(--border); }
 .viz-grid { opacity: 0.55; stroke: var(--border); }
-.viz-zone { opacity: 0.07; }
+.viz-zone { opacity: 0.13; }
 .viz-zone.up { fill: var(--accent); }
 .viz-zone.down { fill: var(--muted); }
 .viz-diag {
@@ -828,7 +828,7 @@ td.q a:hover { color: var(--accent); }
   .hero { grid-template-columns: 1fr; }
   /* the globe drops above the headline, shrunk to a marker size */
   .hero-art { justify-content: center; order: -1; }
-  .hero-art svg, .hero-art canvas { height: 112px; width: 112px; }
+  .hero-art svg, .hero-art canvas { height: 150px; width: 150px; }
 }
 @media (max-width: 760px) {
   .perf-grid { grid-template-columns: 1fr; }
