@@ -1899,9 +1899,9 @@ class TestInteractiveLayer:
         assert csp == (
             "default-src 'none'; "
             "script-src 'self' https://cdn.jsdelivr.net "
-            f"https://static.cloudflareinsights.com 'sha384-{digest}'; "
+            f"https://static.cloudflareinsights.com/beacon.min.js/ 'sha384-{digest}'; "
             "style-src 'unsafe-inline'; img-src data:; "
-            "connect-src https://cloudflareinsights.com"
+            "connect-src 'self'"
         )
 
     def test_sri_attributes_match_pinned_urls(self) -> None:
