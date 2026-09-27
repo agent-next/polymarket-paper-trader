@@ -55,7 +55,7 @@ jobs:
           path: site
       - name: Allow only the static page files
         run: |
-          extra=$(find site -mindepth 1 ! -name index.html ! -name data.json ! -name CNAME)
+          extra=$(find site -mindepth 1 ! -name index.html ! -name data.json ! -name CNAME ! -name app.js)
           if [ -n "$extra" ]; then echo "::error::unexpected files in site/: $extra"; exit 1; fi
       - name: Deploy preview
         id: deploy
