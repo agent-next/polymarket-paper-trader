@@ -40,16 +40,26 @@ META_DESCRIPTION = (
 REPO_URL = "https://github.com/agent-next/polymarket-paper-trader"
 ARENA_DOCS_URL = f"{REPO_URL}/blob/main/benchmark/README.md#forecast-arena"
 DATA_BRANCH = "arena-data"
-# Pinned CDN assets, exact versions with SRI. three.js is an ES module; the
-# bare specifier "three" resolves through the inline import map below, and
-# its integrity is enforced by the map's "integrity" field (browsers that
-# support it) plus the <link rel="modulepreload"> carrying the same hash.
-# d3 ships a classic UMD build, so a plain <script> tag with integrity works.
+# Pinned CDN assets, exact versions with SRI. three.js ships no official
+# minified build — the jsDelivr .min.js variant is CDN-generated and
+# imports ./three.core.js, which would load unverified. We pin the
+# verbatim npm pair: three.module.js (the "three" specifier, resolved
+# through the inline import map) and three.core.js (fetched as a relative
+# import inside it). Both URLs go in the map's "integrity" field and get
+# their own <link rel="modulepreload"> carrying the same hash, so every
+# module URL the browser can fetch is integrity-checked. d3 ships a
+# classic UMD build, so a plain <script> tag with integrity works.
 THREE_URL = (
-    "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.min.js"
+    "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js"
 )
 THREE_INTEGRITY = (
-    "sha384-EU5UWigB3OuXjAXooUegndJSqYber3YSJHDoMZs6rV96yY/ol/B4W8logw4CKWkA"
+    "sha384-m8JoFX52V6NGv2usipnlLJKnJfL7IE8dbniPDDCSGSQv3Hm4n6PjfV6syVwfuoRc"
+)
+THREE_CORE_URL = (
+    "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.core.js"
+)
+THREE_CORE_INTEGRITY = (
+    "sha384-mdKeCwPEcbDvzaxwhm+MVuLoMou+E7jQqrs4tmu/n8HBYPGI1kZt0MkJxlMR4zFM"
 )
 D3_URL = "https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"
 D3_INTEGRITY = (
@@ -58,7 +68,8 @@ D3_INTEGRITY = (
 _IMPORTMAP = (
     '{"imports":{"three":' + json.dumps(THREE_URL) + "},"
     '"integrity":{' + json.dumps(THREE_URL) + ":"
-    + json.dumps(THREE_INTEGRITY) + "}}"
+    + json.dumps(THREE_INTEGRITY) + "," + json.dumps(THREE_CORE_URL)
+    + ":" + json.dumps(THREE_CORE_INTEGRITY) + "}}"
 )
 # Inline import maps are subject to script-src; a hash source whitelists
 # exactly this map without opening 'unsafe-inline'.
@@ -2123,6 +2134,11 @@ def render_site(board: dict) -> str:
             (
                 f'<link rel="modulepreload" href="{THREE_URL}" '
                 f'integrity="{THREE_INTEGRITY}" crossorigin="anonymous">'
+            ),
+            (
+                f'<link rel="modulepreload" href="{THREE_CORE_URL}" '
+                f'integrity="{THREE_CORE_INTEGRITY}" '
+                'crossorigin="anonymous">'
             ),
             (
                 f'<script defer src="{D3_URL}" '
