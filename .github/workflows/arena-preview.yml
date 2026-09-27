@@ -47,6 +47,8 @@ jobs:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      pull-requests: write
     env:
       HAS_CF: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
     steps:
@@ -72,3 +74,22 @@ jobs:
           URL: ${{ steps.deploy.outputs.deployment-url }}
         run: |
           echo "Preview: ${URL:-not deployed (no CLOUDFLARE_API_TOKEN secret)}" >> "$GITHUB_STEP_SUMMARY"
+      - name: Comment the preview link on the PR
+        if: steps.deploy.outputs.deployment-url != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          URL: ${{ steps.deploy.outputs.deployment-url }}
+        run: |
+          marker='<!-- arena-preview -->'
+          body="$marker
+          **Arena preview:** https://pr-${PR}.forecast-arena.pages.dev (this commit: $URL, \`${SHA:0:7}\`)"
+          id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id" | head -1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$id" -f body="$body" > /dev/null
+          else
+            gh api "repos/$REPO/issues/$PR/comments" -f body="$body" > /dev/null
+          fi
