@@ -8,9 +8,13 @@ import re
 
 import pytest
 
+from urllib.parse import urljoin
+
 from pm_benchmark.arena_site import (
     D3_INTEGRITY,
     D3_URL,
+    THREE_CORE_INTEGRITY,
+    THREE_CORE_URL,
     THREE_INTEGRITY,
     THREE_URL,
     _fmt_ci,
@@ -271,15 +275,17 @@ class TestDocument:
         html = render_site(sample_board())
         for tag in ("<img", "@import", "font-face", "<iframe"):
             assert tag not in html
-        # link tags: the inline data: favicon and the three.js preload
-        assert html.count("<link") == 2
+        # link tags: the inline data: favicon and the two three.js
+        # module preloads (three.module.js + its ./three.core.js import)
+        assert html.count("<link") == 3
         assert '<link rel="icon" href="data:' in html
-        # the only external fetch targets are the two pinned CDN files
+        # the only external fetch targets are the pinned CDN files
         # (anchors link out but fetch nothing)
         fetched = re.findall(r'<link[^>]+href="(https://[^"]+)"', html)
         fetched += re.findall(r'<script[^>]+src="(https://[^"]+)"', html)
-        assert set(fetched) == {THREE_URL, D3_URL}
+        assert set(fetched) == {THREE_URL, THREE_CORE_URL, D3_URL}
         assert "cdn.jsdelivr.net/npm/three@0.186.1/" in THREE_URL
+        assert "cdn.jsdelivr.net/npm/three@0.186.1/" in THREE_CORE_URL
         assert "cdn.jsdelivr.net/npm/d3@7.9.0/" in D3_URL
 
     def test_wide_content_column(self) -> None:
@@ -1898,25 +1904,64 @@ class TestInteractiveLayer:
 
     def test_sri_attributes_match_pinned_urls(self) -> None:
         html = render_site(sample_board())
-        # three.js: modulepreload carries the integrity hash, and the
-        # import map repeats it in its "integrity" field
-        preload = re.search(r'<link rel="modulepreload"[^>]*>', html).group(0)
-        assert f'href="{THREE_URL}"' in preload
-        assert f'integrity="{THREE_INTEGRITY}"' in preload
-        assert 'crossorigin="anonymous"' in preload
+        # three.js is a two-file module — three.module.js imports
+        # ./three.core.js — so each file gets a modulepreload carrying
+        # its integrity hash, and the import map repeats both hashes in
+        # its "integrity" field
+        preloads = re.findall(r'<link rel="modulepreload"[^>]*>', html)
+        assert len(preloads) == 2
+        for url, integrity in (
+            (THREE_URL, THREE_INTEGRITY),
+            (THREE_CORE_URL, THREE_CORE_INTEGRITY),
+        ):
+            tag = next(p for p in preloads if f'href="{url}"' in p)
+            assert f'integrity="{integrity}"' in tag
+            assert 'crossorigin="anonymous"' in tag
+            assert integrity.startswith("sha384-")
         importmap = re.search(
             r'<script type="importmap">(.*?)</script>', html, re.S
         ).group(1)
         spec = json.loads(importmap)
         assert spec["imports"]["three"] == THREE_URL
-        assert spec["integrity"][THREE_URL] == THREE_INTEGRITY
-        assert THREE_INTEGRITY.startswith("sha384-")
+        assert spec["integrity"] == {
+            THREE_URL: THREE_INTEGRITY,
+            THREE_CORE_URL: THREE_CORE_INTEGRITY,
+        }
         # d3: classic script tag with SRI
         d3tag = re.search(r"<script defer[^>]*>", html).group(0)
         assert f'src="{D3_URL}"' in d3tag
         assert f'integrity="{D3_INTEGRITY}"' in d3tag
         assert 'crossorigin="anonymous"' in d3tag
         assert D3_INTEGRITY.startswith("sha384-")
+
+    def test_every_fetchable_module_url_has_integrity(self) -> None:
+        html = render_site(sample_board())
+        importmap = re.search(
+            r'<script type="importmap">(.*?)</script>', html, re.S
+        ).group(1)
+        covered = set(json.loads(importmap)["integrity"])
+        # the pinned entry point itself is covered...
+        assert THREE_URL in covered
+        # ...and so is every module URL reachable through it. The real
+        # three.module.js@0.186.1's only relative specifier is
+        # './three.core.js'; this code-generated fixture mirrors that
+        # shape so relative-specifier resolution is exercised, not just
+        # a hardcoded pair.
+        fixture = "\n".join(
+            [
+                "import { Color } from './three.core.js';",
+                "export { Scene } from './three.core.js';",
+                "const lazy = import('./three.core.js');",
+            ]
+        )
+        specifiers = set(re.findall(r"['\"](\.[^'\"]+)['\"]", fixture))
+        assert specifiers == {"./three.core.js"}
+        for specifier in specifiers:
+            resolved = urljoin(THREE_URL, specifier)
+            assert resolved in covered
+        # and the coverage is exact — nothing fetchable is left out and
+        # nothing extra is pinned
+        assert covered == {THREE_URL, THREE_CORE_URL}
 
     def test_app_js_loaded_as_module(self) -> None:
         html = render_site(sample_board())
