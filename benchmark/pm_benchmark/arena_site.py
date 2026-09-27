@@ -647,18 +647,20 @@ td.q a:hover { color: var(--accent); }
 #versus-viz .viz-plot svg { margin: 0 auto; max-width: 620px; }
 .viz-frame { fill: none; stroke: var(--border); }
 .viz-grid { opacity: 0.55; stroke: var(--border); }
+.viz-zone { opacity: 0.07; }
+.viz-zone.up { fill: var(--accent); }
+.viz-zone.down { fill: var(--muted); }
 .viz-diag {
-  opacity: 0.7;
   stroke: var(--muted);
-  stroke-dasharray: 5 5;
+  stroke-dasharray: 6 4;
+  stroke-width: 1.5px;
 }
 .viz-axis .domain, .viz-axis .tick line { stroke: var(--border); }
 .viz-axis text, .viz-tick { fill: var(--muted); font-size: 0.75rem; }
 .viz-band {
   fill: var(--muted);
-  font-size: 0.75rem;
-  font-weight: 600;
-  opacity: 0.75;
+  font-size: 0.8rem;
+  font-weight: 700;
 }
 .viz .vdot {
   fill: var(--ec, var(--muted));
