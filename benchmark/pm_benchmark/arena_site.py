@@ -81,10 +81,14 @@ _IMPORTMAP_SRI = (
 )
 # Scripts: app.js (self), the two pinned CDN files, and the hashed import
 # map. The #board-data block is a JSON data island, not executable script.
+# Cloudflare injects its Web Analytics beacon on the zone; it loads from
+# static.cloudflareinsights.com and reports to cloudflareinsights.com.
 CSP = (
     "default-src 'none'; "
-    f"script-src 'self' https://cdn.jsdelivr.net '{_IMPORTMAP_SRI}'; "
-    "style-src 'unsafe-inline'; img-src data:; connect-src 'none'"
+    "script-src 'self' https://cdn.jsdelivr.net "
+    f"https://static.cloudflareinsights.com '{_IMPORTMAP_SRI}'; "
+    "style-src 'unsafe-inline'; img-src data:; "
+    "connect-src https://cloudflareinsights.com"
 )
 
 _EM_DASH = "—"

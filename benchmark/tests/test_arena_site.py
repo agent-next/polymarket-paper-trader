@@ -1888,8 +1888,8 @@ class TestInteractiveLayer:
         csp = re.search(
             r'Content-Security-Policy" content="([^"]+)"', html
         ).group(1)
-        # the only adjustment to the fixed policy is a sha384 source
-        # whitelisting the inline import map
+        # adjustments to the fixed policy: a sha384 source whitelisting the
+        # inline import map, and Cloudflare's Web Analytics beacon
         importmap = re.search(
             r'<script type="importmap">(.*?)</script>', html, re.S
         ).group(1)
@@ -1898,8 +1898,10 @@ class TestInteractiveLayer:
         ).decode()
         assert csp == (
             "default-src 'none'; "
-            f"script-src 'self' https://cdn.jsdelivr.net 'sha384-{digest}'; "
-            "style-src 'unsafe-inline'; img-src data:; connect-src 'none'"
+            "script-src 'self' https://cdn.jsdelivr.net "
+            f"https://static.cloudflareinsights.com 'sha384-{digest}'; "
+            "style-src 'unsafe-inline'; img-src data:; "
+            "connect-src https://cloudflareinsights.com"
         )
 
     def test_sri_attributes_match_pinned_urls(self) -> None:
