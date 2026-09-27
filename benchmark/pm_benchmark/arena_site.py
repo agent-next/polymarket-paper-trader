@@ -1,11 +1,16 @@
 """Render the Forecast Arena board as a self-contained static HTML page.
 
 `render_site(board)` consumes the `board` dict produced by the arena pipeline
-(see CONTRACT-board.md) and returns one HTML document: inline CSS only, no
-JavaScript, no external assets, light and dark color schemes.
+(see CONTRACT-board.md) and returns one HTML document: inline CSS, a static
+markup fallback for every visual, and a progressive-enhancement layer —
+``app.js`` plus pinned CDN builds of three.js and D3 — that upgrades the
+hero, the AI-vs-crowd scatter and the leaderboard when JavaScript is on.
 """
 from __future__ import annotations
 
+import base64
+import hashlib
+import json
 import math
 import re
 from collections.abc import Hashable
@@ -35,10 +40,40 @@ META_DESCRIPTION = (
 REPO_URL = "https://github.com/agent-next/polymarket-paper-trader"
 ARENA_DOCS_URL = f"{REPO_URL}/blob/main/benchmark/README.md#forecast-arena"
 DATA_BRANCH = "arena-data"
-# No JavaScript on this page at all: style/img are the only allowed sources.
+# Pinned CDN assets, exact versions with SRI. three.js is an ES module; the
+# bare specifier "three" resolves through the inline import map below, and
+# its integrity is enforced by the map's "integrity" field (browsers that
+# support it) plus the <link rel="modulepreload"> carrying the same hash.
+# d3 ships a classic UMD build, so a plain <script> tag with integrity works.
+THREE_URL = (
+    "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.min.js"
+)
+THREE_INTEGRITY = (
+    "sha384-EU5UWigB3OuXjAXooUegndJSqYber3YSJHDoMZs6rV96yY/ol/B4W8logw4CKWkA"
+)
+D3_URL = "https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"
+D3_INTEGRITY = (
+    "sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i"
+)
+_IMPORTMAP = (
+    '{"imports":{"three":' + json.dumps(THREE_URL) + "},"
+    '"integrity":{' + json.dumps(THREE_URL) + ":"
+    + json.dumps(THREE_INTEGRITY) + "}}"
+)
+# Inline import maps are subject to script-src; a hash source whitelists
+# exactly this map without opening 'unsafe-inline'.
+_IMPORTMAP_SRI = (
+    "sha384-"
+    + base64.b64encode(
+        hashlib.sha384(_IMPORTMAP.encode()).digest()
+    ).decode()
+)
+# Scripts: app.js (self), the two pinned CDN files, and the hashed import
+# map. The #board-data block is a JSON data island, not executable script.
 CSP = (
-    "default-src 'none'; style-src 'unsafe-inline'; "
-    "img-src data:; script-src 'none'"
+    "default-src 'none'; "
+    f"script-src 'self' https://cdn.jsdelivr.net '{_IMPORTMAP_SRI}'; "
+    "style-src 'unsafe-inline'; img-src data:; connect-src 'none'"
 )
 
 _EM_DASH = "—"
@@ -592,6 +627,130 @@ td.q a:hover { color: var(--accent); }
   padding: 14px 16px;
 }
 
+/* interactive layer (app.js): the WebGL canvas and the D3 charts replace
+   the static fallback markup in place — same boxes, no layout shift */
+.hero-art canvas { display: block; height: 320px; width: 320px; }
+.viz { margin-top: 4px; position: relative; }
+.viz svg { display: block; height: auto; width: 100%; }
+.viz-fb { margin: 0 auto; max-width: 560px; }
+#versus-viz .viz-plot svg { margin: 0 auto; max-width: 620px; }
+.viz-frame { fill: none; stroke: var(--border); }
+.viz-grid { opacity: 0.55; stroke: var(--border); }
+.viz-diag {
+  opacity: 0.7;
+  stroke: var(--muted);
+  stroke-dasharray: 5 5;
+}
+.viz-axis .domain, .viz-axis .tick line { stroke: var(--border); }
+.viz-axis text, .viz-tick { fill: var(--muted); font-size: 0.75rem; }
+.viz-band {
+  fill: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  opacity: 0.75;
+}
+.viz .vdot {
+  fill: var(--ec, var(--muted));
+  opacity: 0.9;
+  stroke: var(--card);
+  stroke-width: 1.5px;
+}
+.viz .vstroke { stroke: var(--ec, var(--muted)); }
+.viz .vfill { fill: var(--ec, var(--muted)); }
+.viz .vdot:focus {
+  outline: none;
+  stroke: var(--fg);
+  stroke-width: 2.5px;
+}
+.viz-tip {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgb(2 8 23 / 0.25);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  max-width: 270px;
+  padding: 10px 12px;
+  pointer-events: none;
+  position: absolute;
+  z-index: 6;
+}
+.viz-tip .t-q { font-weight: 700; margin: 0 0 6px; }
+.viz-tip .t-row {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  margin: 2px 0;
+}
+.viz-tip .t-row > span { color: var(--muted); }
+.viz-tip .t-row b { font-variant-numeric: tabular-nums; }
+.viz-tip .t-gap { font-weight: 800; margin: 6px 0 0; }
+.viz-tip .t-why {
+  border-left: 3px solid var(--ec, var(--border));
+  color: var(--muted);
+  margin: 8px 0 0;
+  padding-left: 9px;
+}
+.viz-tip .t-link { display: inline-block; font-weight: 600; margin-top: 6px; }
+.viz-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 12px;
+  margin: 10px 0 0;
+}
+.viz-legend button {
+  align-items: center;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--fg);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 0.8rem;
+  gap: 7px;
+  padding: 4px 11px;
+}
+.viz-legend button:hover { border-color: var(--muted); }
+.viz-legend button[aria-pressed="false"] { opacity: 0.35; }
+.viz-fb-legend {
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  gap: 4px 14px;
+  margin: 8px 0 0;
+}
+.viz-note {
+  border-top: 1px dashed var(--border);
+  color: var(--muted);
+  font-size: 0.83rem;
+  margin-top: 14px;
+  padding-top: 12px;
+}
+.viz-empty {
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  margin-top: 14px;
+  padding: 20px 16px 22px;
+  text-align: center;
+}
+.viz-empty p { margin: 0; }
+.viz-empty .viz-empty-t { font-weight: 700; }
+.viz-empty .viz-empty-s {
+  color: var(--muted);
+  font-size: 0.83rem;
+  margin-top: 4px;
+}
+.perf-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: 1fr 1fr;
+  margin-top: 14px;
+}
+.perf-grid h3 { font-size: 0.95rem; margin: 0 0 4px; }
+.perf-sub { color: var(--muted); font-size: 0.78rem; margin: 0 0 8px; }
+.viz-cap { color: var(--muted); font-size: 0.78rem; margin: 8px 0 0; }
+
 /* footer */
 .site-footer {
   background: var(--bg2);
@@ -654,7 +813,10 @@ td.q a:hover { color: var(--accent); }
   .hero { grid-template-columns: 1fr; }
   /* the globe drops above the headline, shrunk to a marker size */
   .hero-art { justify-content: center; order: -1; }
-  .hero-art svg { height: 112px; width: 112px; }
+  .hero-art svg, .hero-art canvas { height: 112px; width: 112px; }
+}
+@media (max-width: 760px) {
+  .perf-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
   .cols3 { grid-template-columns: 1fr; }
@@ -1282,7 +1444,8 @@ def _leaderboard_section(board: dict, entrants: dict[str, dict], order: dict) ->
         if not order:
             return head + (
                 '<p class="empty">First results after markets resolve.</p>'
-                "</section>"
+                + _perf_viz(board, has_rows=False)
+                + "</section>"
             )
         ghosts = "".join(
             _ghost_row(i, entrants, order, eid)
@@ -1295,7 +1458,9 @@ def _leaderboard_section(board: dict, entrants: dict[str, dict], order: dict) ->
         return head + (
             '<div class="panel">' + _lb_table_inner(ghosts)
             + f'<div class="lcards">{cards}</div>'
-            + _lb_empty_panel(board) + "</div></section>"
+            + _lb_empty_panel(board) + "</div>"
+            + _perf_viz(board, has_rows=False)
+            + "</section>"
         )
     body = []
     cards = []
@@ -1327,7 +1492,7 @@ def _leaderboard_section(board: dict, entrants: dict[str, dict], order: dict) ->
     return head + (
         '<div class="panel">' + _lb_table_inner("".join(body))
         + f'<div class="lcards">{"".join(cards)}</div>'
-        + "</div></section>"
+        + "</div>" + _perf_viz(board, has_rows=True) + "</section>"
     )
 
 
@@ -1722,6 +1887,153 @@ def _hall_section(board: dict, entrants: dict[str, dict], order: dict) -> str:
     )
 
 
+def _versus_points(board: dict, entrants: dict[str, dict]) -> list[dict]:
+    """One validated scatter point per AI forecast on an open market."""
+    markets = board.get("open")
+    if not isinstance(markets, list):
+        return []
+    points = []
+    for market in markets:
+        if not isinstance(market, dict):
+            continue
+        crowd = _valid_prob(market.get("market_prob"))
+        if crowd is None:
+            continue
+        forecasts = market.get("forecasts")
+        if not isinstance(forecasts, dict):
+            continue
+        for eid, info in entrants.items():
+            if info.get("kind") != "ai":
+                continue
+            fc = forecasts.get(eid)
+            if not isinstance(fc, dict):
+                continue
+            prob = _valid_prob(fc.get("prob"))
+            if prob is None:
+                continue
+            points.append({"crowd": crowd, "ai": prob, "eid": eid})
+    return points
+
+
+def _versus_fallback(
+    points: list[dict],
+    entrants: dict[str, dict],
+    order: dict,
+) -> str:
+    """Static scatter SVG — what JS-off (and CDN-fail) visitors get."""
+    if not points:
+        return '<p class="empty">No AI forecasts on open markets yet.</p>'
+    size = 560
+    left, right, top, bottom = 46, 16, 16, 36
+    pw, ph = size - left - right, size - top - bottom
+
+    def sx(v: float) -> float:
+        return left + v * pw
+
+    def sy(v: float) -> float:
+        return top + (1 - v) * ph
+
+    parts = [
+        f'<rect class="viz-frame" x="{left}" y="{top}" '
+        f'width="{pw}" height="{ph}"/>'
+    ]
+    for t in (0.25, 0.5, 0.75):
+        parts.append(
+            f'<line class="viz-grid" x1="{sx(t):.1f}" y1="{top}" '
+            f'x2="{sx(t):.1f}" y2="{top + ph}"/>'
+            f'<line class="viz-grid" x1="{left}" y1="{sy(t):.1f}" '
+            f'x2="{left + pw}" y2="{sy(t):.1f}"/>'
+        )
+    parts.append(
+        f'<line class="viz-diag" x1="{sx(0):.1f}" y1="{sy(0):.1f}" '
+        f'x2="{sx(1):.1f}" y2="{sy(1):.1f}"/>'
+        f'<text class="viz-band" x="{left + 10}" y="{top + 18}">'
+        "AI more bullish</text>"
+        f'<text class="viz-band" x="{size - right - 10}" '
+        f'y="{size - bottom - 10}" text-anchor="end">'
+        "AI more bearish</text>"
+    )
+    for t in (0, 0.5, 1):
+        parts.append(
+            f'<text class="viz-tick" x="{sx(t):.1f}" y="{size - 12}" '
+            f'text-anchor="middle">{t:.0%}</text>'
+            f'<text class="viz-tick" x="{left - 8}" y="{sy(t) + 4:.1f}" '
+            f'text-anchor="end">{t:.0%}</text>'
+        )
+    parts.extend(
+        f'<circle class="vdot {_eid_cls(order, p["eid"])}" '
+        f'cx="{sx(p["crowd"]):.1f}" cy="{sy(p["ai"]):.1f}" r="5"/>'
+        for p in points
+    )
+    seen: list = []
+    for p in points:
+        if p["eid"] not in seen:
+            seen.append(p["eid"])
+    legend = "".join(
+        f'<span class="{_klass("leg", _eid_cls(order, eid))}">'
+        f"{_kdot()}{_short_label(entrants, eid)}</span>"
+        for eid in seen
+    )
+    return (
+        f'<svg class="viz-fb" viewBox="0 0 {size} {size}" role="img" '
+        'aria-label="Scatter of AI vs crowd probabilities — one dot per '
+        'AI forecast on an open market">'
+        + "".join(parts)
+        + "</svg>"
+        f'<p class="viz-fb-legend">{legend}</p>'
+    )
+
+
+def _versus_section(board: dict, entrants: dict[str, dict], order: dict) -> str:
+    """The AI-vs-crowd scatter between the duels and the markets table."""
+    return (
+        '<section id="versus"><div class="sec-head">'
+        "<h2>AI vs the crowd</h2>"
+        '<p class="sec-note">One dot per AI forecast on an open market — '
+        "above the diagonal means more bullish than the crowd</p></div>"
+        '<div class="viz" id="versus-viz">'
+        + _versus_fallback(_versus_points(board, entrants), entrants, order)
+        + "</div></section>"
+    )
+
+
+def _perf_viz(board: dict, has_rows: bool) -> str:
+    """Mount point for the D3 alpha/calibration charts, with fallbacks."""
+    if has_rows:
+        inner = (
+            '<p class="viz-note">Alpha and calibration charts draw here '
+            "with JavaScript — the numbers are in the table above.</p>"
+        )
+    else:
+        first = _first_end(board)
+        when = f" First resolution {_fmt_dt(first)}." if first else ""
+        inner = (
+            '<div class="viz-empty"><p class="viz-empty-t">'
+            "Alpha whiskers and calibration land here</p>"
+            '<p class="viz-empty-s">Charts draw once the first markets '
+            f"resolve.{when}</p></div>"
+        )
+    return f'<div class="viz" id="perf-viz">{inner}</div>'
+
+
+def _board_json(board: dict) -> str:
+    """Serialize *board* for the in-page ``#board-data`` JSON island.
+
+    ``<``, ``>`` and ``&`` become ``\\uXXXX`` escapes so a ``</script>``
+    inside a question or rationale cannot break out of the data block;
+    ``json.loads``/``JSON.parse`` undoes them on read. Values JSON can't
+    represent degrade to ``str`` rather than crashing the render.
+    """
+    raw = json.dumps(
+        board, ensure_ascii=False, separators=(",", ":"), default=str
+    )
+    return (
+        raw.replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+    )
+
+
 def _footer(board: dict) -> str:
     bits = []
     generated = board.get("generated_at")
@@ -1791,6 +2103,18 @@ def render_site(board: dict) -> str:
             '<meta property="og:type" content="website">',
             '<meta name="color-scheme" content="light dark">',
             f'<link rel="icon" href="{_FAVICON}">',
+            # import map first: it must register before any module loads
+            f'<script type="importmap">{_IMPORTMAP}</script>',
+            (
+                f'<link rel="modulepreload" href="{THREE_URL}" '
+                f'integrity="{THREE_INTEGRITY}" crossorigin="anonymous">'
+            ),
+            (
+                f'<script defer src="{D3_URL}" '
+                f'integrity="{D3_INTEGRITY}" '
+                'crossorigin="anonymous"></script>'
+            ),
+            '<script type="module" src="app.js"></script>',
             f"<style>{_CSS}{_palette_css(order)}</style>",
             "</head>",
             "<body>",
@@ -1799,6 +2123,7 @@ def render_site(board: dict) -> str:
                 f'<a class="wordmark" href="#top">{SITE_TITLE}</a>'
                 '<nav class="nav" aria-label="Sections">'
                 '<a href="#leaderboard">Leaderboard</a>'
+                '<a href="#versus">AI vs crowd</a>'
                 '<a href="#markets">Markets</a>'
                 '<a href="#method">Method</a>'
                 f'<a href="{REPO_URL}">GitHub</a>'
@@ -1810,10 +2135,15 @@ def render_site(board: dict) -> str:
             _hero(board),
             _leaderboard_section(board, entrants, order),
             _duels_section(board, entrants, order),
+            _versus_section(board, entrants, order),
             _open_section(board, entrants, order),
             _hall_section(board, entrants, order),
             "</main>",
             _footer(board),
+            (
+                '<script type="application/json" id="board-data">'
+                f"{_board_json(board)}</script>"
+            ),
             "</body>",
             "</html>",
         ]
