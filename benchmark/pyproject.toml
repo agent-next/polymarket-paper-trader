@@ -38,6 +38,9 @@ polymarket-benchmark = "pm_benchmark.cli:main"
 [tool.setuptools.packages.find]
 include = ["pm_benchmark*"]
 
+[tool.setuptools.package-data]
+pm_benchmark = ["arena_static/*.js"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["live: tests that require network and live APIs"]
