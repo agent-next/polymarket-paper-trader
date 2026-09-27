@@ -4,10 +4,10 @@
     "freeinference": {
       "npm": "@ai-sdk/openai-compatible",
       "name": "FreeInference",
-      "env": ["FREEINFERENCE_API_KEY"],
+      "env": [],
       "options": {
         "baseURL": "https://freeinference.org/v1",
-        "apiKey": "{env:FREEINFERENCE_API_KEY}"
+        "apiKey": "{file:~/.freeinference-api-key}"
       },
       "models": {
         "qwen3.6-35b": {
