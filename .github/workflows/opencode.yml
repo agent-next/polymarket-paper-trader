@@ -27,7 +27,8 @@ jobs:
   comment:
     if: |
       (github.event_name == 'issue_comment' ||
-       github.event_name == 'pull_request_review_comment') &&
+       (github.event_name == 'pull_request_review_comment' &&
+        github.event.pull_request.head.repo.full_name == github.repository)) &&
       !startsWith(github.event.comment.body, '/oc implement')
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -40,6 +41,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           ACTOR: ${{ github.actor }}
+          PR_NUMBER: ${{ github.event.pull_request.number || (github.event.issue.pull_request && github.event.issue.number) || '' }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
           set -euo pipefail
           perm=$(gh api "repos/${REPO}/collaborators/${ACTOR}/permission" --jq .permission 2>/dev/null || echo none)
@@ -47,11 +50,29 @@ jobs:
             admin|maintain|write) echo "actor ${ACTOR} has ${perm}; comment allowed" ;;
             *) echo "actor ${ACTOR} lacks write access (${perm}); refusing comment" >&2; exit 1 ;;
           esac
+          if [ -n "${PR_NUMBER:-}" ]; then
+            # PR-comment triggers make the agent check out the PR head, so the
+            # head repo must be this repository. issue_comment payloads carry
+            # no head repo — resolve it via the API and fail closed.
+            if ! [[ "${PR_NUMBER}" =~ ^[0-9]+$ ]]; then
+              echo "PR_NUMBER '${PR_NUMBER}' is not numeric; refusing comment" >&2
+              exit 1
+            fi
+            head_repo="${PR_HEAD_REPO:-}"
+            if [ -z "${head_repo}" ]; then
+              head_repo=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.repo.full_name // "none"' 2>/dev/null || echo none)
+            fi
+            if [ "${head_repo}" != "${REPO}" ]; then
+              echo "PR head repo '${head_repo}' is not '${REPO}'; refusing comment" >&2
+              exit 1
+            fi
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
           fetch-depth: 1
           persist-credentials: false
-      - name: Preflight FreeInference key
+      - name: Stage FreeInference key
         env:
           FREEINFERENCE_API_KEY: ${{ secrets.FREEINFERENCE_PUBLIC_KEY }}
         run: |
@@ -59,10 +80,12 @@ jobs:
             echo "FREEINFERENCE_API_KEY is empty" >&2
             exit 1
           fi
-          echo "FREEINFERENCE_API_KEY is set"
+          # Keep the key out of the agent shell env: the provider reads it
+          # via the {file:} reference in opencode.json.
+          umask 077
+          printf '%s' "$FREEINFERENCE_API_KEY" > "$HOME/.freeinference-api-key"
       - uses: anomalyco/opencode/github@08462140ec0de1e4b17d4a353d8d5827f53cf7b0 # v2.0.14
         env:
-          FREEINFERENCE_API_KEY: ${{ secrets.FREEINFERENCE_PUBLIC_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: ${{ env.OPENCODE_MODEL }}
@@ -78,6 +101,9 @@ jobs:
             - Answer, explain, or review from the repo and thread.
             - Do not push commits. Implementation is a different job (/oc implement).
             - Prefer citing tests/ and pm_trader/ over speculation.
+      - name: Remove staged provider key
+        if: always()
+        run: rm -f "$HOME/.freeinference-api-key"
 
   triage:
     if: github.event_name == 'issues' && github.event.action == 'opened'
@@ -102,7 +128,7 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
-      - name: Preflight FreeInference key
+      - name: Stage FreeInference key
         env:
           FREEINFERENCE_API_KEY: ${{ secrets.FREEINFERENCE_PUBLIC_KEY }}
         run: |
@@ -110,10 +136,12 @@ jobs:
             echo "FREEINFERENCE_API_KEY is empty" >&2
             exit 1
           fi
-          echo "FREEINFERENCE_API_KEY is set"
+          # Keep the key out of the agent shell env: the provider reads it
+          # via the {file:} reference in opencode.json.
+          umask 077
+          printf '%s' "$FREEINFERENCE_API_KEY" > "$HOME/.freeinference-api-key"
       - uses: anomalyco/opencode/github@08462140ec0de1e4b17d4a353d8d5827f53cf7b0 # v2.0.14
         env:
-          FREEINFERENCE_API_KEY: ${{ secrets.FREEINFERENCE_PUBLIC_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: ${{ env.OPENCODE_MODEL }}
@@ -125,15 +153,20 @@ jobs:
             Label if you can (bug, enhancement, documentation).
             Ask for missing repro details. Do not write code or push.
             Do not add bot:implement unless a human already asked for an implementation.
+      - name: Remove staged provider key
+        if: always()
+        run: rm -f "$HOME/.freeinference-api-key"
 
   implement:
     if: |
       (github.event_name == 'issues' &&
        github.event.action == 'labeled' &&
        github.event.label.name == 'bot:implement') ||
-      ((github.event_name == 'issue_comment' ||
-        github.event_name == 'pull_request_review_comment') &&
-       startsWith(github.event.comment.body, '/oc implement'))
+      (github.event_name == 'issue_comment' &&
+       startsWith(github.event.comment.body, '/oc implement')) ||
+      (github.event_name == 'pull_request_review_comment' &&
+       startsWith(github.event.comment.body, '/oc implement') &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -148,6 +181,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           ACTOR: ${{ github.actor }}
+          PR_NUMBER: ${{ github.event.pull_request.number || (github.event.issue.pull_request && github.event.issue.number) || '' }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
           set -euo pipefail
           perm=$(gh api "repos/${REPO}/collaborators/${ACTOR}/permission" --jq .permission 2>/dev/null || echo none)
@@ -155,11 +190,29 @@ jobs:
             admin|maintain|write) echo "actor ${ACTOR} has ${perm}; implement allowed" ;;
             *) echo "actor ${ACTOR} lacks write access (${perm}); refusing implement" >&2; exit 1 ;;
           esac
+          if [ -n "${PR_NUMBER:-}" ]; then
+            # PR-comment triggers make the agent check out the PR head, so the
+            # head repo must be this repository. issue_comment payloads carry
+            # no head repo — resolve it via the API and fail closed.
+            if ! [[ "${PR_NUMBER}" =~ ^[0-9]+$ ]]; then
+              echo "PR_NUMBER '${PR_NUMBER}' is not numeric; refusing implement" >&2
+              exit 1
+            fi
+            head_repo="${PR_HEAD_REPO:-}"
+            if [ -z "${head_repo}" ]; then
+              head_repo=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.repo.full_name // "none"' 2>/dev/null || echo none)
+            fi
+            if [ "${head_repo}" != "${REPO}" ]; then
+              echo "PR head repo '${head_repo}' is not '${REPO}'; refusing implement" >&2
+              exit 1
+            fi
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
           fetch-depth: 1
           persist-credentials: false
-      - name: Preflight FreeInference key
+      - name: Stage FreeInference key
         env:
           FREEINFERENCE_API_KEY: ${{ secrets.FREEINFERENCE_API_KEY }}
         run: |
@@ -167,10 +220,12 @@ jobs:
             echo "FREEINFERENCE_API_KEY is empty" >&2
             exit 1
           fi
-          echo "FREEINFERENCE_API_KEY is set"
+          # Keep the key out of the agent shell env: the provider reads it
+          # via the {file:} reference in opencode.json.
+          umask 077
+          printf '%s' "$FREEINFERENCE_API_KEY" > "$HOME/.freeinference-api-key"
       - uses: anomalyco/opencode/github@08462140ec0de1e4b17d4a353d8d5827f53cf7b0 # v2.0.14
         env:
-          FREEINFERENCE_API_KEY: ${{ secrets.FREEINFERENCE_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: ${{ env.OPENCODE_IMPLEMENT_MODEL }}
@@ -207,6 +262,9 @@ jobs:
             exit 1
           fi
           echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+      - name: Remove staged provider key
+        if: always()
+        run: rm -f "$HOME/.freeinference-api-key"
 
   dispatch-tests:
     needs: implement
@@ -252,16 +310,19 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # pull-requests stays read — a write token would let the model submit
+    # reviews; the comment posts via the issues API, which issues: write covers.
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: read
+      issues: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 1
           persist-credentials: false
-      - name: Preflight FreeInference key
+      - name: Stage FreeInference key
         env:
           FREEINFERENCE_API_KEY: ${{ secrets.FREEINFERENCE_PUBLIC_KEY }}
         run: |
@@ -269,10 +330,12 @@ jobs:
             echo "FREEINFERENCE_API_KEY is empty" >&2
             exit 1
           fi
-          echo "FREEINFERENCE_API_KEY is set"
+          # Keep the key out of the agent shell env: the provider reads it
+          # via the {file:} reference in opencode.json.
+          umask 077
+          printf '%s' "$FREEINFERENCE_API_KEY" > "$HOME/.freeinference-api-key"
       - uses: anomalyco/opencode/github@08462140ec0de1e4b17d4a353d8d5827f53cf7b0 # v2.0.14
         env:
-          FREEINFERENCE_API_KEY: ${{ secrets.FREEINFERENCE_PUBLIC_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: ${{ env.OPENCODE_MODEL }}
@@ -283,3 +346,6 @@ jobs:
             Ignore style nits and speculation. If nothing actionable, do not post LGTM.
             Never print secrets or .env values.
             Do not push commits. Do not approve. Do not merge.
+      - name: Remove staged provider key
+        if: always()
+        run: rm -f "$HOME/.freeinference-api-key"
