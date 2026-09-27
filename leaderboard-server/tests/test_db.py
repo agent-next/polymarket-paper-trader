@@ -217,8 +217,20 @@ class TestLimitOrders:
             outcome="yes", side="buy", amount=500,
             limit_price=0.45,
         )
-        cancelled = db.cancel_order(order["id"])
+        cancelled = db.cancel_order(order["id"], account["id"])
         assert cancelled["status"] == "cancelled"
+
+    def test_cancel_order_wrong_account(self, db):
+        account = self._make_account(db)
+        order = db.create_limit_order(
+            account_id=account["id"],
+            market_slug="test", market_condition_id="0xabc",
+            outcome="yes", side="buy", amount=500,
+            limit_price=0.45,
+        )
+        assert db.cancel_order(order["id"], account["id"] + 1) is None
+        pending = db.get_pending_orders(account["id"])
+        assert len(pending) == 1
 
     def test_fill_order(self, db):
         account = self._make_account(db)

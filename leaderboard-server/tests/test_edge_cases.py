@@ -366,7 +366,7 @@ class TestGTDLifecycle:
         assert len(pending) == 0
 
         # Can't cancel an expired order
-        result = db.cancel_order(order["id"])
+        result = db.cancel_order(order["id"], account["id"])
         assert result is None
 
 
@@ -469,7 +469,7 @@ class TestCancelFilledOrder:
         # Fill it
         db.fill_order(order["id"])
         # Try to cancel
-        result = db.cancel_order(order["id"])
+        result = db.cancel_order(order["id"], account["id"])
         assert result is None  # Can't cancel a filled order
 
 
