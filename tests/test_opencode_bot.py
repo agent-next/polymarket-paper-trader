@@ -147,6 +147,49 @@ class TestClosedLoopWiring:
         prompt = str(_opencode_step("review").get("with", {}).get("prompt", ""))
         assert "Do not push commits" in prompt
 
+    def test_review_runs_on_pull_request_target(self) -> None:
+        # review feeds untrusted diffs to a secret-bearing model step: it must
+        # run in the base-repo context (pull_request_target), not pull_request,
+        # where checkout defaults to the PR merge commit.
+        triggers = _triggers(_workflow())
+        assert "pull_request_target" in triggers
+        assert "pull_request" not in triggers
+        review_if = str(_job("review").get("if", ""))
+        assert "github.event_name == 'pull_request_target'" in review_if
+
+    def test_review_never_checks_out_pr_code(self) -> None:
+        # The workspace stays on trusted base code; the diff reaches the model
+        # as text via the event payload, never as checked-out PR code.
+        checkout_steps = [
+            step
+            for step in _job("review").get("steps") or []
+            if str(step.get("uses", "")).startswith("actions/checkout")
+        ]
+        assert checkout_steps, "review must checkout the base tree"
+        for step in checkout_steps:
+            assert (step.get("with") or {}).get("ref") == (
+                "${{ github.event.pull_request.base.sha }}"
+            )
+            assert "pull_request.head" not in json.dumps(step)
+
+    def test_review_permissions_are_minimal(self) -> None:
+        # pull-requests: write only posts review comments; safe here because
+        # the job never executes PR code.
+        assert _job("review").get("permissions") == {
+            "contents": "read",
+            "pull-requests": "write",
+        }
+
+    def test_every_secret_bearing_prompt_forbids_printing_secrets(self) -> None:
+        for name, job in _workflow()["jobs"].items():
+            for step in job.get("steps") or []:
+                if not str(step.get("uses", "")).startswith("anomalyco/opencode"):
+                    continue
+                if not _secret_refs(json.dumps(step.get("env") or {})):
+                    continue
+                prompt = str(step.get("with", {}).get("prompt", ""))
+                assert "Never print secrets" in prompt, name
+
     def test_implement_gated_to_trusted_actors(self) -> None:
         run = _step_run("implement", "Gate to trusted actors")
         assert "collaborators/${ACTOR}/permission" in run

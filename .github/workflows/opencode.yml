@@ -7,7 +7,7 @@ on:
     types: [created]
   issues:
     types: [opened, labeled]
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, ready_for_review]
 
 concurrency:
@@ -97,6 +97,7 @@ jobs:
           share: false
           prompt: |
             Triage this new issue on a paper-trading simulator.
+            Never print secrets.
             Label if you can (bug, enhancement, documentation).
             Ask for missing repro details. Do not write code or push.
             Do not add bot:implement unless a human already asked for an implementation.
@@ -216,7 +217,10 @@ jobs:
           gh workflow run Tests --repo "${REPO}" --ref "${BRANCH}"
 
   review:
-    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    # pull_request_target runs with base-repo secrets and a write token, so
+    # the checkout below must stay pinned to the base commit: the PR diff is
+    # reviewed as text from the event payload and its code is never executed.
+    if: github.event_name == 'pull_request_target' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -225,6 +229,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 1
           persist-credentials: false
       - name: Preflight FreeInference key
@@ -247,4 +252,5 @@ jobs:
           prompt: |
             Shallow review only. Report discrete defects this diff introduces.
             Ignore style nits and speculation. If nothing actionable, do not post LGTM.
+            Never print secrets or .env values.
             Do not push commits. Do not approve. Do not merge.
