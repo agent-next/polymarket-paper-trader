@@ -1,9 +1,21 @@
 """Tests for pm_benchmark.arena_site."""
 from __future__ import annotations
 
+import base64
+import hashlib
+import json
 import re
 
-from pm_benchmark.arena_site import _fmt_ci, render_site
+import pytest
+
+from pm_benchmark.arena_site import (
+    D3_INTEGRITY,
+    D3_URL,
+    THREE_INTEGRITY,
+    THREE_URL,
+    _fmt_ci,
+    render_site,
+)
 
 DISCLAIMER = (
     "Unofficial · not affiliated with Polymarket · "
@@ -240,23 +252,35 @@ class TestDocument:
         assert 'name="color-scheme" content="light dark"' in html
         assert 'rel="icon" href="data:image/svg+xml,' in html
 
-    def test_csp_and_no_javascript(self) -> None:
+    def test_csp_and_no_inline_javascript(self) -> None:
         html = render_site(sample_board())
         assert 'http-equiv="Content-Security-Policy"' in html
-        assert "default-src 'none'" in html
-        assert "style-src 'unsafe-inline'" in html
-        assert "img-src data:" in html
-        assert "script-src 'none'" in html
-        assert "<script" not in html
         assert "onclick" not in html
+        # every script tag is one of: the inline import map, the pinned
+        # d3 tag, the app.js module tag, or the JSON data island — never
+        # inline executable code
+        for attrs in re.findall(r"<script([^>]*)>", html):
+            assert (
+                'type="importmap"' in attrs
+                or 'type="application/json"' in attrs
+                or D3_URL in attrs
+                or 'src="app.js"' in attrs
+            )
 
-    def test_no_external_assets(self) -> None:
+    def test_no_external_assets_beyond_pinned_cdn(self) -> None:
         html = render_site(sample_board())
         for tag in ("<img", "@import", "font-face", "<iframe"):
             assert tag not in html
-        # the only link tag is the inline data: favicon
-        assert html.count("<link") == 1
+        # link tags: the inline data: favicon and the three.js preload
+        assert html.count("<link") == 2
         assert '<link rel="icon" href="data:' in html
+        # the only external fetch targets are the two pinned CDN files
+        # (anchors link out but fetch nothing)
+        fetched = re.findall(r'<link[^>]+href="(https://[^"]+)"', html)
+        fetched += re.findall(r'<script[^>]+src="(https://[^"]+)"', html)
+        assert set(fetched) == {THREE_URL, D3_URL}
+        assert "cdn.jsdelivr.net/npm/three@0.186.1/" in THREE_URL
+        assert "cdn.jsdelivr.net/npm/d3@7.9.0/" in D3_URL
 
     def test_wide_content_column(self) -> None:
         html = render_site(sample_board())
@@ -933,8 +957,9 @@ class TestOpenMarkets:
         html = render_site(board)
         section = html.split('id="markets"')[1].split("</section>")[0]
         assert "<details" not in section
-        # blank and baseline boilerplate are not shown anywhere
-        assert "Uninformative 0.5 prior." not in html
+        # blank and baseline boilerplate are not rendered anywhere
+        # (the #board-data JSON island still carries the raw board)
+        assert "Uninformative 0.5 prior." not in _visible(html)
 
     def test_label_restatement_rationale_hidden(self) -> None:
         board = {
@@ -1078,7 +1103,7 @@ class TestDuels:
         html = render_site(board)
         assert html.count('<article class="duel">') == 3
         # largest gaps first: m7 (0.35), m6 (0.30), m5 (0.25); m0-m4 cut
-        section = html.split('id="duels"')[1]
+        section = html.split('id="duels"')[1].split('id="versus"')[0]
         assert section.index("Q7?") < section.index("Q6?")
         assert section.index("Q6?") < section.index("Q5?")
         assert "Q4?" not in section and "Q0?" not in section
@@ -1301,9 +1326,9 @@ class TestDuels:
     def test_boilerplate_rationales_hidden(self) -> None:
         html = render_site(sample_board())
         # model-id restatement is never quoted
-        assert "“Jev opencode/jev-1.13-free”" not in html
+        assert "“Jev opencode/jev-1.13-free”" not in _visible(html)
         # baseline boilerplate (coin is kind=baseline) is never quoted
-        assert "Uninformative 0.5 prior." not in html
+        assert "Uninformative 0.5 prior." not in _visible(html)
         # None rationale -> no quote block on that card at all
         card2 = html.split("Will a model beat the bench?")[1].split(
             "</article>"
@@ -1443,7 +1468,9 @@ class TestSecurity:
         board["entrants"][0]["cutoff"] = payload
         html = render_site(board)
         assert payload not in html
-        assert "<script" not in html
+        # the only <script> tags are the fixed security-block/loader tags
+        assert html.count("<script") == 4
+        assert "<script" not in _board_blob(html)
         assert "&lt;script&gt;" in html
 
     def test_https_url_required(self) -> None:
@@ -1735,8 +1762,8 @@ class TestRationaleFilter:
             ],
         }
         html = render_site(board)
-        assert "Market YES price" not in html
-        assert "<blockquote" not in html
+        assert "Market YES price" not in _visible(html)
+        assert "<blockquote" not in _visible(html)
 
     def test_label_restatement_hidden(self) -> None:
         board = {
@@ -1826,3 +1853,238 @@ def test_fmt_ci_rejects_malformed_shapes() -> None:
     assert _fmt_ci([None, 0.2]) is None
     assert _fmt_ci(["x", 0.1]) is None
     assert _fmt_ci([-0.05, 0.01]) == "[-0.050, +0.010]"
+
+
+def _board_blob(html: str) -> str:
+    """The raw contents of the ``#board-data`` JSON island."""
+    match = re.search(
+        r'<script type="application/json" id="board-data">(.*?)</script>',
+        html,
+        re.S,
+    )
+    assert match, "no #board-data script tag"
+    return match.group(1)
+
+
+def _visible(html: str) -> str:
+    """The document minus the ``#board-data`` JSON island.
+
+    The embed carries raw board strings (escaped for the data block, not
+    for display), so "is this rendered?" assertions run against the page
+    without it.
+    """
+    return html.replace(_board_blob(html), "")
+
+
+class TestInteractiveLayer:
+    def test_csp_exact(self) -> None:
+        html = render_site(sample_board())
+        csp = re.search(
+            r'Content-Security-Policy" content="([^"]+)"', html
+        ).group(1)
+        # the only adjustment to the fixed policy is a sha384 source
+        # whitelisting the inline import map
+        importmap = re.search(
+            r'<script type="importmap">(.*?)</script>', html, re.S
+        ).group(1)
+        digest = base64.b64encode(
+            hashlib.sha384(importmap.encode()).digest()
+        ).decode()
+        assert csp == (
+            "default-src 'none'; "
+            f"script-src 'self' https://cdn.jsdelivr.net 'sha384-{digest}'; "
+            "style-src 'unsafe-inline'; img-src data:; connect-src 'none'"
+        )
+
+    def test_sri_attributes_match_pinned_urls(self) -> None:
+        html = render_site(sample_board())
+        # three.js: modulepreload carries the integrity hash, and the
+        # import map repeats it in its "integrity" field
+        preload = re.search(r'<link rel="modulepreload"[^>]*>', html).group(0)
+        assert f'href="{THREE_URL}"' in preload
+        assert f'integrity="{THREE_INTEGRITY}"' in preload
+        assert 'crossorigin="anonymous"' in preload
+        importmap = re.search(
+            r'<script type="importmap">(.*?)</script>', html, re.S
+        ).group(1)
+        spec = json.loads(importmap)
+        assert spec["imports"]["three"] == THREE_URL
+        assert spec["integrity"][THREE_URL] == THREE_INTEGRITY
+        assert THREE_INTEGRITY.startswith("sha384-")
+        # d3: classic script tag with SRI
+        d3tag = re.search(r"<script defer[^>]*>", html).group(0)
+        assert f'src="{D3_URL}"' in d3tag
+        assert f'integrity="{D3_INTEGRITY}"' in d3tag
+        assert 'crossorigin="anonymous"' in d3tag
+        assert D3_INTEGRITY.startswith("sha384-")
+
+    def test_app_js_loaded_as_module(self) -> None:
+        html = render_site(sample_board())
+        assert '<script type="module" src="app.js"></script>' in html
+
+    def test_board_json_embeds_and_round_trips(self) -> None:
+        board = sample_board()
+        html = render_site(board)
+        blob = _board_blob(html)
+        assert json.loads(blob) == board
+
+    def test_board_json_escapes_html_and_script_breakout(self) -> None:
+        board = {
+            "open": [
+                {
+                    "slug": "s",
+                    "question": 'Q</script><img src=x onerror=alert(1)> & "it"',
+                    "forecasts": {"a": {"prob": 0.5}},
+                }
+            ],
+            "entrants": [{"id": "a", "label": "A", "kind": "ai"}],
+        }
+        blob = _board_blob(render_site(board))
+        assert "</script>" not in blob
+        assert "<" not in blob and ">" not in blob and "&" not in blob
+        assert json.loads(blob) == board
+
+    def test_board_json_omits_nothing(self) -> None:
+        # the embed is the whole board dict — no fetch needed at runtime
+        board = sample_board()
+        assert json.loads(_board_blob(render_site(board))) == board
+
+
+class TestVersusSection:
+    def test_section_sits_after_duels(self) -> None:
+        html = render_site(sample_board())
+        assert 'id="duels"' in html and 'id="versus"' in html
+        assert html.index('id="duels"') < html.index('id="versus"')
+        assert html.index('id="versus"') < html.index('id="markets"')
+        assert "<h2>AI vs the crowd</h2>" in html
+        assert 'href="#versus"' in html
+
+    def test_static_scatter_fallback_has_one_dot_per_ai_forecast(self) -> None:
+        html = render_site(sample_board())
+        section = html.split('id="versus"')[1].split("</section>")[0]
+        svg = section.split('<svg class="viz-fb"')[1].split("</svg>")[0]
+        # sample board: market 1 has AI entrants jev+gpt-oss (coin/crowd
+        # are baselines); market 2's only forecast is mystery-model, not a
+        # board entrant -> 2 points
+        assert svg.count('<circle class="vdot') == 2
+        assert 'class="vdot e0"' in svg  # jev
+        assert 'class="vdot e1"' in svg  # gpt-oss
+        # agreement diagonal and band labels are server-rendered too
+        assert 'class="viz-diag"' in svg
+        assert "AI more bullish" in svg
+        assert "AI more bearish" in svg
+        assert 'role="img"' in svg
+        # legend lists the AI entrants present
+        assert 'class="viz-fb-legend"' in section
+        assert "Jev 1.13" in section
+        assert "GPT-OSS 120B" in section
+
+    def test_fallback_skips_bad_markets_and_probs(self) -> None:
+        board = {
+            "open": [
+                "not-a-dict",
+                {"slug": "s1", "market_prob": "high"},
+                {"slug": "s2", "market_prob": 0.5, "forecasts": "oops"},
+                {
+                    "slug": "s3",
+                    "market_prob": 0.5,
+                    "forecasts": {
+                        "a": "bad",
+                        "b": {"prob": 9},
+                        "c": {"prob": 0.4},
+                    },
+                },
+            ],
+            "entrants": [
+                {"id": "a", "kind": "ai"},
+                {"id": "b", "kind": "ai"},
+                {"id": "c", "kind": "ai"},
+            ],
+        }
+        section = render_site(board).split('id="versus"')[1]
+        assert section.count('<circle class="vdot') == 1
+        assert 'class="vdot e2"' in section
+
+    def test_baselines_never_produce_points(self) -> None:
+        board = {
+            "open": [
+                {
+                    "slug": "s",
+                    "market_prob": 0.5,
+                    "forecasts": {"coin": {"prob": 0.5}},
+                }
+            ],
+            "entrants": [{"id": "coin", "kind": "baseline"}],
+        }
+        section = render_site(board).split('id="versus"')[1]
+        assert "viz-fb" not in section
+        assert "No AI forecasts on open markets yet." in section
+
+    def test_empty_when_no_open_markets(self) -> None:
+        html = render_site({"open": []})
+        section = html.split('id="versus"')[1].split("</section>")[0]
+        assert "No AI forecasts on open markets yet." in section
+        assert "<svg" not in section
+
+
+class TestPerfViz:
+    def test_mount_with_fallback_note_when_resolved(self) -> None:
+        html = render_site(sample_board())
+        section = html.split('id="leaderboard"')[1].split("</section>")[0]
+        assert 'id="perf-viz"' in section
+        assert 'class="viz-note"' in section
+        assert "the numbers are in the table above" in section
+
+    def test_tasteful_empty_state_when_unresolved(self) -> None:
+        board = sample_board()
+        board["leaderboard"] = []
+        html = render_site(board)
+        section = html.split('id="leaderboard"')[1].split("</section>")[0]
+        assert 'id="perf-viz"' in section
+        assert 'class="viz-empty"' in section
+        assert "Alpha whiskers and calibration land here" in section
+        assert "First resolution Oct 1" in section
+
+    def test_empty_state_without_dates_or_entrants(self) -> None:
+        html = render_site({"leaderboard": []})
+        assert 'id="perf-viz"' in html
+        assert "Charts draw once the first markets resolve." in html
+        assert "First resolution" not in html
+
+
+class TestAppJs:
+    def _app_js(self) -> str:
+        from importlib.resources import files
+
+        return (
+            files("pm_benchmark")
+            .joinpath("arena_static/app.js")
+            .read_text()
+        )
+
+    def test_packaged_and_no_html_injection_sinks(self) -> None:
+        src = self._app_js()
+        for sink in ("innerHTML", ".html(", "outerHTML", "insertAdjacentHTML"):
+            assert sink not in src
+
+    def test_dynamic_import_of_three(self) -> None:
+        # a static `import` would sink the whole module on CDN failure;
+        # the globe degrades on its own via dynamic import
+        src = self._app_js()
+        assert 'import("three")' in src
+        assert re.search(r"^\s*import\s", src, re.M) is None
+
+    def test_node_syntax_check(self) -> None:
+        import shutil
+        import subprocess
+
+        node = shutil.which("node")
+        if not node:
+            pytest.skip("node not on PATH")
+        from importlib.resources import files
+
+        path = files("pm_benchmark").joinpath("arena_static/app.js")
+        result = subprocess.run(
+            [node, "--check", str(path)], capture_output=True, text=True
+        )
+        assert result.returncode == 0, result.stderr
