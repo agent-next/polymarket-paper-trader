@@ -349,7 +349,7 @@ async function initGlobe(board, meta) {
     renderer.setSize(w, h, false);
     // gl_PointSize is in device px — scale the base dot with the DPR, and
     // shrink it in the small phone-size box
-    dotMat.uniforms.uPx.value = 2.3 * Math.min(1, w / 240) * renderer.getPixelRatio();
+    dotMat.uniforms.uPx.value = 2.3 * Math.min(1, w / 200) * renderer.getPixelRatio();
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.render(scene, camera);
