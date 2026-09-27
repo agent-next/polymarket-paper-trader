@@ -763,10 +763,15 @@ function initScatter(board, meta) {
     }
   });
   draw(); // detached: bail with the fallback intact if this throws
-  host.textContent = "";
-  host.append(svgHost, tip, legend);
+  const fallback = [...host.childNodes];
+  host.replaceChildren(svgHost, tip, legend);
   lastW = svgHost.clientWidth;
-  draw(); // real width now that the host is attached
+  try {
+    draw(); // real width now that the host is attached
+  } catch (e) {
+    host.replaceChildren(...fallback); // never leave empty boxes behind
+    throw e;
+  }
   ro.observe(svgHost);
 }
 
