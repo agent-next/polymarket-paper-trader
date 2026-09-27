@@ -83,13 +83,13 @@ _IMPORTMAP_SRI = (
 # map. The #board-data block is a JSON data island, not executable script.
 # Cloudflare injects its Web Analytics beacon on the zone; it loads from
 # static.cloudflareinsights.com/beacon.min.js/ and reports same-origin to
-# /cdn-cgi/rum on the proxied zone, hence connect-src 'self'.
+# /cdn-cgi/rum on the proxied zone; only those two paths are allowed.
 CSP = (
     "default-src 'none'; "
     "script-src 'self' https://cdn.jsdelivr.net "
     f"https://static.cloudflareinsights.com/beacon.min.js/ '{_IMPORTMAP_SRI}'; "
     "style-src 'unsafe-inline'; img-src data:; "
-    "connect-src 'self'"
+    "connect-src https://polymarket-leaderboard.com/cdn-cgi/rum"
 )
 
 _EM_DASH = "—"

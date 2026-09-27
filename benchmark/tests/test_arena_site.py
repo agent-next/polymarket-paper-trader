@@ -1901,7 +1901,7 @@ class TestInteractiveLayer:
             "script-src 'self' https://cdn.jsdelivr.net "
             f"https://static.cloudflareinsights.com/beacon.min.js/ 'sha384-{digest}'; "
             "style-src 'unsafe-inline'; img-src data:; "
-            "connect-src 'self'"
+            "connect-src https://polymarket-leaderboard.com/cdn-cgi/rum"
         )
 
     def test_sri_attributes_match_pinned_urls(self) -> None:
