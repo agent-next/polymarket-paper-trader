@@ -133,6 +133,28 @@ class TestCancelOrder:
         resp = client.delete(f"/accounts/{account['id']}/orders/999", headers=headers)
         assert resp.status_code == 404
 
+    def test_idor_cancel_other_users_order_is_404(self, client):
+        """Cross-account cancel: order_id not under the path's account → 404."""
+        user1, account1, headers1 = _register_and_create_account(client, "idor-bot")
+        user2, account2, headers2 = _register_and_create_account(client, "victim-bot")
+        resp = client.post(f"/accounts/{account2['id']}/orders", json={
+            "market_slug": "test",
+            "market_condition_id": "0xabc",
+            "outcome": "yes",
+            "side": "buy",
+            "amount": 500,
+            "limit_price": 0.45,
+        }, headers=headers2)
+        order_id = resp.json()["data"]["id"]
+        resp = client.delete(
+            f"/accounts/{account1['id']}/orders/{order_id}", headers=headers1
+        )
+        assert resp.status_code == 404
+        pending = client.get(
+            f"/accounts/{account2['id']}/orders", headers=headers2
+        ).json()["data"]
+        assert [o["id"] for o in pending] == [order_id]
+
     def test_cancel_already_cancelled(self, client):
         user, account, headers = _register_and_create_account(client, "order-bot")
         resp = client.post(f"/accounts/{account['id']}/orders", json={
