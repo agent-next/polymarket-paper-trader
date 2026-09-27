@@ -251,12 +251,12 @@ class DB:
         self._conn.commit()
         return dict(row)
 
-    def cancel_order(self, order_id: int) -> dict | None:
+    def cancel_order(self, order_id: int, account_id: int) -> dict | None:
         cur = self._conn.execute("""
             UPDATE limit_orders SET status = 'cancelled'
-            WHERE id = ? AND status = 'pending'
+            WHERE id = ? AND account_id = ? AND status = 'pending'
             RETURNING *
-        """, (order_id,))
+        """, (order_id, account_id))
         row = cur.fetchone()
         self._conn.commit()
         return dict(row) if row else None

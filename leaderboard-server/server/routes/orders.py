@@ -101,7 +101,7 @@ def cancel_order(account_id: int, order_id: int,
     if account["user_id"] != user["id"]:
         raise HTTPException(403, detail="Not your account")
 
-    cancelled = db.cancel_order(order_id)
+    cancelled = db.cancel_order(order_id, account_id)
     if cancelled is None:
         raise HTTPException(404, detail="Order not found or already processed")
     return {"ok": True, "data": cancelled}
