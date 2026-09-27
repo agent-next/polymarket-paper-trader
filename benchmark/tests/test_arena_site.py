@@ -1949,6 +1949,19 @@ class TestInteractiveLayer:
         board = sample_board()
         assert json.loads(_board_blob(render_site(board))) == board
 
+    def test_board_json_drops_non_finite(self) -> None:
+        # NaN/Infinity are invalid JSON; they become null in the island
+        board = sample_board()
+        board["leaderboard"] = [
+            {
+                "entrant": "a",
+                "alpha": float("nan"),
+                "alpha_ci": [float("inf"), 0.1],
+            }
+        ]
+        row = json.loads(_board_blob(render_site(board)))["leaderboard"][0]
+        assert row["alpha"] is None and row["alpha_ci"] == [None, 0.1]
+
 
 class TestVersusSection:
     def test_section_sits_after_duels(self) -> None:

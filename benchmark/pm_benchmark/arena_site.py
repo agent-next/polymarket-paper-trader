@@ -675,6 +675,8 @@ td.q a:hover { color: var(--accent); }
   position: absolute;
   z-index: 6;
 }
+/* a pinned tip (click/Enter) keeps its link reachable */
+.viz-tip.pin { pointer-events: auto; }
 .viz-tip .t-q { font-weight: 700; margin: 0 0 6px; }
 .viz-tip .t-row {
   display: flex;
@@ -2016,6 +2018,18 @@ def _perf_viz(board: dict, has_rows: bool) -> str:
     return f'<div class="viz" id="perf-viz">{inner}</div>'
 
 
+def _json_safe(value: Any) -> Any:
+    """Strip non-finite floats — ``NaN``/``Infinity`` are not valid JSON
+    and would break ``JSON.parse`` on the island."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
+
+
 def _board_json(board: dict) -> str:
     """Serialize *board* for the in-page ``#board-data`` JSON island.
 
@@ -2025,7 +2039,8 @@ def _board_json(board: dict) -> str:
     represent degrade to ``str`` rather than crashing the render.
     """
     raw = json.dumps(
-        board, ensure_ascii=False, separators=(",", ":"), default=str
+        _json_safe(board), ensure_ascii=False, separators=(",", ":"),
+        default=str,
     )
     return (
         raw.replace("&", "\\u0026")
