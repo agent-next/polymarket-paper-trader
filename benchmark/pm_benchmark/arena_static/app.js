@@ -32,14 +32,18 @@ function readBoard() {
   }
 }
 
-function toProb(v) {
-  const n = Number(v);
-  return Number.isFinite(n) && n >= 0 && n <= 1 ? n : null;
-}
+// null, "", booleans and absent fields are missing — not zero
+const MAX_PULSES = 240;
 
 function toNum(v) {
+  if (typeof v === "string" ? v.trim() === "" : typeof v !== "number") return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+function toProb(v) {
+  const n = toNum(v);
+  return n !== null && n >= 0 && n <= 1 ? n : null;
 }
 
 function fmtPct(v) {
@@ -227,7 +231,9 @@ async function initGlobe(board, meta) {
   // shader fades alpha and size with view depth, so the far hemisphere
   // dims instead of filling the disc — normal blending, capped alpha,
   // and no interior fill, so the globe stays a transparent point shell.
-  const N = 2800;
+  // fewer points in the small phone-size box so it still reads as a shell
+  const box = host.querySelector("svg");
+  const N = ((box && box.clientWidth) || 320) < 200 ? 700 : 2800;
   const pos = fibSphere(N, new Float32Array(N * 3));
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
@@ -301,7 +307,8 @@ async function initGlobe(board, meta) {
   globe.add(rim);
 
   // one looping pulse per open AI forecast, in the entrant's color
-  const pulseEids = openForecastEntrants(board, meta);
+  // capped so a huge board cannot add unbounded per-frame sprite work
+  const pulseEids = openForecastEntrants(board, meta).slice(0, MAX_PULSES);
   const pulses = pulseEids.map((eid, i) => {
     const mat = new THREE.SpriteMaterial({
       map: disc,
@@ -340,8 +347,9 @@ async function initGlobe(board, meta) {
     if (!w || !h) return;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(w, h, false);
-    // gl_PointSize is in device px — scale the base dot with the DPR
-    dotMat.uniforms.uPx.value = 2.3 * renderer.getPixelRatio();
+    // gl_PointSize is in device px — scale the base dot with the DPR, and
+    // shrink it in the small phone-size box
+    dotMat.uniforms.uPx.value = 2.3 * Math.min(1, w / 240) * renderer.getPixelRatio();
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.render(scene, camera);
@@ -589,7 +597,7 @@ function initScatter(board, meta) {
       .select(svgHost)
       .append("svg")
       .attr("viewBox", `0 0 ${size} ${size}`)
-      .attr("role", "img")
+      .attr("role", "group")
       .attr(
         "aria-label",
         "Scatter of AI vs crowd probabilities — one dot per AI forecast on an open market"
@@ -620,6 +628,16 @@ function initScatter(board, meta) {
         .attr("y1", y(t))
         .attr("y2", y(t));
     }
+
+    // shaded halves: above the diagonal the AI is more bullish than the crowd
+    svg
+      .append("path")
+      .attr("class", "viz-zone up")
+      .attr("d", `M${x(0)},${y(0)}L${x(0)},${y(1)}L${x(1)},${y(1)}Z`);
+    svg
+      .append("path")
+      .attr("class", "viz-zone down")
+      .attr("d", `M${x(0)},${y(0)}L${x(1)},${y(0)}L${x(1)},${y(1)}Z`);
 
     svg
       .append("line")
