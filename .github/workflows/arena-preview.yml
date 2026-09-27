@@ -75,6 +75,8 @@ jobs:
         run: |
           echo "Preview: ${URL:-not deployed (no CLOUDFLARE_API_TOKEN secret)}" >> "$GITHUB_STEP_SUMMARY"
       - name: Comment the preview link on the PR
+        # Best-effort: a GitHub API hiccup must not fail an already-deployed preview.
+        continue-on-error: true
         if: steps.deploy.outputs.deployment-url != ''
         env:
           GH_TOKEN: ${{ github.token }}
