@@ -81,8 +81,11 @@ class TestPublicBotWiring:
         cfg = _opencode_config()
         provider = cfg["provider"]["freeinference"]
         assert provider["options"]["baseURL"] == "https://freeinference.org/v1"
-        assert "FREEINFERENCE_API_KEY" in provider["env"]
-        assert "{env:FREEINFERENCE_API_KEY}" in provider["options"]["apiKey"]
+        # The key comes from a file staged outside the workspace; an {env:}
+        # reference would put it in the opencode process env, which the
+        # agent's shell tools inherit.
+        assert provider["options"]["apiKey"] == "{file:~/.freeinference-api-key}"
+        assert "FREEINFERENCE_API_KEY" not in (provider.get("env") or [])
         assert "qwen3.6-35b" in provider["models"]
 
     def test_workflow_model_is_freeinference_qwen(self) -> None:
@@ -97,31 +100,62 @@ class TestPublicBotWiring:
         assert "issue_comment" in _triggers(wf)
         assert _opencode_step("comment")["with"]["mentions"] == "/opencode,/oc"
 
-    def test_jobs_pass_freeinference_secret(self) -> None:
-        for job_name in ("comment", "triage", "review"):
-            env = _step(job_name, "Preflight FreeInference key").get("env") or {}
-            assert env.get("FREEINFERENCE_API_KEY") == "${{ secrets.FREEINFERENCE_PUBLIC_KEY }}"
+    def test_provider_key_never_enters_agent_env(self) -> None:
+        # The action runs `opencode github run` with the step env, which the
+        # agent's shell tools inherit. The provider key must reach the model
+        # via the {file:} reference in opencode.json, not the step env.
+        for job_name in ("comment", "triage", "implement", "review"):
             oc_env = _opencode_step(job_name).get("env") or {}
-            assert oc_env.get("FREEINFERENCE_API_KEY") == "${{ secrets.FREEINFERENCE_PUBLIC_KEY }}"
-        impl_env = _step("implement", "Preflight FreeInference key").get("env") or {}
-        assert impl_env.get("FREEINFERENCE_API_KEY") == "${{ secrets.FREEINFERENCE_API_KEY }}"
+            assert "FREEINFERENCE_API_KEY" not in oc_env, job_name
+            assert _secret_refs(json.dumps(oc_env)) == ["secrets.GITHUB_TOKEN"], job_name
         assert "secrets.OPENCODE_API_KEY" not in _workflow_text()
 
-    def test_preflight_fails_closed_without_key(self) -> None:
+    def test_staging_step_holds_key_and_writes_owner_only_file(self) -> None:
+        for job_name in ("comment", "triage", "review"):
+            env = _step(job_name, "Stage FreeInference key").get("env") or {}
+            assert env.get("FREEINFERENCE_API_KEY") == "${{ secrets.FREEINFERENCE_PUBLIC_KEY }}"
+        impl_env = _step("implement", "Stage FreeInference key").get("env") or {}
+        assert impl_env.get("FREEINFERENCE_API_KEY") == "${{ secrets.FREEINFERENCE_API_KEY }}"
+
+    def test_staged_key_file_matches_opencode_config(self) -> None:
+        api_key = _opencode_config()["provider"]["freeinference"]["options"]["apiKey"]
+        m = re.fullmatch(r"\{file:~/([^}]+)\}", api_key)
+        assert m, f"apiKey must be a {{file:~/name}} reference, got {api_key!r}"
+        for job_name in ("comment", "triage", "implement", "review"):
+            run = _step_run(job_name, "Stage FreeInference key")
+            assert f'"$HOME/{m.group(1)}"' in run, job_name
+            assert "umask 077" in run, job_name
+
+    def test_staged_key_removed_after_opencode(self) -> None:
+        for job_name in ("comment", "triage", "implement", "review"):
+            steps = _job(job_name).get("steps") or []
+            names = [s.get("name") for s in steps]
+            oc_idx = next(
+                i
+                for i, s in enumerate(steps)
+                if str(s.get("uses", "")).startswith("anomalyco/opencode")
+            )
+            rm_idx = names.index("Remove staged provider key")
+            assert rm_idx > oc_idx, job_name
+            cleanup = steps[rm_idx]
+            assert cleanup.get("if") == "always()"
+            assert ".freeinference-api-key" in (cleanup.get("run") or "")
+
+    def test_stage_key_fails_closed_without_key(self) -> None:
         """Missing/empty secret must fail the job before OpenCode starts."""
         wf = _workflow()
-        preflight_runs = [
+        stage_runs = [
             step["run"]
             for job in wf["jobs"].values()
             for step in job.get("steps") or []
-            if step.get("name") == "Preflight FreeInference key"
+            if step.get("name") == "Stage FreeInference key"
         ]
-        assert len(preflight_runs) == 4
-        for run in preflight_runs:
+        assert len(stage_runs) == 4
+        for run in stage_runs:
             assert "FREEINFERENCE_API_KEY is empty" in run
             assert "exit 1" in run
         # Local actions resolve from the checked-out tree; on PR review-comment
-        # events that tree is PR-controlled, so preflight must stay inline.
+        # events that tree is PR-controlled, so staging must stay inline.
         assert "uses: ./.github/actions/" not in _workflow_text()
 
 
@@ -180,12 +214,22 @@ class TestClosedLoopWiring:
             assert "pull_request.head" not in json.dumps(step)
 
     def test_review_permissions_are_minimal(self) -> None:
-        # pull-requests: write only posts review comments; safe here because
-        # the job never executes PR code.
+        # pull-requests stays read: write would let the model submit reviews
+        # (including approving ones). issues: write still lets the action
+        # post its comment via the issues API.
         assert _job("review").get("permissions") == {
             "contents": "read",
-            "pull-requests": "write",
+            "pull-requests": "read",
+            "issues": "write",
         }
+
+    def test_review_cannot_approve_pull_requests(self) -> None:
+        # Submitting a review requires pull-requests: write; a read token
+        # makes an injected APPROVE impossible regardless of the prompt.
+        perms = _job("review").get("permissions") or {}
+        assert perms.get("pull-requests") == "read"
+        prompt = str(_opencode_step("review").get("with", {}).get("prompt", ""))
+        assert "Do not approve" in prompt
 
     def test_every_secret_bearing_prompt_forbids_printing_secrets(self) -> None:
         for name, job in _workflow()["jobs"].items():
@@ -198,9 +242,17 @@ class TestClosedLoopWiring:
                 assert "Never print secrets" in prompt, name
 
     def test_implement_gated_to_trusted_actors(self) -> None:
-        run = _step_run("implement", "Gate to trusted actors")
+        # The gate must be step 0, ahead of checkout and every secret env:
+        # no secret is injected before it passes.
+        steps = _job("implement").get("steps") or []
+        assert steps, "implement must have steps"
+        gate = steps[0]
+        assert gate.get("name") == "Gate to trusted actors"
+        assert _secret_refs(json.dumps(gate)) == ["secrets.GITHUB_TOKEN"]
+        run = gate.get("run") or ""
         assert "collaborators/${ACTOR}/permission" in run
         assert "admin|maintain|write" in run
+        assert "exit 1" in run
 
     def test_comment_and_triage_gated_to_collaborators(self) -> None:
         # issue_comment / issues events always run with base-repo secrets, so
@@ -217,6 +269,55 @@ class TestClosedLoopWiring:
             assert "collaborators/${ACTOR}/permission" in run, name
             assert "admin|maintain|write" in run, name
             assert "exit 1" in run, name
+
+    def test_gates_fail_closed_on_api_errors(self) -> None:
+        # `|| echo none` degrades any gh api failure to 'none', which hits the
+        # exit-1 branch. Pin it in every gate: a regression to a pass-through
+        # value (e.g. 'admin') would fail open while keeping every other
+        # substring assertion green.
+        for name in ("comment", "triage", "implement"):
+            run = _step_run(name, "Gate to trusted actors")
+            assert "|| echo none" in run, name
+            assert "admin|maintain|write" in run, name
+
+    def test_pr_comment_gates_resolve_head_repo_fail_closed(self) -> None:
+        # PR-comment triggers make the agent check out the PR head, so the
+        # head repo must be this repository. issue_comment payloads carry no
+        # head repo, so the gate resolves it via the API — fail closed.
+        for name in ("comment", "implement"):
+            gate = _step(name, "Gate to trusted actors")
+            env = gate.get("env") or {}
+            assert env.get("PR_NUMBER"), name
+            assert env.get("PR_HEAD_REPO"), name
+            run = gate.get("run") or ""
+            assert "pulls/${PR_NUMBER}" in run, name
+            assert "head.repo.full_name" in run, name
+            assert run.count("|| echo none") >= 2, name
+
+    def test_pr_comment_triggers_require_same_repo_head(self) -> None:
+        # pull_request_review_comment carries head.repo in the payload, so the
+        # job `if` refuses fork PRs before any step runs.
+        for name in ("comment", "implement"):
+            cond = str(_job(name).get("if", ""))
+            assert (
+                "github.event.pull_request.head.repo.full_name == github.repository"
+                in cond
+            ), name
+
+    def test_pr_context_checkouts_pin_base_sha(self) -> None:
+        # On pull_request_review_comment the default actions/checkout ref is
+        # the PR merge commit; pin to base so the pre-agent tree is base code.
+        for name in ("comment", "implement"):
+            checkouts = [
+                step
+                for step in _job(name).get("steps") or []
+                if str(step.get("uses", "")).startswith("actions/checkout")
+            ]
+            assert checkouts, name
+            for step in checkouts:
+                assert (step.get("with") or {}).get("ref") == (
+                    "${{ github.event.pull_request.base.sha || github.sha }}"
+                ), name
 
     def test_implement_command_and_comment_exclusion_aligned(self) -> None:
         # Review comments must route to implement, not fall between both jobs.
@@ -236,8 +337,9 @@ class TestClosedLoopWiring:
         for name in ("implement", "review"):
             blob = json.dumps(_job(name))
             assert "gh pr merge" not in blob
-            assert "pulls/" not in blob
             assert "/merge" not in blob
+        # implement's gate legitimately reads pulls/ metadata; review may not.
+        assert "pulls/" not in json.dumps(_job("review"))
 
     def test_exact_job_set_and_no_label_gate(self) -> None:
         """No label-reconciliation job exists; branch protection is the merge gate."""
@@ -339,7 +441,17 @@ if args[:1] == ['api']:
     jq = args[args.index('--jq') + 1] if '--jq' in args else None
     marker = '/branches/'
     contents = '/contents/'
-    if contents in url:
+    collab = '/collaborators/'
+    pulls = '/pulls/'
+    if collab in url:
+        if os.environ.get('GH_STUB_PERM_FAIL'):
+            raise SystemExit(3)
+        data = {'permission': os.environ.get('GH_STUB_PERM', 'none')}
+    elif pulls in url:
+        if os.environ.get('GH_STUB_PULLS_FAIL'):
+            raise SystemExit(3)
+        data = {'head': {'repo': {'full_name': os.environ.get('GH_STUB_HEAD_REPO', '')}}}
+    elif contents in url:
         key = 'GH_STUB_BRANCH_SHA' if '?ref=' in url else 'GH_STUB_DEFAULT_SHA'
         data = {'sha': os.environ.get(key, '')}
     elif marker in url:
@@ -529,14 +641,132 @@ class TestDispatchScript:
         assert "workflow run" not in logged
 
 
-class TestPreflightFailsClosed:
-    def test_empty_secret_exits_nonzero(self) -> None:
+class TestTrustedActorGate:
+    """Execute the shipped gate scripts against stub git + gh."""
+
+    SAME_REPO = "agent-next/polymarket-paper-trader"
+
+    def _run(
+        self,
+        tmp_path: Path,
+        job: str,
+        perm: str = "admin",
+        pr_number: str = "",
+        pr_head_repo: str = "",
+        stub_head_repo: str = "",
+        perm_fail: bool = False,
+        pulls_fail: bool = False,
+    ) -> subprocess.CompletedProcess[str]:
+        stub_log = _write_stubs(tmp_path)
+        extra = {
+            "ACTOR": "octocat",
+            "GH_STUB_PERM": perm,
+            "GH_STUB_HEAD_REPO": stub_head_repo,
+        }
+        if pr_number:
+            extra["PR_NUMBER"] = pr_number
+        if pr_head_repo:
+            extra["PR_HEAD_REPO"] = pr_head_repo
+        if perm_fail:
+            extra["GH_STUB_PERM_FAIL"] = "1"
+        if pulls_fail:
+            extra["GH_STUB_PULLS_FAIL"] = "1"
+        env = _stub_env(tmp_path, stub_log, extra)
+        return subprocess.run(
+            ["bash", "-c", _step_run(job, "Gate to trusted actors")],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+
+    @pytest.mark.parametrize("job", ["comment", "triage", "implement"])
+    def test_allows_trusted_actor(self, tmp_path: Path, job: str) -> None:
+        proc = self._run(tmp_path, job)
+        assert proc.returncode == 0, proc.stderr
+
+    @pytest.mark.parametrize("job", ["comment", "triage", "implement"])
+    def test_blocks_untrusted_actor(self, tmp_path: Path, job: str) -> None:
+        proc = self._run(tmp_path, job, perm="none")
+        assert proc.returncode == 1
+        assert "lacks write access" in proc.stderr
+
+    @pytest.mark.parametrize("job", ["comment", "triage", "implement"])
+    def test_blocks_when_permission_lookup_fails(self, tmp_path: Path, job: str) -> None:
+        proc = self._run(tmp_path, job, perm_fail=True)
+        assert proc.returncode == 1
+
+    @pytest.mark.parametrize("job", ["comment", "implement"])
+    def test_allows_same_repo_pr_via_payload(self, tmp_path: Path, job: str) -> None:
+        proc = self._run(tmp_path, job, pr_number="9", pr_head_repo=self.SAME_REPO)
+        assert proc.returncode == 0, proc.stderr
+
+    @pytest.mark.parametrize("job", ["comment", "implement"])
+    def test_blocks_fork_pr_via_payload(self, tmp_path: Path, job: str) -> None:
+        proc = self._run(tmp_path, job, pr_number="9", pr_head_repo="someone/fork")
+        assert proc.returncode == 1
+        assert "fork" in proc.stderr or "not" in proc.stderr
+
+    @pytest.mark.parametrize("job", ["comment", "implement"])
+    def test_allows_same_repo_pr_via_api(self, tmp_path: Path, job: str) -> None:
+        # issue_comment on a PR: payload has no head repo, gate asks the API.
+        proc = self._run(tmp_path, job, pr_number="9", stub_head_repo=self.SAME_REPO)
+        assert proc.returncode == 0, proc.stderr
+
+    @pytest.mark.parametrize("job", ["comment", "implement"])
+    def test_blocks_fork_pr_via_api(self, tmp_path: Path, job: str) -> None:
+        proc = self._run(tmp_path, job, pr_number="9", stub_head_repo="someone/fork")
+        assert proc.returncode == 1
+
+    @pytest.mark.parametrize("job", ["comment", "implement"])
+    def test_blocks_pr_when_head_lookup_fails(self, tmp_path: Path, job: str) -> None:
+        proc = self._run(tmp_path, job, pr_number="9", pulls_fail=True)
+        assert proc.returncode == 1
+
+    @pytest.mark.parametrize("job", ["comment", "implement"])
+    def test_blocks_empty_head_repo_via_api(self, tmp_path: Path, job: str) -> None:
+        proc = self._run(tmp_path, job, pr_number="9", stub_head_repo="")
+        assert proc.returncode == 1
+
+    @pytest.mark.parametrize("job", ["comment", "implement"])
+    def test_blocks_nonnumeric_pr_number(self, tmp_path: Path, job: str) -> None:
+        proc = self._run(tmp_path, job, pr_number="9;id", stub_head_repo=self.SAME_REPO)
+        assert proc.returncode == 1
+
+
+class TestStageFreeInferenceKey:
+    """Execute the shipped key-staging step; the file must be owner-only."""
+
+    def _run(
+        self, tmp_path: Path, job: str, key: str
+    ) -> tuple[subprocess.CompletedProcess[str], Path]:
+        home = tmp_path / "home"
+        home.mkdir(exist_ok=True)
         proc = subprocess.run(
-            ["bash", "-c", _step_run("comment", "Preflight FreeInference key")],
-            env={"PATH": "/usr/bin:/bin", "FREEINFERENCE_API_KEY": ""},
+            ["bash", "-c", _step_run(job, "Stage FreeInference key")],
+            env={
+                "PATH": "/usr/bin:/bin",
+                "FREEINFERENCE_API_KEY": key,
+                "HOME": str(home),
+            },
             capture_output=True,
             text=True,
             timeout=10,
         )
+        return proc, home
+
+    @pytest.mark.parametrize("job", ["comment", "triage", "implement", "review"])
+    def test_writes_key_file_owner_only(self, tmp_path: Path, job: str) -> None:
+        proc, home = self._run(tmp_path, job, "sk-test-key")
+        assert proc.returncode == 0, proc.stderr
+        key_file = home / ".freeinference-api-key"
+        assert key_file.read_text(encoding="utf-8") == "sk-test-key"
+        assert stat.S_IMODE(key_file.stat().st_mode) == 0o600
+
+    @pytest.mark.parametrize("job", ["comment", "triage", "implement", "review"])
+    def test_empty_secret_exits_nonzero(self, tmp_path: Path, job: str) -> None:
+        proc, home = self._run(tmp_path, job, "")
         assert proc.returncode != 0, (proc.stdout, proc.stderr)
         assert "FREEINFERENCE_API_KEY is empty" in proc.stderr
+        assert not (home / ".freeinference-api-key").exists()
