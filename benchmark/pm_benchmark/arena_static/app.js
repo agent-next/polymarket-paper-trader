@@ -55,7 +55,8 @@ function fmtGap(ai, crowd) {
 }
 
 function safeUrl(v) {
-  return typeof v === "string" && /^https?:\/\//i.test(v) ? v : null;
+  // same policy as arena_site._safe_url: https only
+  return typeof v === "string" && /^https:\/\//i.test(v) ? v : null;
 }
 
 function shortLabel(info, eid) {
@@ -136,9 +137,10 @@ function aiEntrants(meta) {
 /* Hero: WebGL globe                                                    */
 /* ------------------------------------------------------------------ */
 
-function openForecastColors(board, meta) {
-  /* one pulse per open AI forecast, in the entrant's color */
-  const colors = [];
+function openForecastEntrants(board, meta) {
+  /* one pulse per open AI forecast, tagged with the entrant id so the
+   * sprite color can track a prefers-color-scheme flip */
+  const eids = [];
   const open = Array.isArray(board.open) ? board.open : [];
   const ais = aiEntrants(meta);
   for (const m of open) {
@@ -146,11 +148,12 @@ function openForecastColors(board, meta) {
     const fcs = m.forecasts && typeof m.forecasts === "object" ? m.forecasts : {};
     for (const eid of ais) {
       const fc = fcs[eid];
-      const c = meta.color.get(eid);
-      if (fc && toProb(fc.prob) != null && c) colors.push(c);
+      if (fc && toProb(fc.prob) != null && meta.color.get(eid)) {
+        eids.push(eid);
+      }
     }
   }
-  return colors;
+  return eids;
 }
 
 function makeDiscTexture(THREE) {
@@ -271,20 +274,20 @@ async function initGlobe(board, meta) {
   scene.add(atmosphere);
 
   // one looping pulse per open AI forecast, in the entrant's color
-  const pulseColors = openForecastColors(board, meta);
-  const pulses = pulseColors.map((hex, i) => {
+  const pulseEids = openForecastEntrants(board, meta);
+  const pulses = pulseEids.map((eid, i) => {
     const mat = new THREE.SpriteMaterial({
       map: disc,
-      color: new THREE.Color(hex),
+      color: new THREE.Color(meta.color.get(eid)),
       transparent: true,
       opacity: 0,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
     const s = new THREE.Sprite(mat);
-    const v = fibDir(i, Math.max(1, pulseColors.length));
+    const v = fibDir(i, Math.max(1, pulseEids.length));
     s.position.set(v[0] * 1.02, v[1] * 1.02, v[2] * 1.02);
-    s.userData.phase = pulseColors.length ? i / pulseColors.length : 0;
+    s.userData.phase = pulseEids.length ? i / pulseEids.length : 0;
     globe.add(s);
     return s;
   });
@@ -307,9 +310,11 @@ async function initGlobe(board, meta) {
 
   paintPoints();
 
-  // swap the static SVG for the canvas in the same reserved box
-  host.textContent = "";
-  host.appendChild(renderer.domElement);
+  // swap the static SVG for the canvas in the same reserved box; keep the
+  // detached nodes so a bfcache restore (after pagehide dispose) can put
+  // the fallback back instead of leaving a dead canvas
+  const fallback = [...host.childNodes];
+  host.replaceChildren(renderer.domElement);
 
   function sizeCanvas() {
     const w = renderer.domElement.clientWidth || host.clientWidth;
@@ -373,6 +378,10 @@ async function initGlobe(board, meta) {
   const onScheme = () => {
     meta.refreshColors();
     paintPoints();
+    pulses.forEach((s, i) => {
+      const c = meta.color.get(pulseEids[i]);
+      if (c) s.material.color.set(c);
+    });
     renderer.render(scene, camera);
   };
   reducedMotion.addEventListener("change", onMotion);
@@ -397,6 +406,8 @@ async function initGlobe(board, meta) {
     disc.dispose();
     renderer.dispose();
     renderer.forceContextLoss();
+    renderer.domElement.remove();
+    host.replaceChildren(...fallback);
   }
   window.addEventListener("pagehide", dispose);
 
@@ -444,12 +455,12 @@ function initScatter(board, meta) {
   const pts = scatterPoints(board, meta);
   if (!pts.length) return;
 
-  host.textContent = "";
+  // build detached; the static fallback stays in place until the first
+  // draw succeeds
   const svgHost = el("div", "viz-plot");
   const tip = el("div", "viz-tip");
   tip.hidden = true;
   const legend = el("div", "viz-legend");
-  host.append(svgHost, tip, legend);
 
   const present = [];
   for (const p of pts) {
@@ -476,6 +487,10 @@ function initScatter(board, meta) {
       if (hiddenE.has(eid)) hiddenE.delete(eid);
       else hiddenE.add(eid);
       btn.setAttribute("aria-pressed", String(!hiddenE.has(eid)));
+      if (pinned && hiddenE.has(pinned.eid)) {
+        pinned = null;
+        hideTip();
+      }
       draw();
     });
     btn.addEventListener("mouseenter", () => dim(true));
@@ -522,10 +537,15 @@ function initScatter(board, meta) {
       tip.appendChild(a);
     }
     tip.hidden = false;
-    if (geom) {
-      const k = svgHost.clientWidth / geom.size;
-      const px = geom.x(d.crowd) * k;
-      const py = geom.y(d.ai) * k;
+    tip.classList.toggle("pin", pinned === d);
+    if (geom && geom.node) {
+      // map viewBox coords through the rendered svg rect — the sheet
+      // clamps it to max-width 620px and centers it inside the host
+      const srect = geom.node.getBoundingClientRect();
+      const hrect = host.getBoundingClientRect();
+      const k = srect.width / geom.size;
+      const px = srect.left - hrect.left + geom.x(d.crowd) * k;
+      const py = srect.top - hrect.top + geom.y(d.ai) * k;
       const hw = host.clientWidth;
       tip.style.left = `${Math.max(6, Math.min(px + 16, hw - TIP_W - 6))}px`;
       const h = tip.offsetHeight;
@@ -535,6 +555,7 @@ function initScatter(board, meta) {
 
   function hideTip() {
     tip.hidden = true;
+    tip.classList.remove("pin");
   }
 
   function draw() {
@@ -543,7 +564,6 @@ function initScatter(board, meta) {
     const m = { t: 18, r: 16, b: 44, l: 48 };
     const x = d3.scaleLinear().domain([0, 1]).range([m.l, size - m.r]);
     const y = d3.scaleLinear().domain([0, 1]).range([size - m.b, m.t]);
-    geom = { x, y, size };
 
     const svg = d3
       .select(svgHost)
@@ -554,6 +574,7 @@ function initScatter(board, meta) {
         "aria-label",
         "Scatter of AI vs crowd probabilities — one dot per AI forecast on an open market"
       );
+    geom = { x, y, size, node: svg.node() };
 
     svg
       .append("rect")
@@ -687,6 +708,14 @@ function initScatter(board, meta) {
       });
   }
 
+  // Escape dismisses a pinned tip even after focus moved elsewhere
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && pinned) {
+      pinned = null;
+      hideTip();
+    }
+  });
+
   let lastW = 0;
   const ro = new ResizeObserver(() => {
     const w = svgHost.clientWidth;
@@ -695,8 +724,12 @@ function initScatter(board, meta) {
       draw();
     }
   });
+  draw(); // detached: bail with the fallback intact if this throws
+  host.textContent = "";
+  host.append(svgHost, tip, legend);
+  lastW = svgHost.clientWidth;
+  draw(); // real width now that the host is attached
   ro.observe(svgHost);
-  draw();
 }
 
 /* ------------------------------------------------------------------ */
@@ -820,18 +853,22 @@ function drawForest(host, rows, meta) {
 function calibrationRows(board) {
   const seen = new Set();
   const rows = [];
-  for (const src of [board.duels, board.hall_of_wrong]) {
+  for (const [srcName, src] of [
+    ["duels", board.duels],
+    ["hall", board.hall_of_wrong],
+  ]) {
     if (!Array.isArray(src)) continue;
-    for (const d of src) {
-      if (!d || typeof d !== "object") continue;
+    src.forEach((d, i) => {
+      if (!d || typeof d !== "object") return;
       const outcome = d.outcome === 0 || d.outcome === 1 ? d.outcome : null;
       const p = toProb(d.prob);
-      if (outcome == null || p == null) continue;
-      const key = `${d.slug}|${d.entrant}`;
-      if (seen.has(key)) continue;
+      if (outcome == null || p == null) return;
+      // slugless rows key by position so they can't merge with each other
+      const key = `${d.slug || `${srcName}#${i}`}|${d.entrant}`;
+      if (seen.has(key)) return;
       seen.add(key);
       rows.push({ eid: d.entrant, prob: p, outcome });
-    }
+    });
   }
   return rows;
 }
@@ -1005,7 +1042,6 @@ function initPerformance(board, meta) {
     (r) => r && typeof r === "object"
   );
   if (!rows.length) return; // the server-rendered empty state stays
-  host.textContent = "";
   const grid = el("div", "perf-grid");
   const forest = perfPanel(
     "Alpha vs crowd",
@@ -1016,9 +1052,11 @@ function initPerformance(board, meta) {
     "Predicted probability vs observed frequency"
   );
   grid.append(forest.box, calib.box);
-  host.appendChild(grid);
+  // draw detached first: a throw here leaves the fallback note intact
   drawForest(forest.body, rows, meta);
   drawCalibration(calib.body, board, meta);
+  host.textContent = "";
+  host.appendChild(grid);
 }
 
 /* ------------------------------------------------------------------ */
