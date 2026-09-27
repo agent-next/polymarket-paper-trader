@@ -147,10 +147,76 @@ class TestClosedLoopWiring:
         prompt = str(_opencode_step("review").get("with", {}).get("prompt", ""))
         assert "Do not push commits" in prompt
 
+    def test_review_runs_on_pull_request_same_repo_only(self) -> None:
+        # review feeds a PR diff to a secret-bearing model step. pull_request
+        # already withholds secrets from fork PRs, and the head-repo guard
+        # keeps fork diffs out of the job entirely; pull_request_target would
+        # hand base-repo secrets to runs triggered by untrusted forks.
+        triggers = _triggers(_workflow())
+        assert "pull_request" in triggers
+        assert "pull_request_target" not in triggers
+        assert "pull_request_target" not in _workflow_text()
+        review_if = str(_job("review").get("if", ""))
+        assert "github.event_name == 'pull_request'" in review_if
+        assert (
+            "github.event.pull_request.head.repo.full_name == github.repository"
+            in review_if
+        )
+        assert "github.event.pull_request.draft == false" in review_if
+
+    def test_review_never_checks_out_pr_code(self) -> None:
+        # The workspace stays on trusted base code; the diff reaches the model
+        # as text via the event payload, never as checked-out PR code.
+        checkout_steps = [
+            step
+            for step in _job("review").get("steps") or []
+            if str(step.get("uses", "")).startswith("actions/checkout")
+        ]
+        assert checkout_steps, "review must checkout the base tree"
+        for step in checkout_steps:
+            assert (step.get("with") or {}).get("ref") == (
+                "${{ github.event.pull_request.base.sha }}"
+            )
+            assert "pull_request.head" not in json.dumps(step)
+
+    def test_review_permissions_are_minimal(self) -> None:
+        # pull-requests: write only posts review comments; safe here because
+        # the job never executes PR code.
+        assert _job("review").get("permissions") == {
+            "contents": "read",
+            "pull-requests": "write",
+        }
+
+    def test_every_secret_bearing_prompt_forbids_printing_secrets(self) -> None:
+        for name, job in _workflow()["jobs"].items():
+            for step in job.get("steps") or []:
+                if not str(step.get("uses", "")).startswith("anomalyco/opencode"):
+                    continue
+                if not _secret_refs(json.dumps(step.get("env") or {})):
+                    continue
+                prompt = str(step.get("with", {}).get("prompt", ""))
+                assert "Never print secrets" in prompt, name
+
     def test_implement_gated_to_trusted_actors(self) -> None:
         run = _step_run("implement", "Gate to trusted actors")
         assert "collaborators/${ACTOR}/permission" in run
         assert "admin|maintain|write" in run
+
+    def test_comment_and_triage_gated_to_collaborators(self) -> None:
+        # issue_comment / issues events always run with base-repo secrets, so
+        # an untrusted commenter or issue opener could otherwise feed hostile
+        # prompt text to the secret-bearing model step. Same gate as
+        # implement, first: no secret is injected before it passes.
+        for name in ("comment", "triage"):
+            steps = _job(name).get("steps") or []
+            assert steps, name
+            gate = steps[0]
+            assert gate.get("name") == "Gate to trusted actors", name
+            assert _secret_refs(json.dumps(gate)) == ["secrets.GITHUB_TOKEN"], name
+            run = gate.get("run") or ""
+            assert "collaborators/${ACTOR}/permission" in run, name
+            assert "admin|maintain|write" in run, name
+            assert "exit 1" in run, name
 
     def test_implement_command_and_comment_exclusion_aligned(self) -> None:
         # Review comments must route to implement, not fall between both jobs.

@@ -1,15 +1,38 @@
 """Tests for pm_benchmark.arena_site."""
 from __future__ import annotations
 
-from pm_benchmark.arena_site import render_site
+import base64
+import hashlib
+import json
+import re
+
+import pytest
+
+from urllib.parse import urljoin
+
+from pm_benchmark.arena_site import (
+    D3_INTEGRITY,
+    D3_URL,
+    THREE_CORE_INTEGRITY,
+    THREE_CORE_URL,
+    THREE_INTEGRITY,
+    THREE_URL,
+    _fmt_ci,
+    render_site,
+)
+
+DISCLAIMER = (
+    "Unofficial · not affiliated with Polymarket · "
+    "paper forecasts only, no real money"
+)
 
 
 def sample_board() -> dict:
     """Full board fixture per team/CONTRACT-board.md + the v1.1 addendum.
 
     Exercises every entrant kind, every significance state, every duel
-    status, and the new board keys (``last_run``, ``n_markets``,
-    ``coverage``, ``since``, ``unresolvable``, ``web_access``/``cutoff``).
+    status, and the board keys (``last_run``, ``n_markets``, ``coverage``,
+    ``since``, ``unresolvable``, ``web_access``/``cutoff``).
     """
     return {
         "generated_at": "2026-09-26T06:00:00Z",
@@ -41,7 +64,7 @@ def sample_board() -> dict:
             },
             {
                 "id": "coin",
-                "label": "Coin flip",
+                "label": "Coin flip (0.5)",
                 "kind": "baseline",
                 "model": None,
                 "web_access": None,
@@ -160,7 +183,7 @@ def sample_board() -> dict:
                 "entrant": "jev",
                 "prob": 0.45,
                 "gap": 0.35,
-                "rationale": None,
+                "rationale": "Jev opencode/jev-1.13-free",
                 "status": "lost",
                 "outcome": 0,
             },
@@ -169,10 +192,10 @@ def sample_board() -> dict:
                 "question": "Launch this window?",
                 "url": "https://polymarket.com/event/launch-window",
                 "market_prob": 0.5,
-                "entrant": "gpt-oss",
+                "entrant": "coin",
                 "prob": 0.8,
                 "gap": 0.3,
-                "rationale": None,
+                "rationale": "Uninformative 0.5 prior.",
                 "status": "tie",
                 "outcome": 1,
             },
@@ -233,109 +256,356 @@ class TestDocument:
         assert 'name="color-scheme" content="light dark"' in html
         assert 'rel="icon" href="data:image/svg+xml,' in html
 
-    def test_csp_and_no_javascript(self) -> None:
+    def test_csp_and_no_inline_javascript(self) -> None:
         html = render_site(sample_board())
         assert 'http-equiv="Content-Security-Policy"' in html
-        assert "default-src 'none'" in html
-        assert "style-src 'unsafe-inline'" in html
-        assert "img-src data:" in html
-        assert "script-src 'none'" in html
-        assert "<script" not in html
         assert "onclick" not in html
+        # every script tag is one of: the inline import map, the pinned
+        # d3 tag, the app.js module tag, or the JSON data island — never
+        # inline executable code
+        for attrs in re.findall(r"<script([^>]*)>", html):
+            assert (
+                'type="importmap"' in attrs
+                or 'type="application/json"' in attrs
+                or D3_URL in attrs
+                or 'src="app.js"' in attrs
+            )
 
-    def test_header_disclaimer_above_fold(self) -> None:
+    def test_no_external_assets_beyond_pinned_cdn(self) -> None:
         html = render_site(sample_board())
-        disclaimer = (
-            "Unofficial · not affiliated with Polymarket · "
-            "paper forecasts only, no real money"
+        for tag in ("<img", "@import", "font-face", "<iframe"):
+            assert tag not in html
+        # link tags: the inline data: favicon and the two three.js
+        # module preloads (three.module.js + its ./three.core.js import)
+        assert html.count("<link") == 3
+        assert '<link rel="icon" href="data:' in html
+        # the only external fetch targets are the pinned CDN files
+        # (anchors link out but fetch nothing)
+        fetched = re.findall(r'<link[^>]+href="(https://[^"]+)"', html)
+        fetched += re.findall(r'<script[^>]+src="(https://[^"]+)"', html)
+        assert set(fetched) == {THREE_URL, THREE_CORE_URL, D3_URL}
+        assert "cdn.jsdelivr.net/npm/three@0.186.1/" in THREE_URL
+        assert "cdn.jsdelivr.net/npm/three@0.186.1/" in THREE_CORE_URL
+        assert "cdn.jsdelivr.net/npm/d3@7.9.0/" in D3_URL
+
+    def test_wide_content_column(self) -> None:
+        html = render_site(sample_board())
+        assert "max-width: 1220px" in html
+
+    def test_compact_section_spacing(self) -> None:
+        html = render_site(sample_board())
+        assert "padding: 26px" in _css_rule(html, ".hero")
+        assert "margin-top: 34px" in _css_rule(html, "section")
+
+    def test_legibility_floor(self) -> None:
+        html = render_site(sample_board())
+        sizes = [
+            float(s) for s in re.findall(r"font-size: ([\d.]+)rem", html)
+        ]
+        # nothing below 12px at the 16px root
+        assert sizes and min(sizes) >= 0.75
+        # leaderboard/market table cells and quotes are >= 14px
+        assert "font-size: 0.875rem" in _css_rule(html, "th, td")
+        quote = _css_rule(html, ".quote")
+        assert "font-size: 0.875rem" in quote
+        assert "line-height: 1.5" in quote
+
+    def test_muted_text_holds_aa_contrast_in_light_theme(self) -> None:
+        html = render_site(sample_board())
+        root = _css_rule(html, ":root")
+        tokens = dict(re.findall(r"(--[\w-]+): (#[0-9a-f]{6})", root))
+        for surface in ("--bg", "--bg2", "--card", "--gap-bg"):
+            assert _contrast(tokens["--muted"], tokens[surface]) >= 4.5
+
+
+class TestTopBar:
+    def test_wordmark_nav_and_pill(self) -> None:
+        html = render_site(sample_board())
+        assert '<header class="topbar"' in html
+        assert '<a class="wordmark" href="#top">Forecast Arena</a>' in html
+        for anchor in ("#leaderboard", "#markets", "#method"):
+            assert f'href="{anchor}"' in html
+        assert (
+            'href="https://github.com/agent-next/polymarket-paper-trader"'
+            in html
         )
-        assert disclaimer in html
-        assert "<h1>Forecast Arena</h1>" in html
-        assert "Can AI forecast real-world events better than the crowd?" in html
-        assert html.index(disclaimer) < html.index("<h1")
+        # disclaimer pill in the top bar and again in the bottom bar
+        assert html.count(DISCLAIMER) == 2
+        assert html.index(DISCLAIMER) < html.index("<h1")
+
+    def test_sticky_bar_css(self) -> None:
+        html = render_site(sample_board())
+        assert "position: sticky" in html
 
 
-class TestStatsStrip:
-    def test_values_and_labels(self) -> None:
+class TestHero:
+    def test_eyebrow_headline_sub(self) -> None:
+        html = render_site(sample_board())
+        assert "Same questions. Different minds. Real outcomes." in html
+        assert '<h1>Can <span class="ai">AI</span> beat the crowd?</h1>' in html
+        assert "forecast the same real-world events before they resolve" in html
+
+    def test_stat_strip(self) -> None:
         html = render_site(sample_board())
         for label in (
             "forecasts",
-            "resolved",
             "markets",
-            "unresolvable",
             "entrants",
-            "tracking since",
+            "updated daily",
         ):
             assert f'<span class="stat-label">{label}</span>' in html
         assert '<span class="stat-num">180</span>' in html
-        assert '<span class="stat-num">2</span>' in html
-        assert '<span class="stat-num">2026-09-26</span>' in html
+        assert '<span class="stat-num">30</span>' in html
+        assert '<span class="stat-num">6</span>' in html
+        assert '<span class="stat-num">06:17 UTC</span>' in html
+
+    def test_resolved_count_replaces_first_resolution(self) -> None:
+        html = render_site(sample_board())
+        assert '<span class="stat-label">resolved</span>' in html
+        assert '<span class="stat-num">42</span>' in html
+        assert "first resolution" not in html
+
+    def test_first_resolution_is_earliest_open_end(self) -> None:
+        board = sample_board()
+        board["stats"]["resolved"] = 0
+        html = render_site(board)
+        assert '<span class="stat-label">first resolution</span>' in html
+        assert '<span class="stat-num">Oct 1</span>' in html
+
+    def test_first_resolution_none_when_no_dates(self) -> None:
+        html = render_site({"stats": {"resolved": 0}, "open": []})
+        assert '<span class="stat-num">—</span>' in html
 
     def test_missing_stats_em_dash(self) -> None:
         html = render_site({"stats": {}})
-        assert html.count('<span class="stat-num">—</span>') == 6
+        # forecasts, markets, entrants, first resolution
+        assert html.count('<span class="stat-num">—</span>') == 4
+
+    def test_hero_note(self) -> None:
+        html = render_site(sample_board())
+        assert "tracking since 2026-09-26" in html
+        assert (
+            'Updated <time datetime="2026-09-26T05:58:11Z">'
+            "Sep 26, 05:58 UTC</time>" in html
+        )
+
+    def test_hero_note_absent_without_stamps(self) -> None:
+        html = render_site({})
+        assert 'class="hero-note"' not in html
+
+    def test_stats_form_one_bordered_strip(self) -> None:
+        html = render_site(sample_board())
+        stats = _css_rule(html, ".stats")
+        assert "border: 1px solid var(--border)" in stats
+        assert "gap: 1px" in stats  # the border color shows as dividers
+        # the cells themselves carry no card borders of their own
+        assert "border" not in _css_rule(html, ".stat")
+        # five cells; on narrow screens the strip wraps to two columns
+        # inside the same container and the last cell fills its row
+        block = html.split("@media (max-width: 700px)")[1].split("@media")[0]
+        assert "repeat(2, 1fr)" in block
+        assert "grid-column: 1 / -1" in block
+
+    def test_hero_art_shrinks_above_the_headline_below_1100px(self) -> None:
+        html = render_site(sample_board())
+        assert '<div class="hero-art" aria-hidden="true">' in html
+        # desktop: a full-size globe sits right of the hero copy
+        svg = _css_rule(html, ".hero-art svg")
+        assert "width: 320px" in svg and "height: 320px" in svg
+        block = html.split("@media (max-width: 1099px)")[1]
+        block = block.split("@media")[0]
+        # small screens: a compact globe above the headline, not hidden
+        assert "order: -1" in block
+        assert "display: none" not in block
+        assert float(re.search(r"width: ([\d.]+)px", block).group(1)) <= 160
+
+    def test_hero_globe_is_a_shaded_dot_sphere(self) -> None:
+        html = render_site(sample_board())
+        svg = html.split('class="hero-art"')[1].split("</svg>")[0]
+        radii = [float(r) for r in re.findall(r'r="([\d.]+)"', svg)]
+        opacities = [
+            float(o) for o in re.findall(r'opacity="([\d.]+)"', svg)
+        ]
+        assert len(radii) == len(opacities) > 300
+        # contrast: lit dots much larger and brighter than dark-side dots
+        assert max(radii) >= 2 * min(radii)
+        assert max(opacities) >= 3 * min(opacities)
+
+    def test_stamp_falls_back_to_escaped_raw_text(self) -> None:
+        html = render_site({"last_run": "not-a-date<"})
+        assert "Updated not-a-date&lt;" in html
+        assert "<time" not in html
+
+    def test_stamp_falls_back_when_utc_conversion_overflows(self) -> None:
+        # parses fine, but astimezone(UTC) lands before year 1
+        html = render_site({"generated_at": "0001-01-01T00:00:00+14:00"})
+        assert "Generated 0001-01-01T00:00:00+14:00" in html
+        assert "<time" not in html
+
+    def test_unconvertible_end_date_skipped_in_first_resolution(self) -> None:
+        board = {
+            "stats": {"resolved": 0},
+            "open": [
+                {"slug": "a", "end_date": "0001-01-01T00:00:00+14:00"},
+                {"slug": "b", "end_date": "2026-10-05T00:00:00Z"},
+            ],
+        }
+        html = render_site(board)
+        assert '<span class="stat-num">Oct 5</span>' in html
+
+    def test_no_vertical_side_text(self) -> None:
+        html = render_site(sample_board())
+        assert "Brighter answers" not in html
+        assert "writing-mode" not in html
+
+
+def _luminance(hex_color: str) -> float:
+    """WCAG relative luminance of a ``#rrggbb`` color."""
+    channels = [int(hex_color[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    linear = [
+        c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+        for c in channels
+    ]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def _contrast(a: str, b: str) -> float:
+    """WCAG contrast ratio between two ``#rrggbb`` colors."""
+    la, lb = _luminance(a), _luminance(b)
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
+def _css_rule(html: str, selector: str) -> str:
+    """The declaration block of a top-level CSS rule."""
+    match = re.search(rf"{re.escape(selector)} \{{([^}}]*)\}}", html)
+    assert match, f"no rule for {selector}"
+    return match.group(1)
+
+
+class TestEntrantColors:
+    def test_palette_rules_emitted_in_board_order(self) -> None:
+        html = render_site(sample_board())
+        # jev is entrant 0 -> first palette pair; crowd -> neutral gray
+        assert ".e0{--ec:#1d4ed8}" in html
+        assert ".e1{--ec:#7c3aed}" in html
+        assert ".e2{--ec:#64748b}" in html  # crowd: neutral gray
+        assert ".e3{--ec:#15803d}" in html  # coin flip: green
+        dark = html.split("prefers-color-scheme: dark){", 1)[1]
+        assert ".e0{--ec:#6ea8fe}" in dark
+        assert ".e2{--ec:#9aa7b4}" in dark
+        assert ".e3{--ec:#4ade80}" in dark
+
+    def test_baseline_ids_pin_their_palette_colors(self) -> None:
+        board = {
+            "entrants": [
+                {"id": "m", "label": "M", "kind": "ai"},
+                {"id": "crowd", "kind": "baseline"},
+                {"id": "coin", "kind": "baseline"},
+                {"id": "favorite", "kind": "baseline"},
+            ]
+        }
+        html = render_site(board)
+        assert ".e0{--ec:#1d4ed8}" in html  # ai: palette by board order
+        assert ".e1{--ec:#64748b}" in html  # crowd gray
+        assert ".e2{--ec:#15803d}" in html  # coin flip green
+        assert ".e3{--ec:#c2410c}" in html  # favorite orange
+        dark = html.split("prefers-color-scheme: dark){", 1)[1]
+        assert ".e2{--ec:#4ade80}" in dark
+        assert ".e3{--ec:#fb923c}" in dark
+
+    def test_entrant_colors_hold_aa_contrast_on_chips(self) -> None:
+        # chip text pulls the accent toward the theme foreground so the
+        # washed-out 14% tint background keeps >= 4.5:1 contrast
+        html = render_site(sample_board())
+        chip = _css_rule(html, ".chip")
+        assert "color-mix(in srgb, var(--ec, var(--muted)) 82%, var(--fg))" in chip
+
+    def test_palette_wraps_after_eight_entrants(self) -> None:
+        board = {
+            "entrants": [{"id": f"e{i}", "label": f"E{i}"} for i in range(9)],
+            "leaderboard": [{"entrant": "e8", "alpha": 0.0,
+                             "alpha_ci": None, "significant": True}],
+        }
+        html = render_site(board)
+        assert ".e8{--ec:#1d4ed8}" in html  # wraps to palette[0]
+
+    def test_color_class_consistent_across_sections(self) -> None:
+        html = render_site(sample_board())
+        # jev (e0): leaderboard dot, duel dot/legend, market column header
+        assert '<i class="kdot e0"></i>Jev 1.13 (free)' in html
+        assert 'class="pdot e0" style="left:72.00%"' in html
+        assert '<th class="pct e0"><i class="kdot"></i>Jev 1.13</th>' in html
 
 
 class TestLeaderboard:
     def test_columns_and_rows(self) -> None:
         html = render_site(sample_board())
         for header in (
+            "#",
             "Entrant",
-            "Kind",
+            "Type",
             "Alpha vs crowd (95% CI)",
             "Brier",
             "ECE",
-            "N",
-            "Events",
+            "Markets",
             "Coverage",
             "Since",
         ):
-            assert f"<th" in html and header in html
-        # raw board keys are humanized before they reach the header row
-        assert "n_markets" not in html
-        assert ">N</th>" in html and ">Events</th>" in html
+            assert f">{header}</th>" in html
         assert "Jev 1.13 (free)" in html
-        assert "badge-ai" in html
-        assert "AI" in html
-        assert "badge-baseline" in html
-        assert "BASELINE" in html
+        assert '<span class="chip e0">AI</span>' in html
+        assert '<span class="chip e2">BASELINE</span>' in html
         assert '<tr class="baseline">' in html
         assert ">0.182</td>" in html
         assert ">0.071</td>" in html
         assert ">90%</td>" in html
         assert ">32</td>" in html
         assert ">2026-09-26</td>" in html
+        # rank column numbers the rows
+        assert '<td class="num">1</td>' in html
+        assert '<td class="num">4</td>' in html
+
+    def test_alpha_whisker_positions(self) -> None:
+        html = render_site(sample_board())
+        # fixed domain [-0.15, +0.15]: pos(v) = (v + 0.15) / 0.30 * 100
+        # jev: ci [-0.031, +0.006] -> 39.67%..52.00%, alpha -0.012 -> 46.00%
+        assert 'title="95% CI [-0.031, +0.006]"' in html
+        assert 'style="left:50.00%"' in html  # zero line
+        assert 'style="left:39.67%;width:12.33%"' in html
+        assert 'class="ci-dot e0" style="left:46.00%"' in html
+        assert "-0.012" in html
 
     def test_significance_states(self) -> None:
         html = render_site(sample_board())
-        assert "-0.012" in html
-        assert "[-0.031, +0.006]" in html
         assert "not significant" in html
-        # significant: true renders the CI with no marker
-        assert "[-0.090, -0.010]" in html
+        # significant: true renders the CI whisker with no marker
+        assert 'title="95% CI [-0.090, -0.010]"' in html
         # crowd reference row: alpha shown, no CI, no marker
         assert "+0.000" in html
 
-    def test_too_few_markets(self) -> None:
-        board = sample_board()
-        board["leaderboard"].append(
-            {
-                "entrant": "newcomer",
-                "n": 5,
-                "brier": 0.21,
-                "ece": None,
-                "alpha": -0.04,
-                "alpha_ci": [-0.1, 0.02],
-                "significant": None,
-                "n_markets": 4,
-                "coverage": 0.2,
-                "since": "2026-10-01",
-            }
-        )
+    def test_ci_withheld_below_event_floor(self) -> None:
+        board = {
+            "entrants": [{"id": "x", "label": "X", "kind": "ai"}],
+            "leaderboard": [
+                {"entrant": "x", "alpha": -0.2, "alpha_ci": [-0.25, -0.15],
+                 "significant": None}
+            ],
+        }
         html = render_site(board)
         assert "too few events" in html
-        # newcomer is not in entrants: label falls back to the id, no badge
-        assert "newcomer" in html
+        assert 'class="ci-track"' not in html
+
+    def test_ci_shown_once_significance_assessed(self) -> None:
+        board = {
+            "entrants": [{"id": "x", "label": "X", "kind": "ai"}],
+            "leaderboard": [
+                {"entrant": "x", "alpha": -0.2, "alpha_ci": [-0.25, -0.15],
+                 "significant": False}
+            ],
+        }
+        html = render_site(board)
+        assert 'class="ci-track"' in html
+        assert "not significant" in html
 
     def test_entrant_web_access_and_cutoff(self) -> None:
         html = render_site(sample_board())
@@ -344,7 +614,6 @@ class TestLeaderboard:
 
     def test_entrant_model_in_meta(self) -> None:
         html = render_site(sample_board())
-        # model id is part of the audit trail under the label
         assert "opencode/jev-1.13-free · no web access" in html
         assert "openai/gpt-oss-120b · web access · cutoff 2024-06" in html
 
@@ -352,119 +621,747 @@ class TestLeaderboard:
         html = render_site(sample_board())
         assert "@media (max-width: 600px)" in html
         assert ".hide-sm" in html
-        # Brier/ECE/N/Since hide below 600px in both header and cells
-        assert '<th class="num hide-sm">Brier</th>' in html
         assert '<th class="num hide-sm">ECE</th>' in html
-        assert '<th class="num hide-sm">N</th>' in html
         assert '<th class="hide-sm">Since</th>' in html
         assert '<td class="num hide-sm">' in html
         assert '<td class="hide-sm">' in html
-        # Entrant/Kind/Alpha/Markets/Coverage stay visible
-        assert '<th class="num">Events</th>' in html
         assert '<th class="num">Coverage</th>' in html
         assert '<th>Since</th>' not in html
 
-    def test_empty_state(self) -> None:
+    def test_mobile_stacked_cards(self) -> None:
+        html = render_site(sample_board())
+        # the media query swaps tables for stacked cards
+        assert "@media (max-width: 640px)" in html
+        assert ".table-wrap { display: none; }" in html
+        assert ".lcards { display: block; }" in html
+        section = html.split('id="leaderboard"')[1].split("</section>")[0]
+        cards = section.split('<div class="lcards">')[1]
+        assert cards.count('<article class="lcard">') == 4
+        assert "Alpha vs crowd" in cards
+        assert '<span class="chip e0">AI</span>' in cards
+        assert "Brier <b>0.182</b>" in cards
+        assert "Coverage <b>90%</b>" in cards
+        assert "Since <b>2026-09-26</b>" in cards
+        # the alpha whisker markup carries over to the card
+        assert 'class="ci-dot e0"' in cards
+
+    def test_mobile_ghost_cards_when_no_resolved(self) -> None:
+        board = sample_board()
+        board["leaderboard"] = []
+        html = render_site(board)
+        section = html.split('id="leaderboard"')[1].split("</section>")[0]
+        cards = section.split('<div class="lcards">')[1]
+        assert cards.count('<article class="lcard">') == 4
+        assert "Alpha vs crowd" in cards
+        assert "Brier <b>—</b>" in cards
+        assert "Scores appear when the first markets resolve" in cards
+
+    def test_ghost_rows_when_no_resolved(self) -> None:
+        board = sample_board()
+        board["leaderboard"] = []
+        html = render_site(board)
+        section = html.split('id="leaderboard"')[1].split("</section>")[0]
+        # every entrant listed once, with em dashes for the metrics
+        assert section.count('<tr class="ghost">') == 4
+        for label in (
+            "Jev 1.13 (free)",
+            "GPT-OSS 120B",
+            "Crowd (market price)",
+            "Coin flip (0.5)",
+        ):
+            assert label in section
+        assert section.count("<td") > 4 * 8
+        assert "Scores appear when the first markets resolve — Oct 1" in html
+        assert (
+            "180 forecasts across 30 markets are live."
+            in html
+        )
+
+    def test_ghost_row_without_kind_gets_dash_chip(self) -> None:
+        board = {
+            "entrants": [{"id": "x", "label": "X"}],
+            "leaderboard": [],
+        }
+        html = render_site(board)
+        row = html.split('<tr class="ghost">')[1].split("</tr>")[0]
+        assert ">—</td>" in row
+
+    def test_empty_panel_without_date_or_counts(self) -> None:
+        board = {
+            "entrants": [{"id": "x", "label": "X"}],
+            "leaderboard": [],
+        }
+        html = render_site(board)
+        assert "Scores appear when the first markets resolve" in html
+        assert "Results and scores publish after the first resolution." in html
+        assert "forecasts across" not in html
+
+    def test_empty_state_no_entrants(self) -> None:
         html = render_site({"leaderboard": []})
         assert "First results after markets resolve." in html
 
 
-class TestOpenForecasts:
-    def test_market_card(self) -> None:
+class TestOpenMarkets:
+    def test_table_layout(self) -> None:
+        html = render_site(sample_board())
+        assert '<section id="markets">' in html
+        for header in ("Question", "Closes", "Crowd", "Market view"):
+            assert f">{header}" in html
+        # per-entrant columns in board order, minus the crowd, plus unknowns
+        assert '<th class="pct e0"><i class="kdot"></i>Jev 1.13</th>' in html
+        assert (
+            '<th class="pct e1"><i class="kdot"></i>GPT-OSS 120B</th>' in html
+        )
+        assert '<th class="pct e3"><i class="kdot"></i>Coin flip</th>' in html
+        assert "<i class=\"kdot\"></i>mystery-model" in html
+        # the crowd column header carries the crowd's neutral class
+        assert '<th class="pct e2"><i class="kdot"></i>Crowd</th>' in html
+
+    def test_values_and_dot_strip(self) -> None:
         html = render_site(sample_board())
         assert (
             '<a href="https://polymarket.com/event/fed-cut-october">'
             "Will the Fed cut rates in October?</a>" in html
         )
-        assert "closes 2026-10-01" in html
-        assert "width:71.00%" in html
-        assert "width:62.00%" in html
-        assert ">71%</span>" in html
-        assert "Recent FOMC minutes lean dovish." in html
-        assert "<details><summary>" in html
-        # the crowd key inside forecasts is not duplicated as an entrant bar
-        assert html.count("width:62.00%") == 1
+        assert "<td>Oct 1</td>" in html
+        assert 'class="pct e0">71%</td>' in html
+        assert 'class="pct e2">62%</td>' in html
+        assert 'class="pdot e0" style="left:71.00%"' in html
+        assert 'class="pdot e2" style="left:62.00%"' in html
+        # unknown entrant gets a dot with the neutral fallback color
+        assert 'class="pdot" style="left:20.00%"' in html
+        # missing forecasts render an em dash cell and no dot
+        market2 = html.split("shutdown-over")[1].split("</tr>")[0]
+        assert "—" in market2
 
     def test_fallbacks(self) -> None:
         html = render_site(sample_board())
         # question None -> slug link text; url http -> no anchor
         assert "shutdown-over" in html
         assert 'href="http://insecure.example' not in html
-        assert "closes —" in html
-        assert "width:0.00%" in html
-        # forecast for an id missing from entrants renders by raw id
-        assert "mystery-model" in html
-        # rationale present for an unknown entrant still renders
-        assert "Edge." in html
+        assert "<td>—</td>" in html  # missing end_date
+        assert 'class="pct e2">—</td>' in html  # missing market_prob
 
     def test_untitled_market(self) -> None:
         html = render_site({"open": [{"forecasts": {}}]})
         assert "Untitled market" in html
 
-    def test_forecast_ts_inside_details(self) -> None:
-        html = render_site(sample_board())
-        summary = "<details><summary>Jev 1.13 (free) — rationale</summary>"
-        start = html.index(summary)
-        end = html.index("</details>", start)
-        assert "forecast at 2026-09-26T05:58:11Z UTC" in html[start:end]
-        assert "Recent FOMC minutes lean dovish." in html[start:end]
+    def test_bad_end_date_string(self) -> None:
+        board = {"open": [{"slug": "s", "end_date": "not a date"}]}
+        html = render_site(board)
+        assert "<td>—</td>" in html
+        # and it is skipped by the first-resolution scan
+        board2 = {"stats": {"resolved": 0}, "open": board["open"]}
+        assert '<span class="stat-num">—</span>' in render_site(board2)
 
-    def test_forecast_ts_only_still_renders(self) -> None:
+    def test_close_date_uses_utc_calendar_day(self) -> None:
+        for ts, day in (
+            ("2025-10-01T00:30:00+02:00", "Sep 30"),
+            ("2025-09-30T23:30:00-02:00", "Oct 1"),
+            ("2025-10-01T00:30:00Z", "Oct 1"),
+            ("2025-10-01", "Oct 1"),
+        ):
+            board = {
+                "open": [{"slug": "s", "question": "Q?",
+                          "end_date": ts, "forecasts": {}}]
+            }
+            html = render_site(board)
+            assert f"<td>{day}</td>" in html
+            assert f"Closes {day}" in html
+
+    def test_naive_end_date_counts_for_first_resolution(self) -> None:
+        board = {
+            "stats": {"resolved": 0},
+            "open": [{"slug": "s", "end_date": "2026-09-30"}],
+        }
+        html = render_site(board)
+        assert '<span class="stat-num">Sep 30</span>' in html
+
+    def test_parenthetical_only_label_falls_back(self) -> None:
         board = {
             "open": [
                 {
                     "slug": "s",
-                    "forecasts": {
-                        "e": {"prob": 0.5, "ts": "2026-09-26T01:02:03Z"}
-                    },
+                    "forecasts": {"w": {"prob": 0.5}},
+                }
+            ],
+            "entrants": [{"id": "w", "label": "(paren) X"}],
+        }
+        html = render_site(board)
+        assert "(paren) X" in html  # label kept when stripping leaves ""
+
+    def test_out_of_range_probs_render_em_dash_and_no_dot(self) -> None:
+        board = {
+            "open": [
+                {
+                    "slug": "s",
+                    "question": "Q",
+                    "market_prob": 1.5,
+                    "forecasts": {"e": {"prob": -0.2}},
                 }
             ],
             "entrants": [{"id": "e", "label": "E"}],
         }
         html = render_site(board)
-        assert "forecast at 2026-09-26T01:02:03Z UTC" in html
+        # outside [0, 1] is not a probability: em dash, and no dot to
+        # disagree with the label
+        assert ">150%</td>" not in html
+        assert ">-20%</td>" not in html
+        assert "150%" not in html
+        assert 'class="pdot' not in html
+        assert '<td class="pct e0">—</td>' in html
+        assert '<td class="pct">—</td>' in html  # the crowd cell
+        # the mobile card chips agree
+        assert '<span class="chip e0">E —</span>' in html
+        assert '<span class="chip">Crowd —</span>' in html
 
-    def test_forecast_ts_escaped(self) -> None:
+    def test_prob_boundaries_0_and_1_still_render(self) -> None:
         board = {
             "open": [
                 {
                     "slug": "s",
-                    "forecasts": {"e": {"prob": 0.5, "ts": "<b>x</b>"}},
+                    "question": "Q",
+                    "market_prob": 1.0,
+                    "forecasts": {"e": {"prob": 0.0}},
                 }
-            ]
+            ],
+            "entrants": [{"id": "e", "label": "E"}],
         }
         html = render_site(board)
-        assert "forecast at &lt;b&gt;x&lt;/b&gt; UTC" in html
-        assert "<b>x</b>" not in html
+        assert ">100%</td>" in html
+        assert ">0%</td>" in html
+        assert 'class="pdot e0" style="left:0.00%"' in html
+        assert 'class="pdot" style="left:100.00%"' in html
+
+    def test_market_view_dots_at_least_10px(self) -> None:
+        html = render_site(sample_board())
+        mini = _css_rule(html, ".mini .pdot")
+        for dim in ("height", "width"):
+            px = float(re.search(rf"{dim}: ([\d.]+)px", mini).group(1))
+            assert px >= 10
+
+    def test_mini_dots_share_the_card_ring(self) -> None:
+        html = render_site(sample_board())
+        # near-coincident dots stay distinguishable: every track dot
+        # carries a 2 px ring in the card background color
+        assert "border: 2px solid var(--card)" in _css_rule(html, ".pdot")
+        # the mini strip keeps that ring — no thinner override
+        assert "border" not in _css_rule(html, ".mini .pdot")
+
+    def test_crowd_dot_paints_underneath_entrant_dots(self) -> None:
+        html = render_site(sample_board())
+        # market-view strip: the crowd dot comes first in the DOM so
+        # entrant dots paint over it when they coincide
+        mini = html.split('class="mini"')[1]
+        assert mini.index("pdot e2") < mini.index("pdot e0")
+        # duel track
+        track = html.split('class="track"')[1]
+        assert track.index("pdot e2") < track.index("pdot e0")
+        # mobile market card track
+        cards = html.split('id="markets"')[1].split(
+            '<div class="lcards">'
+        )[1]
+        mtrack = cards.split('class="track mkc-track"')[1]
+        assert mtrack.index("pdot e2") < mtrack.index("pdot e0")
 
     def test_empty_state(self) -> None:
         html = render_site({"open": []})
         assert "No open forecasts yet" in html
 
+    def test_mobile_stacked_cards(self) -> None:
+        html = render_site(sample_board())
+        section = html.split('id="markets"')[1].split("</section>")[0]
+        cards = section.split('<div class="lcards">')[1]
+        assert cards.count('<article class="lcard">') == 2
+        card = cards.split('<article class="lcard">')[1]
+        # question, closes, crowd %, entrant chips, dot strip
+        assert "Will the Fed cut rates in October?" in card
+        assert "Closes Oct 1" in card
+        assert '<span class="chip e2">Crowd 62%</span>' in card
+        assert '<span class="chip e0">Jev 1.13 71%</span>' in card
+        assert '<span class="chip e1">GPT-OSS 120B 55%</span>' in card
+        assert '<span class="chip e3">Coin flip 50%</span>' in card
+        track = card.split('class="track mkc-track"')[1]
+        assert 'class="pdot e0" style="left:71.00%"' in track
+        assert 'class="pdot e2" style="left:62.00%"' in track
+        # the second card falls back to the slug and an unknown entrant chip
+        card2 = cards.split('<article class="lcard">')[2]
+        assert "shutdown-over" in card2
+        assert "Closes —" in card2
+        assert '<span class="chip">mystery-model 20%</span>' in card2
+        assert '<span class="chip e2">Crowd —</span>' in card2
+
+    def test_market_card_head_keeps_number_on_the_title_row(self) -> None:
+        html = render_site(sample_board())
+        assert '<p class="lcard-head mkc-head">' in html
+        # the number is a fixed badge and the title can't drop to its
+        # own flex line no matter how long the question is
+        assert "flex-wrap: nowrap" in _css_rule(html, ".mkc-head")
+        lno = _css_rule(html, ".lno")
+        assert "flex: none" in lno
+        assert "border-radius" in lno
+
+    def test_rationale_disclosure_lists_ai_rationales(self) -> None:
+        html = render_site(sample_board())
+        section = html.split('id="markets"')[1].split(
+            '<div class="lcards">'
+        )[0]
+        row = section.split("fed-cut-october")[1].split("</tr>")[0]
+        assert '<details class="why"><summary>Why?</summary>' in row
+        items = row.split('<ul class="why-list">')[1]
+        # only jev has a usable rationale on this market: gpt-oss is
+        # None, coin is "", the crowd boilerplate is never listed
+        assert items.count("<li>") == 1
+        assert '<i class="kdot e0"></i>' in items
+        assert "Jev 1.13 71%" in items
+        assert (
+            '<time datetime="2026-09-26T05:58:11Z">'
+            "Sep 26, 05:58 UTC</time>" in items
+        )
+        assert "Recent FOMC minutes lean dovish." in items
+        assert "GPT-OSS" not in items
+        assert "n/a" not in items
+
+    def test_rationale_disclosure_on_mobile_cards(self) -> None:
+        html = render_site(sample_board())
+        cards = html.split('id="markets"')[1].split(
+            '<div class="lcards">'
+        )[1]
+        card = cards.split('<article class="lcard">')[1]
+        assert '<details class="why"><summary>Why?</summary>' in card
+        assert "Recent FOMC minutes lean dovish." in card
+        assert "Sep 26, 05:58 UTC" in card
+        # an entrant unknown to the board still lists its rationale,
+        # with no timestamp when none was given
+        card2 = cards.split('<article class="lcard">')[2]
+        assert '<details class="why">' in card2
+        assert "mystery-model 20%" in card2
+        assert "Edge." in card2
+
+    def test_no_disclosure_without_ai_rationale(self) -> None:
+        board = {
+            "open": [
+                {
+                    "slug": "s",
+                    "question": "Q",
+                    "market_prob": 0.5,
+                    "forecasts": {
+                        "a": {"prob": 0.6, "rationale": "   "},
+                        "coin": {
+                            "prob": 0.5,
+                            "rationale": "Uninformative 0.5 prior.",
+                        },
+                        "b": "not-a-dict",
+                    },
+                }
+            ],
+            "entrants": [
+                {"id": "a", "label": "A", "kind": "ai"},
+                {"id": "coin", "label": "Coin flip", "kind": "baseline"},
+            ],
+        }
+        html = render_site(board)
+        section = html.split('id="markets"')[1].split("</section>")[0]
+        assert "<details" not in section
+        # blank and baseline boilerplate are not rendered anywhere
+        # (the #board-data JSON island still carries the raw board)
+        assert "Uninformative 0.5 prior." not in _visible(html)
+
+    def test_label_restatement_rationale_hidden(self) -> None:
+        board = {
+            "open": [
+                {
+                    "slug": "s",
+                    "question": "Q",
+                    "forecasts": {
+                        "m": {
+                            "prob": 0.6,
+                            "rationale": "M model m-model-1",
+                        }
+                    },
+                }
+            ],
+            "entrants": [
+                {"id": "m", "label": "M", "kind": "ai", "model": "m-model-1"}
+            ],
+        }
+        html = render_site(board)
+        section = html.split('id="markets"')[1].split("</section>")[0]
+        assert "<details" not in section
+        assert "m-model-1" not in section
+
 
 class TestDuels:
-    def test_statuses(self) -> None:
+    def test_cards(self) -> None:
         html = render_site(sample_board())
-        for status in ("open", "won", "lost", "tie"):
-            assert f'status-{status}' in html
-            assert f">{status}</span>" in html
-        assert ">42%</td>" in html
-        assert ">30%</td>" in html
-        assert "Doves are underpriced." in html
-        assert ">Yes</td>" in html
-        assert ">No</td>" in html
+        assert "<h2>Biggest disagreements</h2>" in html
+        # the sample board's four duel groups are capped at three cards
+        # (the tie card has the smallest gap and drops off)
+        assert html.count('<article class="duel">') == 3
+        assert (
+            '<a href="https://polymarket.com/event/fed-cut-october">'
+            "Will the Fed cut rates in October?</a>" in html
+        )
         # question falls back to slug, url None -> plain text
         assert "rain-nyc" in html
+        for status in ("open", "won", "lost"):
+            assert f"status-{status}" in html
+            assert f">{status}</span>" in html
+
+    def test_track_dots_and_legend(self) -> None:
+        html = render_site(sample_board())
+        assert 'class="pdot e0" style="left:72.00%"' in html
+        assert 'class="pdot e2" style="left:30.00%"' in html
+        assert "Jev 1.13 72%" in html
+        assert "Crowd 30%" in html
+        for tick in ("0%", "25%", "50%", "75%", "100%"):
+            assert f"<span>{tick}</span>" in html
+
+    def test_gap_is_signed_ai_minus_crowd(self) -> None:
+        html = render_site(sample_board())
+        # badge is labelled with the headline entrant
+        assert ">Jev 1.13 +42 pts vs crowd</span>" in html  # 0.72 - 0.30
+        assert ">GPT-OSS 120B -40 pts vs crowd</span>" in html  # 0.20 - 0.60
+        assert ">Jev 1.13 +35 pts vs crowd</span>" in html  # 0.45 - 0.10
+
+    def test_one_card_per_market_groups_entrants(self) -> None:
+        board = sample_board()
+        board["duels"][3] = {  # same market as row 0, second entrant
+            "slug": "fed-cut-october",
+            "question": "Will the Fed cut rates in October?",
+            "url": "https://polymarket.com/event/fed-cut-october",
+            "market_prob": 0.30,
+            "entrant": "gpt-oss",
+            "prob": 0.55,
+            "gap": 0.25,
+            "rationale": "Rates stay put.",
+            "status": "open",
+            "outcome": None,
+        }
+        html = render_site(board)
+        assert html.count('<article class="duel">') == 3
+        card = html.split("Will the Fed cut rates in October?")[1].split(
+            "</article>"
+        )[0]
+        # one track carrying both AI dots plus the crowd dot
+        track = card.split('class="track"')[1].split("</div>")[0]
+        assert track.count("pdot") == 3
+        assert 'class="pdot e0" style="left:72.00%"' in track
+        assert 'class="pdot e1" style="left:55.00%"' in track
+        assert 'class="pdot e2" style="left:30.00%"' in track
+        # the legend lists every AI on the card plus the crowd
+        assert "Jev 1.13 72%" in card
+        assert "GPT-OSS 120B 55%" in card
+        assert "Crowd 30%" in card
+        assert "2 entrants vs crowd" in card
+        # the headline gap is the largest |AI - crowd| on the market
+        assert ">Jev 1.13 +42 pts vs crowd</span>" in card
+        assert "GPT-OSS 120B +25 pts" not in card
+        # headline entrant's non-empty rationale wins
+        assert "“Doves are underpriced.”" in card
+        assert "Rates stay put." not in card
+
+    def test_rationale_falls_back_to_next_ai(self) -> None:
+        board = {
+            "duels": [
+                {
+                    "slug": "s",
+                    "question": "Q?",
+                    "market_prob": 0.5,
+                    "entrant": "a",
+                    "prob": 0.9,
+                    "gap": 0.4,
+                    "rationale": None,
+                    "status": "open",
+                },
+                {
+                    "slug": "s",
+                    "entrant": "b",
+                    "prob": 0.2,
+                    "gap": 0.3,
+                    "rationale": "The next best reason.",
+                },
+            ],
+            "entrants": [
+                {"id": "a", "label": "A", "kind": "ai"},
+                {"id": "b", "label": "B", "kind": "ai"},
+            ],
+        }
+        html = render_site(board)
+        assert "“The next best reason.”" in html
+        assert "<cite>— B</cite>" in html
+
+    def test_three_cards_max_ordered_by_headline_gap(self) -> None:
+        board = {
+            "duels": [
+                {
+                    "slug": f"m{i}",
+                    "question": f"Q{i}?",
+                    "market_prob": 0.5,
+                    "entrant": "a",
+                    "prob": 0.5 + i * 0.05,
+                    "gap": i * 0.05,
+                }
+                for i in range(8)
+            ],
+            "entrants": [{"id": "a", "label": "A", "kind": "ai"}],
+        }
+        html = render_site(board)
+        assert html.count('<article class="duel">') == 3
+        # largest gaps first: m7 (0.35), m6 (0.30), m5 (0.25); m0-m4 cut
+        section = html.split('id="duels"')[1].split('id="versus"')[0]
+        assert section.index("Q7?") < section.index("Q6?")
+        assert section.index("Q6?") < section.index("Q5?")
+        assert "Q4?" not in section and "Q0?" not in section
+
+    def test_duplicate_entrant_rows_deduped_per_card(self) -> None:
+        board = {
+            "duels": [
+                {
+                    "slug": "s",
+                    "question": "Q?",
+                    "market_prob": 0.5,
+                    "entrant": "a",
+                    "prob": 0.9,
+                    "gap": 0.4,
+                },
+                {
+                    "slug": "s",
+                    "entrant": "a",
+                    "prob": 0.1,
+                    "gap": 0.4,
+                },
+            ],
+            "entrants": [{"id": "a", "label": "A", "kind": "ai"}],
+        }
+        html = render_site(board)
+        assert html.count('<article class="duel">') == 1
+        card = html.split('<article class="duel">')[1]
+        # one dot per entrant, not per duel row
+        assert card.count('class="pdot e0"') == 1
+
+    def test_gap_badge_neutral_open_colored_resolved(self) -> None:
+        # one status per board so all four fit under the 3-card cap
+        for status, cls in (
+            ("open", "gap-open"),   # neutral while open
+            ("won", "gap-won"),
+            ("lost", "gap-lost"),
+            ("tie", "gap-open"),    # tie resolves to the neutral badge
+        ):
+            board = {
+                "duels": [
+                    {"slug": "s", "question": "Q?", "entrant": "a",
+                     "prob": 0.9, "market_prob": 0.5, "status": status},
+                ],
+                "entrants": [{"id": "a", "label": "A", "kind": "ai"}],
+            }
+            html = render_site(board)
+            assert f'class="gap {cls}"' in html
+            assert f"status-{status}" in html
+        html = render_site(sample_board())
+        assert ".gap-won {" in html and "var(--good)" in html
+        assert ".gap-lost {" in html and "var(--bad)" in html
+
+    def test_gap_falls_back_to_board_gap_field(self) -> None:
+        board = {
+            "duels": [
+                {"slug": "x", "question": "Big?", "entrant": "a",
+                 "gap": 0.9},
+                {"slug": "y", "question": "Small?", "entrant": "a",
+                 "gap": 0.1},
+            ],
+            "entrants": [{"id": "a", "label": "A", "kind": "ai"}],
+        }
+        html = render_site(board)
+        section = html.split('id="duels"')[1]
+        assert section.index("Big?") < section.index("Small?")
+
+    def test_slugless_rows_never_merge_by_question(self) -> None:
+        board = {
+            "duels": [
+                {"slug": None, "question": "Same Q?", "entrant": "a",
+                 "prob": 0.9, "market_prob": 0.5,
+                 "url": "https://polymarket.com/event/first"},
+                {"slug": "", "question": "Same Q?", "entrant": "b",
+                 "prob": 0.8, "market_prob": 0.5,
+                 "url": "https://polymarket.com/event/second"},
+                {"question": None, "slug": [], "entrant": "a"},
+            ],
+            "entrants": [
+                {"id": "a", "label": "A", "kind": "ai"},
+                {"id": "b", "label": "B", "kind": "ai"},
+            ],
+        }
+        html = render_site(board)
+        # question text is not an identifier: each slugless row is its
+        # own card, keeping the two distinct urls separate
+        assert html.count('<article class="duel">') == 3
+        assert 'href="https://polymarket.com/event/first"' in html
+        assert 'href="https://polymarket.com/event/second"' in html
+        assert "A 90%" in html and "B 80%" in html
+        # the keyless card still renders its title fallback
+        assert '<h3 class="duel-q">?</h3>' in html
+
+    def test_slug_and_question_keys_never_collide(self) -> None:
+        board = {
+            "duels": [
+                {"slug": "same", "question": "First market", "entrant": "a",
+                 "prob": 0.8, "market_prob": 0.5},
+                {"question": "same", "entrant": "b",
+                 "prob": 0.2, "market_prob": 0.5},
+            ],
+            "entrants": [
+                {"id": "a", "label": "A", "kind": "ai"},
+                {"id": "b", "label": "B", "kind": "ai"},
+            ],
+        }
+        html = render_site(board)
+        # a slug and a question fallback with equal text stay two markets
+        assert html.count('<article class="duel">') == 2
+        assert "First market" in html
+        card = html.split('<h3 class="duel-q">same</h3>')[1].split(
+            "</article>"
+        )[0]
+        assert "B 20%" in card
+
+    def test_gap_matches_the_printed_percentages(self) -> None:
+        # live 2026-09-26: 8.6% vs 74.2% printed as 9% / 74% but a -66 gap
+        board = {
+            "duels": [{"slug": "s", "question": "Q?", "entrant": "a",
+                       "prob": 0.086, "market_prob": 0.742}],
+            "entrants": [{"id": "a", "label": "A", "kind": "ai"}],
+        }
+        html = render_site(board)
+        assert ">A -65 pts vs crowd</span>" in html
+
+    def test_out_of_range_prob_treated_as_missing(self) -> None:
+        board = {
+            "duels": [
+                {"slug": "wild", "question": "Wild?", "entrant": "a",
+                 "prob": 2, "market_prob": 0.5},
+                {"slug": "valid", "question": "Valid?", "entrant": "a",
+                 "prob": 1.0, "market_prob": 0.35},
+                {"slug": "neg", "question": "Neg?", "entrant": "a",
+                 "prob": -0.4, "market_prob": 0.5},
+            ],
+            "entrants": [{"id": "a", "label": "A", "kind": "ai"}],
+        }
+        html = render_site(board)
+        # outside [0, 1] is missing data, not a clampable probability:
+        # no percent, no dot, no fabricated gap
+        assert "200%" not in html and "-40%" not in html
+        assert "+150 pts" not in html and "+50 pts" not in html
+        assert "-90 pts" not in html
+        assert ">A +65 pts vs crowd</span>" in html  # the only real gap
+        assert html.count("— pts vs crowd") == 2  # wild and neg
+        wild = html.split("Wild?")[1].split("</article>")[0]
+        assert 'class="pdot e0"' not in wild
+        assert "A —" in wild  # the legend agrees with the missing dot
+        # an invalid prob sorts with the uncomputable rows, below real gaps
+        section = html.split('id="duels"')[1]
+        assert section.index("Valid?") < section.index("Wild?")
+        assert section.index("Wild?") < section.index("Neg?")
+
+    def test_headline_prefers_computable_gap(self) -> None:
+        board = {
+            "duels": [
+                # a huge board gap field must not outrank a real gap
+                {"slug": "s", "question": "Q?", "entrant": "a",
+                 "prob": None, "market_prob": 0.5, "gap": 0.9},
+                {"slug": "s", "question": "Q?", "entrant": "b",
+                 "prob": 0.8, "market_prob": 0.5, "gap": 0.3},
+            ],
+            "entrants": [
+                {"id": "a", "label": "A", "kind": "ai"},
+                {"id": "b", "label": "B", "kind": "ai"},
+            ],
+        }
+        html = render_site(board)
+        card = html.split('<article class="duel">')[1].split(
+            "</article>"
+        )[0]
+        assert ">B +30 pts vs crowd</span>" in card
+        assert "— pts vs crowd" not in card
+
+    def test_uncomputable_groups_sort_below_real_gaps(self) -> None:
+        board = {
+            "duels": [
+                {"slug": "mystery", "question": "Mystery?", "entrant": "a",
+                 "gap": 0.99},
+                {"slug": "real", "question": "Real?", "entrant": "a",
+                 "prob": 0.55, "market_prob": 0.5, "gap": 0.05},
+            ],
+            "entrants": [{"id": "a", "label": "A", "kind": "ai"}],
+        }
+        html = render_site(board)
+        section = html.split('id="duels"')[1]
+        assert section.index("Real?") < section.index("Mystery?")
+
+    def test_status_text_escaped_but_class_allowlisted(self) -> None:
+        board = {
+            "duels": [
+                {"slug": "s", "question": "Q?", "entrant": "a",
+                 "prob": 0.9, "market_prob": 0.5,
+                 "status": "won status-lost"},
+            ],
+            "entrants": [{"id": "a", "label": "A", "kind": "ai"}],
+        }
+        html = render_site(board)
+        card = html.split('<article class="duel">')[1].split(
+            "</article>"
+        )[0]
+        # the untrusted status can't inject a second styling class:
+        # it falls back to open styling while the text shows verbatim
+        assert 'class="status status-open"' in card
+        assert ">won status-lost</span>" in card
+        assert 'class="gap gap-open"' in card
+
+    def test_gap_em_dash_when_uncomputable(self) -> None:
+        board = {
+            "duels": [{"slug": "s", "entrant": "x"}],
+            "entrants": [{"id": "x", "label": "X"}],
+        }
+        html = render_site(board)
+        assert "— pts vs crowd" in html
+
+    def test_rationale_quote_with_attribution(self) -> None:
+        html = render_site(sample_board())
+        assert "“Doves are underpriced.”" in html
+        assert "<cite>— Jev 1.13</cite>" in html
+
+    def test_boilerplate_rationales_hidden(self) -> None:
+        html = render_site(sample_board())
+        # model-id restatement is never quoted
+        assert "“Jev opencode/jev-1.13-free”" not in _visible(html)
+        # baseline boilerplate (coin is kind=baseline) is never quoted
+        assert "Uninformative 0.5 prior." not in _visible(html)
+        # None rationale -> no quote block on that card at all
+        card2 = html.split("Will a model beat the bench?")[1].split(
+            "</article>"
+        )[0]
+        assert "<blockquote" not in card2
+
+    def test_resolved_outcome_shown(self) -> None:
+        html = render_site(sample_board())
+        assert "· resolved No" in html
+        board = {
+            "duels": [
+                {"slug": "s", "question": "Q?", "entrant": "a",
+                 "prob": 0.9, "market_prob": 0.5, "status": "won",
+                 "outcome": 1},
+            ],
+            "entrants": [{"id": "a", "label": "A", "kind": "ai"}],
+        }
+        assert "· resolved Yes" in render_site(board)
 
     def test_status_defaults_to_open(self) -> None:
         board = {
-            "duels": [
-                {"slug": "s", "question": "Q?", "entrant": "jev"}
-            ],
+            "duels": [{"slug": "s", "question": "Q?", "entrant": "jev"}],
             "entrants": [],
         }
         html = render_site(board)
         assert "status-open" in html
+        assert "jev vs crowd" in html  # unknown entrant: raw id as label
 
     def test_empty_state(self) -> None:
         html = render_site({"duels": []})
@@ -476,11 +1373,12 @@ class TestHallOfWrong:
         html = render_site(sample_board())
         assert "Hall of Wrong" in html
         assert "Will it rain in NYC on Friday?" in html
+        assert '<i class="kdot e0"></i><strong>Jev 1.13 (free)</strong>' in html
         assert "91%" in html
         assert "resolved" in html
         assert "crowd was at 55%" in html
         assert "2026-09-24" in html
-        assert "Models showed a dry front." in html
+        assert "“Models showed a dry front.”" in html
 
     def test_empty_state(self) -> None:
         html = render_site({"hall_of_wrong": []})
@@ -491,6 +1389,7 @@ class TestMethodology:
     def test_required_claims(self) -> None:
         html = render_site(sample_board())
         assert "Methodology" in html
+        assert "Full details" in html
         assert "No market price in prompts" in html
         assert "single-shot call" in html
         assert "append-only by convention" in html
@@ -515,22 +1414,49 @@ class TestMethodology:
 
 
 class TestFooter:
-    def test_links_and_stamps(self) -> None:
+    def test_columns_and_links(self) -> None:
         html = render_site(sample_board())
+        assert 'id="method"' in html
+        assert "Add your agent" in html
+        assert "Get started →" in html
+        assert "Open source" in html
+        assert "View on GitHub →" in html
         assert (
             'href="https://github.com/agent-next/polymarket-paper-trader"'
             in html
         )
-        assert "Add your agent — coming soon" in html
-        assert "Board generated 2026-09-26T06:00:00Z" in html
-        assert "last pipeline run 2026-09-26T05:58:11Z" in html
-        assert "arena-data" in html
+        # Get started points at the arena docs anchor, not a bare link
+        assert (
+            '<a class="btn" '
+            'href="https://github.com/agent-next/polymarket-paper-trader'
+            '/blob/main/benchmark/README.md#forecast-arena">'
+            "Get started →</a>" in html
+        )
+        # every in-page anchor target exists
+        for anchor in ("leaderboard", "markets", "method"):
+            assert f'href="#{anchor}"' in html
+            assert f'id="{anchor}"' in html
+        assert "A more open future for forecasting." in html
+
+    def test_stamps(self) -> None:
+        html = render_site(sample_board())
+        assert (
+            'Generated <time datetime="2026-09-26T06:00:00Z">'
+            "Sep 26, 06:00 UTC</time>" in html
+        )
+        assert (
+            'Updated <time datetime="2026-09-26T05:58:11Z">'
+            "Sep 26, 05:58 UTC</time>" in html
+        )
+        assert "tracking since 2026-09-26" in html
+        assert "2 unresolvable" in html
+        assert "data branch" in html
 
     def test_no_timestamps_still_renders(self) -> None:
         html = render_site({})
-        assert "polymarket-paper-trader on GitHub" in html
-        assert "Board generated" not in html
-        assert "last pipeline run" not in html
+        assert "polymarket-paper-trader" in html
+        assert "Generated <time" not in html
+        assert "Updated <time" not in html
         assert "data branch" in html
 
 
@@ -539,7 +1465,6 @@ class TestSecurity:
         payload = '<script>alert("x")</script>'
         board = sample_board()
         board["open"][0]["question"] = payload
-        board["open"][0]["forecasts"]["jev"]["rationale"] = payload
         board["duels"][0]["question"] = payload
         board["duels"][0]["rationale"] = payload
         board["hall_of_wrong"][0]["question"] = payload
@@ -549,7 +1474,9 @@ class TestSecurity:
         board["entrants"][0]["cutoff"] = payload
         html = render_site(board)
         assert payload not in html
-        assert "<script" not in html
+        # the only <script> tags are the fixed security-block/loader tags
+        assert html.count("<script") == 4
+        assert "<script" not in _board_blob(html)
         assert "&lt;script&gt;" in html
 
     def test_https_url_required(self) -> None:
@@ -578,7 +1505,7 @@ class TestSecurity:
         html = render_site(board)
         assert 'href="javascript:' not in html
         assert 'href="//evil' not in html
-        assert ">Q1</a>" not in html and ">Q1</h3>" in html
+        assert ">Q1</a>" not in html and ">Q1</td>" in html
         assert 'href="https://polymarket.com/event/ok">Q3</a>' in html
 
 
@@ -610,13 +1537,18 @@ class TestEdgeCases:
                     "alpha_ci": None,
                     "significant": True,
                 },
+                {
+                    "entrant": "e",
+                    "alpha": None,
+                    "alpha_ci": [0.0, 0.1],
+                    "significant": True,
+                },
             ],
             "entrants": [],
         }
         html = render_site(board)
         assert "not significant" in html  # row a (CI dropped as malformed)
         assert ">?</td>" in html  # row with entrant None
-        # row b: alpha em dash, still "not significant"
         assert "+0.010" in html
         assert "+0.020" in html
 
@@ -634,30 +1566,10 @@ class TestEdgeCases:
             "open": [{"slug": "s", "end_date": 12345, "forecasts": {}}],
         }
         html = render_site(board)
-        assert ">X</span>" not in html  # label renders inside td, not span
         assert ">X<" in html
-        assert "closes —" in html
-        # empty kind -> no badge cell content
-        assert "badge-" not in html.split("leaderboard")[1].split("<tbody>")[1].split("</tr>")[0]
-
-    def test_prob_clamped(self) -> None:
-        board = {
-            "open": [
-                {
-                    "slug": "s",
-                    "question": "Q",
-                    "market_prob": 1.5,
-                    "forecasts": {"e": {"prob": -0.2}},
-                }
-            ],
-            "entrants": [{"id": "e", "label": "E"}],
-        }
-        html = render_site(board)
-        assert "width:100.00%" in html
-        assert "width:0.00%" in html
-        # out-of-range values still render as their % formatting
-        assert ">150%</span>" in html
-        assert ">-20%</span>" in html
+        assert "<td>—</td>" in html  # end_date 12345 -> em dash
+        section = html.split('id="leaderboard"')[1].split("</section>")[0]
+        assert "chip" not in section.split("<tbody>")[1].split("</tr>")[0]
 
     def test_no_keys_at_all(self) -> None:
         html = render_site({})
@@ -704,13 +1616,10 @@ class TestNonNumericValues:
         assert ">bad</td>" not in html and ">oops</td>" not in html
         # the malformed CI pair drops entirely (0.1 must not render alone)
         assert "+0.100" not in html
-        assert ">—</td>" in html  # alpha, brier, ece, duel cells
+        assert ">—</td>" in html  # alpha, brier, ece, market_prob cells
         assert "crowd was at —" in html
-        # both prob bars fall back to the em dash with a 0-width bar
-        open_html = html.split('<section id="open">')[1].split("</section>")[0]
-        assert open_html.count(">—</span>") == 2
-        assert "width:0.00%" in open_html
         assert "not significant" in html
+        assert "— pts vs crowd" in html
 
     def test_numeric_strings_coerce(self) -> None:
         board = {
@@ -733,15 +1642,16 @@ class TestNonNumericValues:
         }
         html = render_site(board)
         assert "-0.010" in html
-        assert "[-0.050, +0.010]" in html
+        assert 'title="95% CI [-0.050, +0.010]"' in html
         assert ">0.200</td>" in html
-        assert "width:90.00%" in html
-        assert ">90%</span>" in html
-        assert "width:30.00%" in html
+        assert "left:90.00%" in html
+        assert ">90%</td>" in html
+        assert "left:30.00%" in html
 
     def test_non_finite_counts_render_em_dash(self) -> None:
         html = render_site(
-            {"leaderboard": [{"entrant": "a", "n": float("nan"), "n_markets": float("inf")}],
+            {"leaderboard": [{"entrant": "a", "n": float("nan"),
+                              "n_markets": float("inf")}],
              "stats": {"forecasts": float("nan")}}
         )
         assert ">nan<" not in html and ">inf<" not in html
@@ -766,9 +1676,6 @@ class TestNonNumericValues:
         }
         html = render_site(board)
         assert ">nan<" not in html and ">inf<" not in html
-        open_html = html.split('<section id="open">')[1].split("</section>")[0]
-        assert open_html.count(">—</span>") == 2
-        assert open_html.count("width:0.00%") == 2
         assert ">—</td>" in html
 
 
@@ -809,7 +1716,7 @@ class TestMalformedItems:
         ):
             assert text in html
         # a non-dict stats block renders as all em dashes
-        assert html.count('<span class="stat-num">—</span>') == 6
+        assert html.count('<span class="stat-num">—</span>') == 4
 
     def test_forecasts_and_entries_not_dicts(self) -> None:
         board = {
@@ -823,11 +1730,12 @@ class TestMalformedItems:
             "entrants": [{"id": "e"}, {"id": "f", "label": "F"}],
         }
         html = render_site(board)
-        # the crowd bar survives a non-dict forecasts value
-        assert "width:50.00%" in html
-        # a non-dict forecast still renders its row with an em dash prob
-        assert '<span class="who">e</span>' in html
-        assert ">40%</span>" in html
+        # a non-dict forecasts value still renders the crowd column
+        assert ">50%</td>" in html
+        # a non-dict forecast renders as an em dash cell, no dot
+        assert '<td class="pct e0">—</td>' in html
+        assert '<td class="pct e1">40%</td>' in html
+        assert 'class="pdot e1" style="left:40.00%"' in html
 
     def test_unhashable_entrant_id(self) -> None:
         board = {
@@ -842,6 +1750,87 @@ class TestMalformedItems:
         assert ">0.200</td>" in html
 
 
+class TestRationaleFilter:
+    def test_baseline_id_crowd_hidden(self) -> None:
+        board = {
+            "duels": [
+                {
+                    "slug": "s",
+                    "question": "Q?",
+                    "entrant": "crowd",
+                    "prob": 0.9,
+                    "market_prob": 0.5,
+                    "rationale": "Market YES price at forecast time.",
+                }
+            ],
+            "entrants": [
+                {"id": "crowd", "label": "Crowd", "kind": "baseline"}
+            ],
+        }
+        html = render_site(board)
+        assert "Market YES price" not in _visible(html)
+        assert "<blockquote" not in _visible(html)
+
+    def test_label_restatement_hidden(self) -> None:
+        board = {
+            "duels": [
+                {
+                    "slug": "s",
+                    "entrant": "m",
+                    "prob": 0.9,
+                    "market_prob": 0.5,
+                    "rationale": "M model m-model-1",
+                }
+            ],
+            "entrants": [
+                {"id": "m", "label": "M", "kind": "ai", "model": "m-model-1"}
+            ],
+        }
+        html = render_site(board)
+        assert "<blockquote" not in html
+
+    def test_real_rationale_shows_for_ai(self) -> None:
+        board = {
+            "duels": [
+                {
+                    "slug": "s",
+                    "entrant": "m",
+                    "prob": 0.9,
+                    "market_prob": 0.5,
+                    "rationale": "Real reasoning about the event.",
+                }
+            ],
+            "entrants": [
+                {"id": "m", "label": "M", "kind": "ai", "model": "m-1"}
+            ],
+        }
+        html = render_site(board)
+        assert "“Real reasoning about the event.”" in html
+
+    def test_non_string_and_blank_rationales_hidden(self) -> None:
+        board = {
+            "duels": [
+                {
+                    "slug": "s1",
+                    "entrant": "m",
+                    "prob": 0.9,
+                    "market_prob": 0.5,
+                    "rationale": 42,
+                },
+                {
+                    "slug": "s2",
+                    "entrant": "m",
+                    "prob": 0.9,
+                    "market_prob": 0.5,
+                    "rationale": "   ",
+                },
+            ],
+            "entrants": [{"id": "m", "label": "M", "kind": "ai"}],
+        }
+        html = render_site(board)
+        assert "<blockquote" not in html
+
+
 def _one_row_board(kind: str, significant: bool | None) -> dict:
     return {
         "entrants": [{"id": "x", "label": "X", "kind": kind, "model": "m"}],
@@ -854,11 +1843,306 @@ def _one_row_board(kind: str, significant: bool | None) -> dict:
 
 
 def test_ci_withheld_below_event_floor() -> None:
-    assert 'class="ci"' not in render_site(_one_row_board("ai", None))
-    assert 'class="ci"' in render_site(_one_row_board("ai", False))
+    assert 'class="ci-track"' not in render_site(_one_row_board("ai", None))
+    assert 'class="ci-track"' in render_site(_one_row_board("ai", False))
 
 
 def test_kind_badge_uppercased_before_escaping() -> None:
     html = render_site(_one_row_board('a"i', None))
     assert "A&quot;I" in html
     assert "&QUOT;" not in html
+
+
+def test_fmt_ci_rejects_malformed_shapes() -> None:
+    assert _fmt_ci("bad") is None
+    assert _fmt_ci([0.0]) is None
+    assert _fmt_ci([None, 0.2]) is None
+    assert _fmt_ci(["x", 0.1]) is None
+    assert _fmt_ci([-0.05, 0.01]) == "[-0.050, +0.010]"
+
+
+def _board_blob(html: str) -> str:
+    """The raw contents of the ``#board-data`` JSON island."""
+    match = re.search(
+        r'<script type="application/json" id="board-data">(.*?)</script>',
+        html,
+        re.S,
+    )
+    assert match, "no #board-data script tag"
+    return match.group(1)
+
+
+def _visible(html: str) -> str:
+    """The document minus the ``#board-data`` JSON island.
+
+    The embed carries raw board strings (escaped for the data block, not
+    for display), so "is this rendered?" assertions run against the page
+    without it.
+    """
+    return html.replace(_board_blob(html), "")
+
+
+class TestInteractiveLayer:
+    def test_csp_exact(self) -> None:
+        html = render_site(sample_board())
+        csp = re.search(
+            r'Content-Security-Policy" content="([^"]+)"', html
+        ).group(1)
+        # the only adjustment to the fixed policy is a sha384 source
+        # whitelisting the inline import map
+        importmap = re.search(
+            r'<script type="importmap">(.*?)</script>', html, re.S
+        ).group(1)
+        digest = base64.b64encode(
+            hashlib.sha384(importmap.encode()).digest()
+        ).decode()
+        assert csp == (
+            "default-src 'none'; "
+            f"script-src 'self' https://cdn.jsdelivr.net 'sha384-{digest}'; "
+            "style-src 'unsafe-inline'; img-src data:; connect-src 'none'"
+        )
+
+    def test_sri_attributes_match_pinned_urls(self) -> None:
+        html = render_site(sample_board())
+        # three.js is a two-file module — three.module.js imports
+        # ./three.core.js — so each file gets a modulepreload carrying
+        # its integrity hash, and the import map repeats both hashes in
+        # its "integrity" field
+        preloads = re.findall(r'<link rel="modulepreload"[^>]*>', html)
+        assert len(preloads) == 2
+        for url, integrity in (
+            (THREE_URL, THREE_INTEGRITY),
+            (THREE_CORE_URL, THREE_CORE_INTEGRITY),
+        ):
+            tag = next(p for p in preloads if f'href="{url}"' in p)
+            assert f'integrity="{integrity}"' in tag
+            assert 'crossorigin="anonymous"' in tag
+            assert integrity.startswith("sha384-")
+        importmap = re.search(
+            r'<script type="importmap">(.*?)</script>', html, re.S
+        ).group(1)
+        spec = json.loads(importmap)
+        assert spec["imports"]["three"] == THREE_URL
+        assert spec["integrity"] == {
+            THREE_URL: THREE_INTEGRITY,
+            THREE_CORE_URL: THREE_CORE_INTEGRITY,
+        }
+        # d3: classic script tag with SRI
+        d3tag = re.search(r"<script defer[^>]*>", html).group(0)
+        assert f'src="{D3_URL}"' in d3tag
+        assert f'integrity="{D3_INTEGRITY}"' in d3tag
+        assert 'crossorigin="anonymous"' in d3tag
+        assert D3_INTEGRITY.startswith("sha384-")
+
+    def test_every_fetchable_module_url_has_integrity(self) -> None:
+        html = render_site(sample_board())
+        importmap = re.search(
+            r'<script type="importmap">(.*?)</script>', html, re.S
+        ).group(1)
+        covered = set(json.loads(importmap)["integrity"])
+        # the pinned entry point itself is covered...
+        assert THREE_URL in covered
+        # ...and so is every module URL reachable through it. The real
+        # three.module.js@0.186.1's only relative specifier is
+        # './three.core.js'; this code-generated fixture mirrors that
+        # shape so relative-specifier resolution is exercised, not just
+        # a hardcoded pair.
+        fixture = "\n".join(
+            [
+                "import { Color } from './three.core.js';",
+                "export { Scene } from './three.core.js';",
+                "const lazy = import('./three.core.js');",
+            ]
+        )
+        specifiers = set(re.findall(r"['\"](\.[^'\"]+)['\"]", fixture))
+        assert specifiers == {"./three.core.js"}
+        for specifier in specifiers:
+            resolved = urljoin(THREE_URL, specifier)
+            assert resolved in covered
+        # and the coverage is exact — nothing fetchable is left out and
+        # nothing extra is pinned
+        assert covered == {THREE_URL, THREE_CORE_URL}
+
+    def test_app_js_loaded_as_module(self) -> None:
+        html = render_site(sample_board())
+        assert '<script type="module" src="app.js"></script>' in html
+
+    def test_board_json_embeds_and_round_trips(self) -> None:
+        board = sample_board()
+        html = render_site(board)
+        blob = _board_blob(html)
+        assert json.loads(blob) == board
+
+    def test_board_json_escapes_html_and_script_breakout(self) -> None:
+        board = {
+            "open": [
+                {
+                    "slug": "s",
+                    "question": 'Q</script><img src=x onerror=alert(1)> & "it"',
+                    "forecasts": {"a": {"prob": 0.5}},
+                }
+            ],
+            "entrants": [{"id": "a", "label": "A", "kind": "ai"}],
+        }
+        blob = _board_blob(render_site(board))
+        assert "</script>" not in blob
+        assert "<" not in blob and ">" not in blob and "&" not in blob
+        assert json.loads(blob) == board
+
+    def test_board_json_omits_nothing(self) -> None:
+        # the embed is the whole board dict — no fetch needed at runtime
+        board = sample_board()
+        assert json.loads(_board_blob(render_site(board))) == board
+
+    def test_board_json_drops_non_finite(self) -> None:
+        # NaN/Infinity are invalid JSON; they become null in the island
+        board = sample_board()
+        board["leaderboard"] = [
+            {
+                "entrant": "a",
+                "alpha": float("nan"),
+                "alpha_ci": [float("inf"), 0.1],
+            }
+        ]
+        row = json.loads(_board_blob(render_site(board)))["leaderboard"][0]
+        assert row["alpha"] is None and row["alpha_ci"] == [None, 0.1]
+
+
+class TestVersusSection:
+    def test_section_sits_after_duels(self) -> None:
+        html = render_site(sample_board())
+        assert 'id="duels"' in html and 'id="versus"' in html
+        assert html.index('id="duels"') < html.index('id="versus"')
+        assert html.index('id="versus"') < html.index('id="markets"')
+        assert "<h2>AI vs the crowd</h2>" in html
+        assert 'href="#versus"' in html
+
+    def test_static_scatter_fallback_has_one_dot_per_ai_forecast(self) -> None:
+        html = render_site(sample_board())
+        section = html.split('id="versus"')[1].split("</section>")[0]
+        svg = section.split('<svg class="viz-fb"')[1].split("</svg>")[0]
+        # sample board: market 1 has AI entrants jev+gpt-oss (coin/crowd
+        # are baselines); market 2's only forecast is mystery-model, not a
+        # board entrant -> 2 points
+        assert svg.count('<circle class="vdot') == 2
+        assert 'class="vdot e0"' in svg  # jev
+        assert 'class="vdot e1"' in svg  # gpt-oss
+        # agreement diagonal and band labels are server-rendered too
+        assert 'class="viz-diag"' in svg
+        assert "AI more bullish" in svg
+        assert "AI more bearish" in svg
+        assert 'role="img"' in svg
+        # legend lists the AI entrants present
+        assert 'class="viz-fb-legend"' in section
+        assert "Jev 1.13" in section
+        assert "GPT-OSS 120B" in section
+
+    def test_fallback_skips_bad_markets_and_probs(self) -> None:
+        board = {
+            "open": [
+                "not-a-dict",
+                {"slug": "s1", "market_prob": "high"},
+                {"slug": "s2", "market_prob": 0.5, "forecasts": "oops"},
+                {
+                    "slug": "s3",
+                    "market_prob": 0.5,
+                    "forecasts": {
+                        "a": "bad",
+                        "b": {"prob": 9},
+                        "c": {"prob": 0.4},
+                    },
+                },
+            ],
+            "entrants": [
+                {"id": "a", "kind": "ai"},
+                {"id": "b", "kind": "ai"},
+                {"id": "c", "kind": "ai"},
+            ],
+        }
+        section = render_site(board).split('id="versus"')[1]
+        assert section.count('<circle class="vdot') == 1
+        assert 'class="vdot e2"' in section
+
+    def test_baselines_never_produce_points(self) -> None:
+        board = {
+            "open": [
+                {
+                    "slug": "s",
+                    "market_prob": 0.5,
+                    "forecasts": {"coin": {"prob": 0.5}},
+                }
+            ],
+            "entrants": [{"id": "coin", "kind": "baseline"}],
+        }
+        section = render_site(board).split('id="versus"')[1]
+        assert "viz-fb" not in section
+        assert "No AI forecasts on open markets yet." in section
+
+    def test_empty_when_no_open_markets(self) -> None:
+        html = render_site({"open": []})
+        section = html.split('id="versus"')[1].split("</section>")[0]
+        assert "No AI forecasts on open markets yet." in section
+        assert "<svg" not in section
+
+
+class TestPerfViz:
+    def test_mount_with_fallback_note_when_resolved(self) -> None:
+        html = render_site(sample_board())
+        section = html.split('id="leaderboard"')[1].split("</section>")[0]
+        assert 'id="perf-viz"' in section
+        assert 'class="viz-note"' in section
+        assert "the numbers are in the table above" in section
+
+    def test_tasteful_empty_state_when_unresolved(self) -> None:
+        board = sample_board()
+        board["leaderboard"] = []
+        html = render_site(board)
+        section = html.split('id="leaderboard"')[1].split("</section>")[0]
+        assert 'id="perf-viz"' in section
+        assert 'class="viz-empty"' in section
+        assert "Alpha whiskers and calibration land here" in section
+        assert "First resolution Oct 1" in section
+
+    def test_empty_state_without_dates_or_entrants(self) -> None:
+        html = render_site({"leaderboard": []})
+        assert 'id="perf-viz"' in html
+        assert "Charts draw once the first markets resolve." in html
+        assert "First resolution" not in html
+
+
+class TestAppJs:
+    def _app_js(self) -> str:
+        from importlib.resources import files
+
+        return (
+            files("pm_benchmark")
+            .joinpath("arena_static/app.js")
+            .read_text()
+        )
+
+    def test_packaged_and_no_html_injection_sinks(self) -> None:
+        src = self._app_js()
+        for sink in ("innerHTML", ".html(", "outerHTML", "insertAdjacentHTML"):
+            assert sink not in src
+
+    def test_dynamic_import_of_three(self) -> None:
+        # a static `import` would sink the whole module on CDN failure;
+        # the globe degrades on its own via dynamic import
+        src = self._app_js()
+        assert 'import("three")' in src
+        assert re.search(r"^\s*import\s", src, re.M) is None
+
+    def test_node_syntax_check(self) -> None:
+        import shutil
+        import subprocess
+
+        node = shutil.which("node")
+        if not node:
+            pytest.skip("node not on PATH")
+        from importlib.resources import files
+
+        path = files("pm_benchmark").joinpath("arena_static/app.js")
+        result = subprocess.run(
+            [node, "--check", str(path)], capture_output=True, text=True
+        )
+        assert result.returncode == 0, result.stderr

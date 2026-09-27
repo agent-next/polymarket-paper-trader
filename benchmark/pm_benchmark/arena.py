@@ -1041,7 +1041,9 @@ def run_build(
     *,
     now: datetime | None = None,
 ) -> dict:
-    """Build the board and write ``site/`` (data.json, index.html, CNAME)."""
+    """Build the board and write ``site/`` (data.json, index.html, app.js, CNAME)."""
+    from importlib.resources import files
+
     from pm_benchmark.arena_site import render_site
 
     now = now or _utc_now()
@@ -1058,6 +1060,9 @@ def run_build(
 
     index_path = out_dir / "index.html"
     index_path.write_text(render_site(board))
+    (out_dir / "app.js").write_text(
+        files("pm_benchmark").joinpath("arena_static/app.js").read_text()
+    )
     (out_dir / "CNAME").write_text(f"{CNAME_DOMAIN}\n")
 
     return {

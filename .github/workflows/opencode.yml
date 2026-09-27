@@ -35,6 +35,18 @@ jobs:
       issues: write
       pull-requests: write
     steps:
+      - name: Gate to trusted actors
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          perm=$(gh api "repos/${REPO}/collaborators/${ACTOR}/permission" --jq .permission 2>/dev/null || echo none)
+          case "$perm" in
+            admin|maintain|write) echo "actor ${ACTOR} has ${perm}; comment allowed" ;;
+            *) echo "actor ${ACTOR} lacks write access (${perm}); refusing comment" >&2; exit 1 ;;
+          esac
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
@@ -74,6 +86,18 @@ jobs:
     permissions:
       issues: write
     steps:
+      - name: Gate to trusted actors
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          perm=$(gh api "repos/${REPO}/collaborators/${ACTOR}/permission" --jq .permission 2>/dev/null || echo none)
+          case "$perm" in
+            admin|maintain|write) echo "actor ${ACTOR} has ${perm}; triage allowed" ;;
+            *) echo "actor ${ACTOR} lacks write access (${perm}); refusing triage" >&2; exit 1 ;;
+          esac
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
@@ -97,6 +121,7 @@ jobs:
           share: false
           prompt: |
             Triage this new issue on a paper-trading simulator.
+            Never print secrets.
             Label if you can (bug, enhancement, documentation).
             Ask for missing repro details. Do not write code or push.
             Do not add bot:implement unless a human already asked for an implementation.
@@ -216,7 +241,15 @@ jobs:
           gh workflow run Tests --repo "${REPO}" --ref "${BRANCH}"
 
   review:
-    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    # pull_request already withholds secrets and write tokens from fork PRs;
+    # the same-repo guard below keeps this secret-bearing job off untrusted
+    # diffs entirely. The checkout stays pinned to the base commit, so the
+    # diff reaches the model as text via the event payload and PR code is
+    # never checked out or executed.
+    if: |
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -225,6 +258,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 1
           persist-credentials: false
       - name: Preflight FreeInference key
@@ -247,4 +281,5 @@ jobs:
           prompt: |
             Shallow review only. Report discrete defects this diff introduces.
             Ignore style nits and speculation. If nothing actionable, do not post LGTM.
+            Never print secrets or .env values.
             Do not push commits. Do not approve. Do not merge.

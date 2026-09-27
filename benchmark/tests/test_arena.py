@@ -1545,6 +1545,10 @@ class TestRunBuild:
         assert html.startswith("<!doctype html>")
         assert "not affiliated with Polymarket" in html
         assert (out / "CNAME").read_text().strip() == "polymarket-leaderboard.com"
+        # the interactive layer ships next to index.html
+        app_js = (out / "app.js").read_text()
+        assert "board-data" in app_js
+        assert 'id="board-data"' in html
         assert summary == {
             "data_json": str(out / "data.json"),
             "index_html": str(out / "index.html"),
