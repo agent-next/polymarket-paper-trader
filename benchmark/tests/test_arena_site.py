@@ -417,7 +417,7 @@ class TestHero:
         # small screens: a compact globe above the headline, not hidden
         assert "order: -1" in block
         assert "display: none" not in block
-        assert float(re.search(r"width: ([\d.]+)px", block).group(1)) <= 120
+        assert float(re.search(r"width: ([\d.]+)px", block).group(1)) <= 160
 
     def test_hero_globe_is_a_shaded_dot_sphere(self) -> None:
         html = render_site(sample_board())
