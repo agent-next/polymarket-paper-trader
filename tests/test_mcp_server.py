@@ -958,6 +958,41 @@ class TestBacktestTool:
         assert result["ok"] is True
         assert result["data"]["snapshots_processed"] == 2
 
+    def test_backtest_missing_data_file(self, tmp_path):
+        """Nonexistent data file maps to not_found."""
+        from pm_trader.mcp_server import backtest
+        result = _parse(backtest(
+            str(tmp_path / "missing.csv"),
+            "tests.test_benchmark.noop_backtest_strategy",
+        ))
+        assert result["ok"] is False
+        assert result["code"] == "not_found"
+
+    def test_backtest_unparsable_csv(self, tmp_path):
+        """Malformed CSV maps to invalid_data."""
+        from pm_trader.mcp_server import backtest
+        csv = tmp_path / "bad.csv"
+        csv.write_text(
+            "timestamp,market_slug,outcome,midpoint\n"
+            "2025-01-01T00:00:00Z,test-market,yes,not-a-number\n"
+        )
+        result = _parse(backtest(
+            str(csv), "tests.test_benchmark.noop_backtest_strategy",
+        ))
+        assert result["ok"] is False
+        assert result["code"] == "invalid_data"
+
+    def test_backtest_unparsable_json(self, tmp_path):
+        """Malformed JSON maps to invalid_data."""
+        from pm_trader.mcp_server import backtest
+        f = tmp_path / "bad.json"
+        f.write_text("{not valid json")
+        result = _parse(backtest(
+            str(f), "tests.test_benchmark.noop_backtest_strategy",
+        ))
+        assert result["ok"] is False
+        assert result["code"] == "invalid_data"
+
 
 class TestBacktestInvalidStrategy:
     def test_strategy_path_no_dot(self):
