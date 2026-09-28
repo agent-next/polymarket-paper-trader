@@ -308,7 +308,7 @@ class Engine:
         else:
             total_shares = new_shares
             total_cost = cost
-            avg_entry = avg_fill_price
+            avg_entry = cost / total_shares
 
         self.db.upsert_position(
             market_condition_id=market.condition_id,

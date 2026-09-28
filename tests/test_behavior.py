@@ -156,6 +156,7 @@ class TestPnLAccuracy:
     def test_realized_pnl_on_sell(self, acct):
         """Realized P&L should be accurate after selling."""
         _mock(acct)
+        initial_cash = acct.get_account().cash
         acct.buy("test-market", "yes", 100.0)
         position = acct.db.get_position("0xtest", "yes")
         assert position.realized_pnl == 0.0  # No realized P&L until sell
@@ -163,8 +164,9 @@ class TestPnLAccuracy:
         shares = position.shares
         acct.sell("test-market", "yes", shares)
         position = acct.db.get_position("0xtest", "yes")
-        # After full sell, realized_pnl should be non-zero
-        assert position.realized_pnl != 0.0 or position.shares == 0
+        # After full sell, realized_pnl must equal the round-trip cash delta
+        cash_delta = acct.get_account().cash - initial_cash
+        assert position.realized_pnl == pytest.approx(cash_delta, abs=0.005)
 
     def test_unrealized_pnl_reflects_price_change(self, acct):
         """Unrealized P&L should change when midpoint changes."""
