@@ -576,6 +576,73 @@ class TestAccountsCommands:
         assert data["ok"] is False
         assert data["code"] == "ACCOUNT_NOT_FOUND"
 
+    def test_accounts_delete_rejects_dotdot(self, runner, tmp_path):
+        """`accounts delete ..` must refuse, not delete the data dir's parent."""
+        base = tmp_path / "base"
+        data = base / "data"
+        data.mkdir(parents=True)
+        sibling = base / "innocent.txt"
+        sibling.write_text("keep me")
+        result = _invoke(runner, ["accounts", "delete", "..", "--confirm"], data)
+        assert sibling.exists()
+        assert data.exists()
+        assert result.exit_code != 0
+        payload = _parse(result)
+        assert payload["ok"] is False
+        assert payload["code"] == "INVALID_ACCOUNT_NAME"
+
+    def test_accounts_delete_only_own_dir(self, runner, data_dir):
+        """Deleting a valid account removes only that account's directory."""
+        _invoke(runner, ["accounts", "create", "alice"], data_dir)
+        _invoke(runner, ["accounts", "create", "bob"], data_dir)
+        keep = data_dir / "keep.txt"
+        keep.write_text("keep me")
+        result = _invoke(runner, ["accounts", "delete", "alice", "--confirm"], data_dir)
+        payload = _parse(result)
+        assert payload["ok"] is True
+        assert not (data_dir / "alice").exists()
+        assert (data_dir / "bob" / "paper.db").exists()
+        assert keep.exists()
+
+    def test_accounts_delete_rejects_symlink_escape(self, runner, data_dir, tmp_path):
+        """An account dir symlinked outside the data dir is refused, not followed."""
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "marker.txt").write_text("keep me")
+        (data_dir / "evil").symlink_to(outside)
+        result = _invoke(runner, ["accounts", "delete", "evil", "--confirm"], data_dir)
+        payload = _parse(result)
+        assert result.exit_code != 0
+        assert payload["ok"] is False
+        assert payload["code"] == "INVALID_ACCOUNT_NAME"
+        assert (outside / "marker.txt").exists()
+
+    @pytest.mark.parametrize("name", ["..", ".", "../up", "a/b", "a\\b", "x..y", ""])
+    def test_accounts_delete_rejects_unsafe_names(self, runner, data_dir, name):
+        result = _invoke(runner, ["accounts", "delete", name, "--confirm"], data_dir)
+        payload = _parse(result)
+        assert result.exit_code != 0
+        assert payload["ok"] is False
+        assert payload["code"] == "INVALID_ACCOUNT_NAME"
+
+    def test_accounts_create_rejects_traversal(self, runner, data_dir):
+        """`accounts create ../../escaped` is refused; nothing written outside."""
+        result = _invoke(runner, ["accounts", "create", "../../escaped"], data_dir)
+        payload = _parse(result)
+        assert result.exit_code != 0
+        assert payload["ok"] is False
+        assert payload["code"] == "INVALID_ACCOUNT_NAME"
+        assert not (data_dir.parent.parent / "escaped").exists()
+        assert list(data_dir.iterdir()) == []
+
+    @pytest.mark.parametrize("name", ["..", ".", "../up", "a/b", "a\\b", "x..y", ""])
+    def test_accounts_create_rejects_unsafe_names(self, runner, data_dir, name):
+        result = _invoke(runner, ["accounts", "create", name], data_dir)
+        payload = _parse(result)
+        assert result.exit_code != 0
+        assert payload["ok"] is False
+        assert payload["code"] == "INVALID_ACCOUNT_NAME"
+
 
 # ---------------------------------------------------------------------------
 # Order commands
