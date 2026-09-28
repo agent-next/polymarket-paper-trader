@@ -450,14 +450,23 @@ class TestListCandidateMarkets:
 class TestForecastPrompt:
     def test_contains_market_fields(self):
         m = _info("x", price=0.62)
-        prompt = build_forecast_prompt(m)
+        prompt = build_forecast_prompt(m, NOW)
         assert m.question in prompt
         assert m.description in prompt
         assert m.end_date in prompt
 
+    def test_todays_date_line(self):
+        """Today's UTC date is stated before the resolution date so models
+        can reason about time left — still no market price."""
+        m = _info("x", price=0.62)
+        prompt = build_forecast_prompt(m, NOW)
+        assert "**Today's Date (UTC):** 2026-09-26" in prompt
+        assert prompt.index("Today's Date") < prompt.index("Resolution Date")
+        assert "0.62" not in prompt
+
     def test_no_market_price(self):
         m = _info("x", price=0.62, volume=1_234_567.0, liquidity=88_888.0)
-        prompt = build_forecast_prompt(m)
+        prompt = build_forecast_prompt(m, NOW)
         for token in ("0.62", "0.38", "price", "Price", "volume", "liquidity"):
             assert token not in prompt
 
@@ -465,7 +474,7 @@ class TestForecastPrompt:
         """The arena prompt must not borrow the trading envelope (M6)."""
         m = _info("x")
         system = arena._FORECAST_SYSTEM_PROMPT
-        user = build_forecast_prompt(m)
+        user = build_forecast_prompt(m, NOW)
         for token in (
             "buy", "sell", "position", "amount", "action",
             "confidence", "trade", "budget",
@@ -628,6 +637,17 @@ class TestForecastMarket:
                               price_fetch=lambda m: 0.5)
         assert row["prob"] == 0.4
         assert q_mock.call_count == 2
+
+    def test_jev_state_includes_todays_date_no_price(self, monkeypatch):
+        """Jev's state is built from the same prompt: date line, no price."""
+        q_mock = MagicMock(return_value={"probability": {"noul": 0.5}})
+        monkeypatch.setattr(arena, "query_jev", q_mock)
+        entrant = _entrant("jev", model="jev-1.13-free")
+        forecast_market(entrant, _info(price=0.62), now=NOW,
+                        price_fetch=lambda m: 0.62)
+        state = q_mock.call_args.args[1]
+        assert "**Today's Date (UTC):** 2026-09-26" in state
+        assert "0.62" not in state
 
     def test_baselines(self):
         crowd = Entrant(id="crowd", label="C", kind="baseline")

@@ -143,7 +143,7 @@ How it works:
   YES price in [0.03, 0.97], at most 2 markets per Gamma event, top 20 by
   volume — markets ending within 3 days rank first) and records one forecast
   per (entrant, market). AI entrants answer a single-shot prompt containing
-  question + description + end date — **no market
+  question + description + today's date + end date — **no market
   price**; the crowd is the opponent, not an input. Baselines are
   deterministic: `crowd` records the market price, `coin` 0.5, `favorite` 0.9
   toward the market favorite. Errors become `skip` rows, never 0.5.

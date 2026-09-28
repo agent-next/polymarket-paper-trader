@@ -10,6 +10,10 @@ All notable changes to `polymarket-paper-trader` are documented here.
   1–14 day window (volume descending inside each bucket), so the board fills
   faster — only resolved markets are scored. Candidate fetching pages the
   1–3 day window before the full window (at most `2 * max_pages` API calls).
+- **Forecast Arena prompts include today's date**: the forecast prompt (and
+  the Jev `state` built from it) now states `Today's Date (UTC)` before the
+  resolution date so models can reason about time left; it still never
+  contains a market price.
 
 ## [0.4.2] - 2026-09-28
 
