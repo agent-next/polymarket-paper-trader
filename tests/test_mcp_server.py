@@ -6,6 +6,7 @@ import socket
 
 import json
 import os
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
@@ -970,12 +971,14 @@ class TestBacktestInvalidStrategy:
 
     def test_data_path_traversal(self):
         """data_path outside allowed directories is rejected."""
+        sys.modules.pop("examples.momentum", None)
         result = _parse(backtest(
             data_path="/etc/passwd",
             strategy_path="examples.momentum.run",
         ))
         assert result["ok"] is False
         assert "invalid_path" in result.get("code", "")
+        assert "examples.momentum" not in sys.modules
 
 
 class TestMultiAccount:

@@ -867,8 +867,6 @@ def backtest(
         )
         from pm_trader.benchmark import _load_strategy
 
-        strategy_fn = _load_strategy(strategy_path)
-
         # Validate data_path is under allowed directories (no traversal)
         data = P(data_path).resolve()
         allowed_parents = (P.home(), P("/tmp"))
@@ -877,6 +875,8 @@ def backtest(
                 "data_path must be under home directory or /tmp",
                 "invalid_path",
             )
+
+        strategy_fn = _load_strategy(strategy_path)
 
         if data.suffix == ".json":
             snapshots = load_snapshots_json(data)
