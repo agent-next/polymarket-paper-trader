@@ -589,11 +589,15 @@ def accounts() -> None:
 
 
 def _safe_account_dir(base: Path, name: str) -> Path | None:
-    """Return the resolved account directory for `name`, or None if unsafe."""
+    """Return the account directory for `name`, or None if unsafe.
+
+    Symlinked entries are refused: an alias to a sibling account would
+    otherwise pass the containment check and delete that account.
+    """
     if not name or name == "." or ".." in name or "/" in name or "\\" in name:
         return None
-    acct_dir = (base / name).resolve()
-    if acct_dir.parent != base.resolve():
+    acct_dir = base / name
+    if acct_dir.is_symlink() or acct_dir.resolve().parent != base.resolve():
         return None
     return acct_dir
 

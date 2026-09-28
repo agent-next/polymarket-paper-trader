@@ -617,6 +617,16 @@ class TestAccountsCommands:
         assert payload["code"] == "INVALID_ACCOUNT_NAME"
         assert (outside / "marker.txt").exists()
 
+    def test_accounts_delete_rejects_sibling_alias(self, runner, data_dir):
+        """A symlink aliasing another account is refused; the target survives."""
+        _invoke(runner, ["accounts", "create", "bob"], data_dir)
+        (data_dir / "alice").symlink_to(data_dir / "bob")
+        result = _invoke(runner, ["accounts", "delete", "alice", "--confirm"], data_dir)
+        payload = _parse(result)
+        assert result.exit_code != 0
+        assert payload["code"] == "INVALID_ACCOUNT_NAME"
+        assert (data_dir / "bob" / "paper.db").exists()
+
     @pytest.mark.parametrize("name", ["..", ".", "../up", "a/b", "a\\b", "x..y", ""])
     def test_accounts_delete_rejects_unsafe_names(self, runner, data_dir, name):
         result = _invoke(runner, ["accounts", "delete", name, "--confirm"], data_dir)
