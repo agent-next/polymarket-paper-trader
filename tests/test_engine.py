@@ -11,6 +11,7 @@ import pytest
 
 from pm_trader.db import Database
 from pm_trader.engine import Engine
+from pm_trader.orderbook import simulate_buy_fill
 from pm_trader.models import (
     ApiError,
     InsufficientBalanceError,
@@ -1492,11 +1493,22 @@ class TestEstimateBuyFee:
         ) == pytest.approx(7.0)
 
     def test_legacy_worst_case(self, initialized_engine: Engine):
-        """Legacy path: p=0.5 worst case of min(p, 1-p) on the USD notional."""
+        """Legacy path: min(p, 1-p) / p peaks at 1 for p <= 0.5 on the share count."""
         _mock_api(initialized_engine, fee_rate=200)
         assert initialized_engine._estimate_buy_fee(
             SAMPLE_MARKET, "tok_yes", 100.0,
-        ) == pytest.approx(1.0)  # 0.02 * 0.5 * 100
+        ) == pytest.approx(2.0)  # 0.02 * 100
+
+    @pytest.mark.parametrize("price", [0.05, 0.40, 0.50, 0.60, 0.95])
+    def test_legacy_bound_covers_actual_fill_fee(
+        self, initialized_engine: Engine, price: float,
+    ):
+        """The placement bound is never below the fee a legacy buy is charged."""
+        _mock_api(initialized_engine, fee_rate=200)
+        book = _make_book(bids=[(price, 1_000_000)], asks=[(price, 1_000_000)])
+        fill = simulate_buy_fill(book, 100.0, fee_rate_bps=200)
+        bound = initialized_engine._estimate_buy_fee(SAMPLE_MARKET, "tok_yes", 100.0)
+        assert fill.fee <= bound + 1e-9
 
     def test_legacy_minimum_floor(self, initialized_engine: Engine):
         """Tiny legacy fees are floored at calculate_fee's 0.0001 minimum."""

@@ -192,9 +192,10 @@ class Engine:
         Schedule path: a USD-sized buy receives ``C = amount / p`` shares, so
         the official curve collapses to ``fee = C·rate·p·(1-p) = amount·rate·(1-p)``
         — the worst case over fill prices is ``amount * rate`` (deep-low fills
-        are the expensive case). Legacy path: the legacy fee base for buys IS
-        the USD notional, so the ``p = 0.5`` worst case of ``min(p, 1-p)``
-        gives ``0.5 * amount``, floored at ``calculate_fee``'s 0.0001 minimum.
+        are the expensive case). Legacy path: the legacy fee base is the share
+        count ``C = amount / p``, so ``fee = (bps/10000)·min(p, 1-p)·amount/p``
+        peaks at ``(bps/10000)·amount`` for any ``p <= 0.5``, floored at
+        ``calculate_fee``'s 0.0001 minimum.
         """
         rate = _resolve_fee_rate(market)
         if rate is not None:
@@ -202,7 +203,7 @@ class Engine:
         bps = self.api.get_fee_rate(token_id)
         if bps <= 0:
             return 0.0
-        return max((bps / 10_000) * 0.5 * amount, 0.0001)
+        return max((bps / 10_000) * amount, 0.0001)
 
     # ------------------------------------------------------------------
     # BUY — spend USD, receive shares
