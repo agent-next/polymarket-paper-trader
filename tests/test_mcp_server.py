@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 
 from pm_trader.models import (
+    ApiError,
     Market,
     OrderBook,
     OrderBookLevel,
@@ -475,6 +476,16 @@ class TestSearchMarkets:
         result = _parse(search_markets("bitcoin", limit=5))
         assert result["ok"] is True
 
+    def test_search_markets_returns_err_envelope_on_api_error(self):
+        init_account()
+        from pm_trader.mcp_server import _get_engine
+        _mock_engine_api(_get_engine())
+        engine = _get_engine()
+        engine.api.search_markets = MagicMock(side_effect=ApiError("connection refused"))
+        result = _parse(search_markets("bitcoin"))
+        assert result["ok"] is False
+        assert "error" in result
+
 
 class TestListMarkets:
     def test_list_default(self):
@@ -492,6 +503,16 @@ class TestListMarkets:
         _mock_engine_api(_get_engine())
         result = _parse(list_markets(sort_by="liquidity"))
         assert result["ok"] is True
+
+    def test_list_markets_returns_err_envelope_on_api_error(self):
+        init_account()
+        from pm_trader.mcp_server import _get_engine
+        _mock_engine_api(_get_engine())
+        engine = _get_engine()
+        engine.api.list_markets = MagicMock(side_effect=ApiError("connection refused"))
+        result = _parse(list_markets())
+        assert result["ok"] is False
+        assert "error" in result
 
 
 class TestGetTags:
