@@ -588,6 +588,16 @@ def accounts() -> None:
     pass
 
 
+def _safe_account_dir(base: Path, name: str) -> Path | None:
+    """Return the resolved account directory for `name`, or None if unsafe."""
+    if not name or name == "." or ".." in name or "/" in name or "\\" in name:
+        return None
+    acct_dir = (base / name).resolve()
+    if acct_dir.parent != base.resolve():
+        return None
+    return acct_dir
+
+
 @accounts.command("list")
 @click.pass_context
 def accounts_list(ctx: click.Context) -> None:
@@ -619,7 +629,13 @@ def accounts_list(ctx: click.Context) -> None:
 def accounts_create(ctx: click.Context, name: str, balance: float) -> None:
     """Create a new named account."""
     base = ctx.obj["data_dir"]
-    acct_dir = base / name
+    acct_dir = _safe_account_dir(base, name)
+    if acct_dir is None:
+        click.echo(json.dumps(
+            {"ok": False, "error": f"Invalid account name: {name!r}", "code": "INVALID_ACCOUNT_NAME"},
+            indent=2,
+        ))
+        sys.exit(1)
     if (acct_dir / "paper.db").exists():
         click.echo(json.dumps(
             {"ok": False, "error": f"Account '{name}' already exists", "code": "ACCOUNT_EXISTS"},
@@ -642,7 +658,13 @@ def accounts_delete(ctx: click.Context, name: str, confirm: bool) -> None:
     """Delete a named account and all its data."""
     import shutil
     base = ctx.obj["data_dir"]
-    acct_dir = base / name
+    acct_dir = _safe_account_dir(base, name)
+    if acct_dir is None:
+        click.echo(json.dumps(
+            {"ok": False, "error": f"Invalid account name: {name!r}", "code": "INVALID_ACCOUNT_NAME"},
+            indent=2,
+        ))
+        sys.exit(1)
     if not acct_dir.exists():
         click.echo(json.dumps(
             {"ok": False, "error": f"Account '{name}' not found", "code": "ACCOUNT_NOT_FOUND"},
