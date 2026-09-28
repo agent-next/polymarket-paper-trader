@@ -340,14 +340,36 @@ class TestSell:
         assert result.trade.fee_rate_bps == 175
 
     def test_sell_realized_pnl_tracked(self, initialized_engine: Engine):
+        initial_cash = initialized_engine.get_account().cash
         self._setup_position(initialized_engine)
         pos = initialized_engine.db.get_position("0xabc123", "yes")
 
         _mock_api(initialized_engine)
         initialized_engine.sell("will-bitcoin-hit-100k", "yes", pos.shares)
         pos_after = initialized_engine.db.get_position("0xabc123", "yes")
-        # realized_pnl should be non-zero (could be profit or loss)
-        assert pos_after.realized_pnl != 0.0 or pos_after.shares == 0
+        # realized_pnl must equal the round-trip cash delta
+        cash_delta = initialized_engine.get_account().cash - initial_cash
+        assert pos_after.realized_pnl == pytest.approx(cash_delta, abs=0.005)
+
+    def test_round_trip_realized_pnl_matches_cash_delta(
+        self, initialized_engine: Engine
+    ):
+        """Entry fee belongs in the cost basis: realized_pnl == cash delta."""
+        flat_book = _make_book(
+            bids=[(0.5, 1_000_000)],
+            asks=[(0.5, 1_000_000)],
+        )
+        _mock_api(initialized_engine, book=flat_book, fee_rate=175)
+        initial_cash = initialized_engine.get_account().cash
+
+        initialized_engine.buy("will-bitcoin-hit-100k", "yes", 1000.0)
+        pos = initialized_engine.db.get_position("0xabc123", "yes")
+        assert abs(pos.avg_entry_price * pos.shares - pos.total_cost) < 1e-6
+
+        initialized_engine.sell("will-bitcoin-hit-100k", "yes", pos.shares)
+        pos_after = initialized_engine.db.get_position("0xabc123", "yes")
+        final_cash = initialized_engine.get_account().cash
+        assert abs((final_cash - initial_cash) - pos_after.realized_pnl) < 0.005
 
 
 # ---------------------------------------------------------------------------
