@@ -234,17 +234,23 @@ def _clamp_limit(limit: int, cap: int = MAX_RESULTS) -> int:
 @_tool
 def search_markets(query: str, limit: int = 10) -> str:
     """Search Polymarket for markets matching a query string."""
-    engine = _get_engine()
-    markets = engine.api.search_markets(query, limit=_clamp_limit(limit))
-    return _ok([_market_to_dict(m) for m in markets])
+    try:
+        engine = _get_engine()
+        markets = engine.api.search_markets(query, limit=_clamp_limit(limit))
+        return _ok([_market_to_dict(m) for m in markets])
+    except Exception as e:
+        return _err_from(e)
 
 
 @_tool
 def list_markets(limit: int = 20, sort_by: str = "volume") -> str:
     """List active Polymarket markets sorted by volume or liquidity."""
-    engine = _get_engine()
-    markets = engine.api.list_markets(limit=_clamp_limit(limit), sort_by=sort_by)
-    return _ok([_market_to_dict(m) for m in markets])
+    try:
+        engine = _get_engine()
+        markets = engine.api.list_markets(limit=_clamp_limit(limit), sort_by=sort_by)
+        return _ok([_market_to_dict(m) for m in markets])
+    except Exception as e:
+        return _err_from(e)
 
 
 @_tool
