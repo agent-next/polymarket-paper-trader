@@ -858,6 +858,7 @@ def backtest(
     depth: synthetic order book depth per level
     """
     try:
+        from csv import Error as CsvError
         from pathlib import Path as P
 
         from pm_trader.backtest import (
@@ -886,7 +887,9 @@ def backtest(
                 snapshots = load_snapshots_json(data)
             else:
                 snapshots = load_snapshots_csv(data)
-        except (OSError, ValueError, KeyError, TypeError) as e:
+        except (
+            OSError, ValueError, KeyError, TypeError, AttributeError, CsvError,
+        ) as e:
             return _err(f"could not parse data file: {e}", "invalid_data")
 
         from dataclasses import asdict
