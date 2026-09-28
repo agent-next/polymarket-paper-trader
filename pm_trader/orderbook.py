@@ -108,8 +108,8 @@ def _fill_fee(
     ``C_i × rate × p_i × (1 - p_i)`` rounded to 5 decimals by
     :func:`calculate_fee_schedule`; the outer ``round`` only normalizes
     binary noise in the sum).  Otherwise the legacy bps model is used
-    unchanged: a single charge at the average price on the per-side
-    ``legacy_size`` (the USD notional on a buy, the share count on a sell).
+    unchanged: a single charge at the average price on ``legacy_size``
+    (the share count on both the buy and the sell path).
     """
     if fee_rate is not None:
         return round(
@@ -257,7 +257,7 @@ def simulate_buy_fill(
     fee = _fill_fee(
         fills=fills,
         avg_price=avg_price,
-        legacy_size=total_cost,
+        legacy_size=total_shares,
         fee_rate=fee_rate,
         fee_rate_bps=fee_rate_bps,
     )

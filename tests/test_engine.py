@@ -1173,8 +1173,8 @@ class TestFeeScheduleMarket:
         trade = initialized_engine.buy("btc", "yes", 100.0).trade
 
         assert trade.fee_rate_bps == 200
-        # Legacy model: 0.02 × min(0.66, 0.34) × $100
-        assert trade.fee == pytest.approx(0.02 * 0.34 * trade.amount_usd)
+        # Legacy model: 0.02 × min(0.66, 0.34) × shares
+        assert trade.fee == pytest.approx(0.02 * 0.34 * trade.shares)
 
 
 class TestMakerFillFees:
