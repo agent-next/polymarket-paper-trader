@@ -2,9 +2,33 @@
 
 All notable changes to `polymarket-paper-trader` are documented here.
 
-## [Unreleased]
+## [0.4.2] - 2026-09-28
+
+### Security
+- **`pm-trader accounts create|delete` no longer escape the data directory** (#68): names
+  such as `..` or `a/b` are refused with `INVALID_ACCOUNT_NAME` (previously `accounts
+  delete ..` removed the data directory's parent), and symlinked account entries are
+  refused so an alias cannot delete a sibling account.
+- **MCP `backtest` validates `data_path` before importing the strategy module** (#71), so
+  a rejected call no longer runs the module's import-time code. A missing data file now
+  returns `not_found` and a malformed CSV/JSON (short rows, null fields, oversized fields)
+  returns `invalid_data` instead of `internal_error`.
 
 ### Fixed
+- **First-fill cost basis includes the entry fee** (#65): `avg_entry_price` was fee-free
+  while `total_cost` included the fee, so `realized_pnl` on a round trip overstated P&L by
+  the entry fee. It now equals the round-trip cash delta.
+- **Legacy fee fallback charges buys on the share count** (#67), like sells and the
+  official `feeSchedule` curve; buys were charged on the USD notional, so identical fills
+  paid different fees on each leg (sell = 2x buy at p = 0.50). Only markets without a
+  usable `feeSchedule` are affected. The placement reservation bound follows the new
+  basis (`bps/10000 × amount`), so a crossing buy cannot consume cash reserved by
+  resting orders.
+- **MCP `search_markets` / `list_markets` return the `{ok: false}` error envelope** on
+  upstream failures (#70) instead of raising out of the tool.
+- **Leaderboard server: `GET /ready` readiness probe** (#72): returns 503 when the
+  database, Polymarket client or scheduler is down (`/health` stays a liveness check),
+  and the DigitalOcean health check now uses `/ready`.
 - Arena entrants: GitHub Models was retired on 2026-07-30 (its endpoint now answers
   `200 text/plain "OK"`), so its four entrants are replaced by OpenCode Zen's
   `space-bunny-free`, the only Zen free chat model that answers outside the OpenCode

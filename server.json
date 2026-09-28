@@ -7,12 +7,12 @@
     "url": "https://github.com/agent-next/polymarket-paper-trader",
     "source": "github"
   },
-  "version": "0.4.1",
+  "version": "0.4.2",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "polymarket-paper-trader",
-      "version": "0.4.1",
+      "version": "0.4.2",
       "transport": {
         "type": "stdio"
       }
