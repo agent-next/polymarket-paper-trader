@@ -982,6 +982,23 @@ class TestBacktestTool:
         assert result["ok"] is False
         assert result["code"] == "invalid_data"
 
+    @pytest.mark.parametrize("suffix,content", [
+        (".csv", "timestamp,market_slug,outcome,midpoint\n2025-01-01T00:00:00Z\n"),
+        (".json", '[{"timestamp": "2025-01-01T00:00:00Z", "market_slug": "m",'
+                  ' "outcome": null, "midpoint": 0.5}]'),
+        (".csv", "timestamp,market_slug,outcome,midpoint\n" + "x" * 200_000 + "\n"),
+    ])
+    def test_backtest_malformed_rows_are_invalid_data(self, tmp_path, suffix, content):
+        """Short rows, null fields and oversized CSV fields map to invalid_data."""
+        from pm_trader.mcp_server import backtest
+        f = tmp_path / f"bad{suffix}"
+        f.write_text(content)
+        result = _parse(backtest(
+            str(f), "tests.test_benchmark.noop_backtest_strategy",
+        ))
+        assert result["ok"] is False
+        assert result["code"] == "invalid_data"
+
     def test_backtest_unparsable_json(self, tmp_path):
         """Malformed JSON maps to invalid_data."""
         from pm_trader.mcp_server import backtest
