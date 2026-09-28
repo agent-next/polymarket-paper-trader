@@ -872,10 +872,16 @@ def backtest(
 
         strategy_fn = _load_strategy(strategy_path)
 
-        if data.suffix == ".json":
-            snapshots = load_snapshots_json(data)
-        else:
-            snapshots = load_snapshots_csv(data)
+        if not data.is_file():
+            return _err(f"data file not found: {data}", "not_found")
+
+        try:
+            if data.suffix == ".json":
+                snapshots = load_snapshots_json(data)
+            else:
+                snapshots = load_snapshots_csv(data)
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            return _err(f"could not parse data file: {e}", "invalid_data")
 
         from dataclasses import asdict
         result = run_backtest(
