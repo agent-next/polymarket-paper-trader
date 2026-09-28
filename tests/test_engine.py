@@ -1467,6 +1467,24 @@ class TestCashReservation:
             initialized_engine.place_limit_order("btc", "yes", "buy", 100.0, 0.55)
         assert exc.value.required == pytest.approx(107.0)
 
+    def test_legacy_crossing_buy_cannot_consume_reserved_cash(
+        self, initialized_engine: Engine,
+    ):
+        """Legacy 200 bps: a crossing $100 buy at 0.50 pays up to $2 on the
+        share count, so with $101 available it is refused before any order
+        is created (the old 0.5 x amount bound let it through)."""
+        book = _make_book(bids=[(0.39, 100_000)], asks=[(0.50, 100_000)])
+        _mock_api(initialized_engine, book=book, fee_rate=200)
+        initialized_engine.db.update_cash(201.0)
+        initialized_engine.place_limit_order("btc", "yes", "buy", 100.0, 0.40)
+
+        with pytest.raises(InsufficientBalanceError) as exc:
+            initialized_engine.place_limit_order("btc", "yes", "buy", 100.0, 0.50)
+        assert exc.value.required == pytest.approx(102.0)
+        assert exc.value.available == pytest.approx(101.0)
+        assert len(initialized_engine.get_pending_orders()) == 1
+        assert initialized_engine.get_account().cash == pytest.approx(201.0)
+
     def test_market_buy_cannot_spend_reserved_cash(
         self, initialized_engine: Engine,
     ):
