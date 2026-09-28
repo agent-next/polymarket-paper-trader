@@ -333,12 +333,14 @@ def select_markets(
     return capped[:top_n]
 
 
-def build_forecast_prompt(market: MarketInfo) -> str:
-    """Build the forecast prompt — question, description, end date; no price."""
+def build_forecast_prompt(market: MarketInfo, now: datetime) -> str:
+    """Build the forecast prompt — question, description, today's UTC date,
+    end date; no price."""
     return (
         f"## Forecast Request\n\n"
         f"**Question:** {market.question}\n\n"
         f"**Description:** {market.description}\n\n"
+        f"**Today's Date (UTC):** {_iso(now)[:10]}\n\n"
         f"**Resolution Date:** {market.end_date}\n\n"
         f"Estimate the probability this market resolves YES. Respond as JSON."
     )
@@ -370,6 +372,7 @@ def _ai_forecast(
     entrant: Entrant,
     market: MarketInfo,
     *,
+    now: datetime,
     timeout: float | None,
 ) -> tuple[float, str]:
     """Single-shot YES probability + rationale for an AI entrant.
@@ -378,7 +381,7 @@ def _ai_forecast(
     (L1 — no re-asking until the output parses). Call-level failures
     propagate so the caller can record a skip row.
     """
-    prompt = build_forecast_prompt(market)
+    prompt = build_forecast_prompt(market, now)
     if is_jev_model(entrant.model or ""):
         state = f"{_FORECAST_SYSTEM_PROMPT}\n\n{prompt}"
         answers = query_jev(
@@ -448,7 +451,9 @@ def forecast_market(
         prob = _baseline_prob(entrant.id, market_prob)
         rationale = _BASELINE_RATIONALES[entrant.id]
     else:
-        prob, rationale = _ai_forecast(entrant, market, timeout=timeout)
+        prob, rationale = _ai_forecast(
+            entrant, market, now=now, timeout=timeout
+        )
 
     return {
         "ts": _iso(now),
