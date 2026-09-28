@@ -508,8 +508,12 @@ class TestFee200BpsBuy:
         result = simulate_buy_fill(multi_level_book, 100.0, fee_rate_bps=200)
 
         # avg_price ~0.66468, so min(0.66468, 0.33532) = 0.33532
-        # fee = 0.02 * 0.33532 * 100 = 0.67064
-        expected_fee = (200 / 10_000) * min(result.avg_price, 1 - result.avg_price) * 100.0
+        # fee = 0.02 * 0.33532 * 150.4478 shares = 1.0089
+        expected_fee = (
+            (200 / 10_000)
+            * min(result.avg_price, 1 - result.avg_price)
+            * result.total_shares
+        )
         assert result.fee == pytest.approx(expected_fee)
         assert result.fee > 0
 
@@ -555,6 +559,32 @@ class TestFeeSymmetry:
             fee_a = calculate_fee(150, price, 50.0)
             fee_b = calculate_fee(150, 1.0 - price, 50.0)
             assert fee_a == pytest.approx(fee_b), f"Asymmetric fee at price={price}"
+
+
+class TestCrossLegFeeSymmetry:
+    """Buy and sell legs of the same fill pay the same legacy fee.
+
+    Issue #67: the legacy bps fallback charged the buy leg on the USD
+    notional and the sell leg on the share count, so identical fills paid
+    asymmetric fees (2.0x at p=0.5, 2.5x at p=0.4).  Both legs charge the
+    share count C.
+    """
+
+    @pytest.mark.parametrize("price", [0.50, 0.40])
+    def test_buy_and_sell_fee_match(self, price: float) -> None:
+        shares = 1_000.0
+        book = OrderBook(
+            bids=[OrderBookLevel(price=price, size=shares)],
+            asks=[OrderBookLevel(price=price, size=shares)],
+        )
+        buy = simulate_buy_fill(book, shares * price, fee_rate_bps=200)
+        sell = simulate_sell_fill(book, shares, fee_rate_bps=200)
+
+        assert buy.total_shares == pytest.approx(shares)
+        assert sell.total_shares == pytest.approx(shares)
+        # Both legs: (200/10000) * min(p, 1-p) * C shares
+        assert buy.fee == pytest.approx(calculate_fee(200, price, shares))
+        assert buy.fee == pytest.approx(sell.fee)
 
 
 # =========================================================================
@@ -700,8 +730,8 @@ class TestFillSimUsesScheduleFee:
             asks=[OrderBookLevel(price=0.50, size=100.0)],
         )
         result = simulate_buy_fill(book, 50.0, fee_rate_bps=200)
-        # Legacy model charges the USD notional: 0.02 * 0.5 * 50 = 0.50
-        assert result.fee == pytest.approx(0.50)
+        # Legacy model charges the share count: 0.02 * 0.5 * 100 = 1.00
+        assert result.fee == pytest.approx(1.00)
 
 
 class TestPerLevelScheduleFee:
@@ -742,7 +772,7 @@ class TestPerLevelScheduleFee:
 
     def test_legacy_bps_stays_avg_based_buy(self) -> None:
         # The legacy bps fallback did NOT switch to per-level summation: it
-        # still charges once at the average price on the USD notional.
+        # still charges once at the average price on the share count.
         book = OrderBook(
             bids=[OrderBookLevel(price=0.50, size=1.0)],
             asks=[
@@ -754,7 +784,7 @@ class TestPerLevelScheduleFee:
 
         assert result.levels_filled == 2
         assert result.fee == pytest.approx(
-            calculate_fee(200, result.avg_price, result.total_cost)
+            calculate_fee(200, result.avg_price, result.total_shares)
         )
 
     def test_legacy_bps_stays_avg_based_sell(self) -> None:
@@ -1103,7 +1133,7 @@ class TestDesignDocExample:
 
     def test_fee_example_200bps(self) -> None:
         # Design doc: 200bps market at avg_price 0.6647
-        # fee = 0.02 * min(0.6647, 0.3353) * 100 = 0.02 * 0.3353 * 100 = 0.6706
+        # fee = 0.02 * min(0.6647, 0.3353) * 150.45 shares = 0.02 * 0.3353 * 150.45 = 1.0088
         book = OrderBook(
             bids=[OrderBookLevel(price=0.64, size=150.0)],
             asks=[
@@ -1113,5 +1143,9 @@ class TestDesignDocExample:
         )
         result = simulate_buy_fill(book, 100.0, fee_rate_bps=200)
 
-        expected_fee = (200 / 10_000) * min(result.avg_price, 1.0 - result.avg_price) * 100.0
+        expected_fee = (
+            (200 / 10_000)
+            * min(result.avg_price, 1.0 - result.avg_price)
+            * result.total_shares
+        )
         assert result.fee == pytest.approx(expected_fee)
