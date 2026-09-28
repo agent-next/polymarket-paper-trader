@@ -327,26 +327,81 @@ class TestSelectMarkets:
         markets = [_info(f"m{i}", volume=float(i)) for i in range(5)]
         assert len(self._run(markets, top_n=5)) == 5
 
+    def test_short_horizon_ranks_before_higher_volume(self):
+        """Markets ending within PRIORITY_DAYS rank first even at lower
+        volume — the board only scores resolved markets."""
+        soon_end = (NOW + timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        late_end = (NOW + timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        markets = [
+            _info("late-big", end_date=late_end, volume=9_000_000.0),
+            _info("soon-small", end_date=soon_end, volume=10.0),
+        ]
+        assert [m.slug for m in self._run(markets)] == [
+            "soon-small", "late-big",
+        ]
+
+    def test_priority_boundary_inclusive(self):
+        """Ending exactly `priority_days` out counts as short-horizon."""
+        edge = (NOW + timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        late = (NOW + timedelta(days=4)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        markets = [
+            _info("late", end_date=late, volume=9_000_000.0),
+            _info("edge", end_date=edge, volume=1.0),
+        ]
+        assert [m.slug for m in self._run(markets)] == ["edge", "late"]
+
+    def test_priority_days_kwarg(self):
+        """`priority_days` is tunable like the other selection filters."""
+        soon_end = (NOW + timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        late_end = (NOW + timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        markets = [
+            _info("late-big", end_date=late_end, volume=9_000_000.0),
+            _info("soon-small", end_date=soon_end, volume=10.0),
+        ]
+        got = self._run(markets, priority_days=1)
+        assert [m.slug for m in got] == ["late-big", "soon-small"]
+
+    def test_event_cap_across_priority_buckets(self):
+        """The per-event cap applies on the merged priority order — an event
+        with markets in both buckets still gets at most `max_per_event`."""
+        soon_end = (NOW + timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        late_end = (NOW + timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        markets = [
+            _info("ev1-soon", event_id="ev1", end_date=soon_end, volume=1.0),
+            _info("ev1-a", event_id="ev1", end_date=late_end, volume=900.0),
+            _info("ev1-b", event_id="ev1", end_date=late_end, volume=800.0),
+            _info("ev2", event_id="ev2", end_date=late_end, volume=700.0),
+        ]
+        got = self._run(markets)
+        # ev1's two slots go to ev1-soon (short bucket) and ev1-a (highest
+        # volume in the rest); ev1-b is dropped despite ranking by volume.
+        assert [m.slug for m in got] == ["ev1-soon", "ev1-a", "ev2"]
+
 
 class TestListCandidateMarkets:
     def test_pages_until_short_page(self, monkeypatch):
         page1 = [_info(f"m{i}") for i in range(3)]
         page2 = [_info("m3")]
-        mock = MagicMock(side_effect=[page1, page2])
+        mock = MagicMock(side_effect=[page1, page2, []])
         monkeypatch.setattr(arena, "list_markets", mock)
         got = arena._list_candidate_markets(page_size=3, max_pages=5, now=NOW)
         assert [m.slug for m in got] == ["m0", "m1", "m2", "m3"]
+        # the 1..PRIORITY_DAYS window pages before the full 1..MAX_DAYS one
         first = mock.call_args_list[0].kwargs
         assert first["end_date_min"] == "2026-09-27T12:00:00Z"
-        assert first["end_date_max"] == "2026-10-10T12:00:00Z"
+        assert first["end_date_max"] == "2026-09-29T12:00:00Z"
         assert first["liquidity_min"] == arena.MIN_LIQUIDITY
-        assert mock.call_count == 2
+        full = mock.call_args_list[2].kwargs
+        assert full["end_date_min"] == "2026-09-27T12:00:00Z"
+        assert full["end_date_max"] == "2026-10-10T12:00:00Z"
+        assert mock.call_count == 3
         assert mock.call_args_list[0].kwargs["offset"] == 0
         assert mock.call_args_list[1].kwargs["offset"] == 3
         assert mock.call_args_list[1].kwargs["limit"] == 3
+        assert mock.call_args_list[2].kwargs["offset"] == 0
 
     def test_stops_at_page_bound(self, monkeypatch):
-        """Never fetches more than max_pages even if pages stay full."""
+        """Never fetches more than 2 * max_pages even if pages stay full."""
         mock = MagicMock(
             side_effect=lambda **kw: [
                 _info(f"p{kw['offset']}a"), _info(f"p{kw['offset']}b"),
@@ -354,7 +409,7 @@ class TestListCandidateMarkets:
         )
         monkeypatch.setattr(arena, "list_markets", mock)
         got = arena._list_candidate_markets(page_size=2, max_pages=3)
-        assert mock.call_count == 3
+        assert mock.call_count == 6  # max_pages per window, two windows
         assert len(got) == 6
         assert mock.call_args_list[-1].kwargs["offset"] == 4
 
@@ -362,16 +417,34 @@ class TestListCandidateMarkets:
         """Offset pages can overlap when ordering shifts — dedupe by slug."""
         page1 = [_info("a"), _info("b")]
         page2 = [_info("b"), _info("c")]
-        mock = MagicMock(side_effect=[page1, page2, []])
+        mock = MagicMock(side_effect=[page1, page2, [], []])
         monkeypatch.setattr(arena, "list_markets", mock)
         got = arena._list_candidate_markets(page_size=2, max_pages=5)
         assert [m.slug for m in got] == ["a", "b", "c"]
+
+    def test_short_window_first_and_dedupes_across_windows(self, monkeypatch):
+        """A market in both windows keeps the first (short-window) row."""
+        def dispatch(**kw):
+            if kw["end_date_max"] == "2026-09-29T12:00:00Z":
+                return [_info("soon", volume=1.0)]
+            return [_info("soon", volume=9.0), _info("later")]
+
+        mock = MagicMock(side_effect=dispatch)
+        monkeypatch.setattr(arena, "list_markets", mock)
+        got = arena._list_candidate_markets(page_size=3, max_pages=5, now=NOW)
+        assert [m.slug for m in got] == ["soon", "later"]
+        assert got[0].volume == 1.0
+        calls = mock.call_args_list
+        assert calls[0].kwargs["end_date_min"] == "2026-09-27T12:00:00Z"
+        assert calls[0].kwargs["end_date_max"] == "2026-09-29T12:00:00Z"
+        assert calls[1].kwargs["end_date_min"] == "2026-09-27T12:00:00Z"
+        assert calls[1].kwargs["end_date_max"] == "2026-10-10T12:00:00Z"
 
     def test_empty_first_page(self, monkeypatch):
         mock = MagicMock(return_value=[])
         monkeypatch.setattr(arena, "list_markets", mock)
         assert arena._list_candidate_markets(page_size=3, max_pages=5) == []
-        assert mock.call_count == 1
+        assert mock.call_count == 2  # one probe per window
 
 
 class TestForecastPrompt:

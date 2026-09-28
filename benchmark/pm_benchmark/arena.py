@@ -68,6 +68,7 @@ MIN_PRICE = 0.03
 MAX_PRICE = 0.97
 MIN_DAYS = 1
 MAX_DAYS = 14
+PRIORITY_DAYS = 3    # markets ending within this many days rank first
 
 # Board constants
 BOOTSTRAP_RESAMPLES = 1000
@@ -231,35 +232,41 @@ def _list_candidate_markets(
     *,
     page_size: int = FETCH_LIMIT,
     max_pages: int = MAX_PAGES,
+    priority_days: int = PRIORITY_DAYS,
     now: datetime | None = None,
     http_client: httpx.Client | None = None,
 ) -> list[MarketInfo]:
     """Fetch candidate markets with bounded offset paging (v1.2).
 
-    Gamma returns at most ~100 markets per page, and the 1-14 day window can
-    be dominated by a single huge event, so one page is not enough. Fetches
-    until a short page (< ``page_size`` rows) or the ``max_pages`` bound,
-    deduping by slug — offset paging can overlap when ordering shifts
-    mid-scan.
+    The 1..``priority_days`` window is paged first so soon-resolving
+    markets cannot be starved out when the wider listing is crowded, then
+    the full 1..MAX_DAYS window. Gamma returns at most ~100 markets per
+    page, and either window can be dominated by a single huge event, so
+    one page is not enough: each window fetches until a short page
+    (< ``page_size`` rows) or the ``max_pages`` bound — at most
+    ``2 * max_pages`` API calls — deduping by slug (first occurrence wins;
+    offset paging can overlap when ordering shifts mid-scan, and the short
+    window is a subset of the full one).
     """
     now = now or _utc_now()
     seen: set[str] = set()
     markets: list[MarketInfo] = []
-    for page in range(max_pages):
-        batch = list_markets(
-            limit=page_size,
-            offset=page * page_size,
-            end_date_min=_iso(now + timedelta(days=MIN_DAYS)),
-            end_date_max=_iso(now + timedelta(days=MAX_DAYS)),
-            liquidity_min=MIN_LIQUIDITY,
-            http_client=http_client,
-        )
-        for m in batch:
-            if m.slug and m.slug not in seen:
-                seen.add(m.slug)
-                markets.append(m)
-        if len(batch) < page_size:
-            break
+    for end_days in (priority_days, MAX_DAYS):
+        for page in range(max_pages):
+            batch = list_markets(
+                limit=page_size,
+                offset=page * page_size,
+                end_date_min=_iso(now + timedelta(days=MIN_DAYS)),
+                end_date_max=_iso(now + timedelta(days=end_days)),
+                liquidity_min=MIN_LIQUIDITY,
+                http_client=http_client,
+            )
+            for m in batch:
+                if m.slug and m.slug not in seen:
+                    seen.add(m.slug)
+                    markets.append(m)
+            if len(batch) < page_size:
+                break
     return markets
 
 
@@ -275,17 +282,21 @@ def select_markets(
     max_price: float = MAX_PRICE,
     min_days: int = MIN_DAYS,
     max_days: int = MAX_DAYS,
+    priority_days: int = PRIORITY_DAYS,
 ) -> list[MarketInfo]:
     """Pick soon-resolving binary markets for forecasting.
 
     Keeps open Yes/No markets ending in ``min_days``–``max_days`` days with
     liquidity >= ``min_liquidity`` and a YES price inside
     [``min_price``, ``max_price``], drops ``taken_slugs`` (already-forecast
-    and already-resolved markets), keeps at most ``max_per_event`` markets
-    per Gamma event (highest volume wins, ``event_id`` falling back to
-    ``slug``), then returns the top ``top_n`` by volume.
+    and already-resolved markets), and orders eligible markets so those
+    ending within ``priority_days`` days rank first (each bucket by volume
+    descending) — the leaderboard only scores resolved markets, so short
+    horizons fill it faster. At most ``max_per_event`` markets per Gamma
+    event (``event_id`` falling back to ``slug``) survive that order, then
+    the top ``top_n``.
     """
-    eligible: list[MarketInfo] = []
+    eligible: list[tuple[datetime, MarketInfo]] = []
     for m in markets:
         if not m.slug or m.slug in taken_slugs:
             continue
@@ -306,11 +317,14 @@ def select_markets(
         delta = end - now
         if not timedelta(days=min_days) <= delta <= timedelta(days=max_days):
             continue
-        eligible.append(m)
-    eligible.sort(key=lambda m: m.volume, reverse=True)
+        eligible.append((end, m))
+    # Markets ending within `priority_days` rank first; volume desc inside
+    # each bucket.
+    cutoff = now + timedelta(days=priority_days)
+    eligible.sort(key=lambda t: (t[0] > cutoff, -t[1].volume))
     per_event: dict[str, int] = {}
     capped: list[MarketInfo] = []
-    for m in eligible:
+    for _, m in eligible:
         key = m.event_id or m.slug
         if per_event.get(key, 0) >= max_per_event:
             continue

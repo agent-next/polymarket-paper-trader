@@ -2,6 +2,15 @@
 
 All notable changes to `polymarket-paper-trader` are documented here.
 
+## [Unreleased]
+
+### Changed
+- **Forecast Arena prioritises soon-resolving markets**: eligible markets
+  ending within 3 days (`PRIORITY_DAYS`) now rank ahead of the rest of the
+  1–14 day window (volume descending inside each bucket), so the board fills
+  faster — only resolved markets are scored. Candidate fetching pages the
+  1–3 day window before the full window (at most `2 * max_pages` API calls).
+
 ## [0.4.2] - 2026-09-28
 
 ### Security
