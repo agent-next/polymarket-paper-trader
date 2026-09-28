@@ -44,8 +44,8 @@ def _fail_polymarket_boot():
 def client_degraded(monkeypatch):
     """Boot through the real lifespan with polymarket init failing.
 
-    Ends in the same state a failed production boot leaves behind:
-    app.state.polymarket is None and app.state.scheduler is None.
+    Ends in a doubly-degraded state: app.state.polymarket is None and
+    app.state.scheduler is None.
     """
     if hasattr(app.state, "polymarket"):
         delattr(app.state, "polymarket")
@@ -60,6 +60,27 @@ def client_degraded(monkeypatch):
         pm = Mock()
         pm.close.side_effect = RuntimeError("simulated close failure")
         c.app.state.polymarket = pm
+
+
+@pytest.fixture
+def client_degraded_polymarket_only(monkeypatch):
+    """Boot through the real lifespan with polymarket failing, scheduler up.
+
+    Mirrors a production boot where the Polymarket client cannot be built:
+    the lifespan still starts APScheduler, so /ready must report
+    polymarket=False alongside scheduler=True.
+    """
+    for attr in ("polymarket", "scheduler"):
+        if hasattr(app.state, attr):
+            delattr(app.state, attr)
+    monkeypatch.setattr(
+        "server.adapters.polymarket.create_polymarket_client",
+        _fail_polymarket_boot,
+    )
+    # TestClient teardown runs the lifespan shutdown, which stops the real
+    # scheduler via scheduler.shutdown(wait=False).
+    with TestClient(app) as c:
+        yield c
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +115,29 @@ class TestLayer1Discovery:
         resp = client_degraded.get("/ready")
         assert resp.status_code == 503
         assert resp.json()["database"] is False
+
+    def test_ready_reports_degraded_when_only_polymarket_is_down(
+        self, client_degraded_polymarket_only
+    ):
+        """Production-shaped boot: polymarket failed but the scheduler is
+        running — /ready must still return 503 (regression: issue #72)."""
+        resp = client_degraded_polymarket_only.get("/ready")
+        assert resp.status_code == 503
+        body = resp.json()
+        assert body["status"] == "degraded"
+        assert body["database"] is True
+        assert body["polymarket"] is False
+        assert body["scheduler"] is True
+
+    def test_ready_reports_degraded_when_scheduler_is_none(self, client):
+        """Scheduler down → /ready returns 503 even with DB and polymarket up."""
+        resp = client.get("/ready")
+        assert resp.status_code == 503
+        body = resp.json()
+        assert body["status"] == "degraded"
+        assert body["database"] is True
+        assert body["polymarket"] is True
+        assert body["scheduler"] is False
 
     def test_ready_reports_ok_when_dependencies_healthy(self, client):
         """All dependencies up → /ready returns 200 ok."""
