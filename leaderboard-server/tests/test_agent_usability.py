@@ -16,9 +16,12 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from unittest.mock import Mock
 
 import pytest
+from fastapi.testclient import TestClient
 
+from server.app import app
 from server.db import DB
 from server.jobs.backup import backup_db
 
@@ -31,6 +34,32 @@ from tests.conftest import (
     _register_and_create_account,
     _insert_trades,
 )
+
+
+def _fail_polymarket_boot():
+    raise RuntimeError("simulated polymarket boot failure")
+
+
+@pytest.fixture
+def client_degraded(monkeypatch):
+    """Boot through the real lifespan with polymarket init failing.
+
+    Ends in the same state a failed production boot leaves behind:
+    app.state.polymarket is None and app.state.scheduler is None.
+    """
+    if hasattr(app.state, "polymarket"):
+        delattr(app.state, "polymarket")
+    monkeypatch.setattr(
+        "server.adapters.polymarket.create_polymarket_client",
+        _fail_polymarket_boot,
+    )
+    app.state.scheduler = None
+    with TestClient(app) as c:
+        yield c
+        # Cover the lifespan's polymarket.close() failure path on shutdown
+        pm = Mock()
+        pm.close.side_effect = RuntimeError("simulated close failure")
+        c.app.state.polymarket = pm
 
 
 # ---------------------------------------------------------------------------
@@ -49,6 +78,37 @@ class TestLayer1Discovery:
         """Health endpoint requires no auth — agent can check without API key."""
         resp = client.get("/health")
         assert resp.status_code == 200
+
+    def test_ready_reports_degraded_when_polymarket_is_none(self, client_degraded):
+        """Degraded instance returns 503 so the platform drops it from rotation."""
+        resp = client_degraded.get("/ready")
+        assert resp.status_code == 503
+        body = resp.json()
+        assert body["status"] == "degraded"
+        assert body["database"] is True
+        assert body["polymarket"] is False
+        assert body["scheduler"] is False
+
+        # DB down → still degraded, database flag reports the failure
+        client_degraded.app.state.db.close()
+        resp = client_degraded.get("/ready")
+        assert resp.status_code == 503
+        assert resp.json()["database"] is False
+
+    def test_ready_reports_ok_when_dependencies_healthy(self, client):
+        """All dependencies up → /ready returns 200 ok."""
+        del client.app.state.scheduler  # let lifespan boot the real scheduler
+        try:
+            with TestClient(client.app):
+                resp = client.get("/ready")
+                assert resp.status_code == 200
+                body = resp.json()
+                assert body["status"] == "ok"
+                assert body["database"] is True
+                assert body["polymarket"] is True
+                assert body["scheduler"] is True
+        finally:
+            client.app.state.scheduler = None
 
 
 # ---------------------------------------------------------------------------
