@@ -1647,7 +1647,19 @@ class TestRunBuild:
             "index_html": str(out / "index.html"),
             "markets_open": len(board["open"]),
             "leaderboard": len(board["leaderboard"]),
+            "badges": len(board["leaderboard"]),
         }
+        # one shields.io endpoint-schema badge per ranked entrant
+        gpt_badge = json.loads((out / "badges" / "gpt.json").read_text())
+        assert gpt_badge == {
+            "schemaVersion": 1,
+            "label": "forecast arena",
+            "message": "#1 · Brier 0.010",
+            "color": "brightgreen",
+        }
+        crowd_badge = json.loads((out / "badges" / "crowd.json").read_text())
+        assert crowd_badge["message"].startswith("#2 · Brier ")
+        assert crowd_badge["color"] == "green"
 
 
 class TestBoardModelDisplay:
@@ -1760,3 +1772,58 @@ class TestCli:
         ])
         assert result.exit_code == 1
         assert json.loads(result.output)["ok"] is False
+
+
+class TestBadges:
+    def test_badge_colors_follow_rank_tiers(self, tmp_path):
+        data_dir = tmp_path / "data"
+        entrants = [
+            {"id": f"m{i}", "kind": "ai", "model": f"openai/m{i}"}
+            for i in range(7)
+        ] + [{"id": "crowd", "kind": "baseline"}]
+        config = _write_config(tmp_path / "arena.yaml", entrants)
+        _write_forecasts(
+            data_dir,
+            "2026-09-25",
+            [
+                _forecast_row("a", f"m{i}", 0.9 - i * 0.1, ts="2026-09-25T01:00:00Z")
+                for i in range(7)
+            ]
+            + [_forecast_row("a", "crowd", 0.1, ts="2026-09-25T01:00:00Z")],
+        )
+        arena.save_resolutions(
+            data_dir, {"a": {"outcome": 1, "resolved_at": "2026-09-26T00:00:00Z"}}
+        )
+        out = tmp_path / "site"
+        run_build(data_dir, config, out, now=NOW)
+        colors = [
+            json.loads((out / "badges" / f"m{i}.json").read_text())["color"]
+            for i in range(7)
+        ]
+        assert colors == [
+            "brightgreen", "green", "green",
+            "yellowgreen", "yellowgreen", "yellowgreen",
+            "orange",
+        ]
+        messages = [
+            json.loads((out / "badges" / f"m{i}.json").read_text())["message"]
+            for i in range(7)
+        ]
+        assert messages[0].startswith("#1 · Brier ")
+        assert messages[6].startswith("#7 · Brier ")
+
+    def test_no_badge_without_resolved_markets(self, tmp_path):
+        data_dir = tmp_path / "data"
+        config = _write_config(
+            tmp_path / "arena.yaml",
+            [{"id": "gpt", "kind": "ai", "model": "openai/gpt-4.1"}],
+        )
+        _write_forecasts(
+            data_dir,
+            "2026-09-25",
+            [_forecast_row("a", "gpt", 0.9, ts="2026-09-25T01:00:00Z")],
+        )
+        out = tmp_path / "site"
+        summary = run_build(data_dir, config, out, now=NOW)
+        assert summary["badges"] == 0
+        assert not (out / "badges" / "gpt.json").exists()

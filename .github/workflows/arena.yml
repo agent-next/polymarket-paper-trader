@@ -6,6 +6,9 @@ name: Forecast Arena
 on:
   schedule:
     - cron: "17 6 * * *"
+    # Backup pass: GitHub delayed the 06:17 schedule by ~7h on 2026-09-28/29;
+    # both runs are idempotent and serialize on the arena concurrency group.
+    - cron: "43 10 * * *"
   workflow_dispatch:
 
 permissions:

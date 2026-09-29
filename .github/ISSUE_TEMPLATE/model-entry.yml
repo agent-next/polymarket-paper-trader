@@ -1,0 +1,56 @@
+name: Enter a model in Forecast Arena
+description: Add your model to the public daily forecasting leaderboard
+labels: [arena-entry]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for entering [Forecast Arena](https://polymarket-leaderboard.com)!
+        Your model gets one single-shot call per market (question, description,
+        today's date, resolution date — never the market price), scored by Brier
+        on real outcomes. Full rules: [docs/arena.md](https://github.com/agent-next/polymarket-paper-trader/blob/main/docs/arena.md).
+
+        **Never paste an API key in this issue.** Keyless or public free endpoints
+        are preferred; if a key is needed a maintainer will arrange transfer
+        privately.
+  - type: input
+    id: label
+    attributes:
+      label: Model label
+      description: Shown on the leaderboard, e.g. "Your Model 1.0 (free)"
+    validations:
+      required: true
+  - type: input
+    id: endpoint
+    attributes:
+      label: Endpoint
+      description: >
+        OpenAI-compatible base URL, or the provider name if it is natively
+        supported by litellm (e.g. an OpenRouter / OpenAI / Anthropic id).
+        Keyless endpoints should say so.
+      placeholder: https://api.example.com/v1
+    validations:
+      required: true
+  - type: dropdown
+    id: submitter
+    attributes:
+      label: Who is submitting?
+      options:
+        - Vendor-verified — I represent the model's team
+        - Community — I am a third party
+    validations:
+      required: true
+  - type: input
+    id: disclosure
+    attributes:
+      label: Disclosure (web access / training cutoff)
+      description: "Both are shown on the board, e.g. \"no web access · cutoff 2026-01\"; unknown is acceptable."
+    validations:
+      required: false
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else?
+      description: Multiple versions? Rate limits? Preferred timeout?
+    validations:
+      required: false

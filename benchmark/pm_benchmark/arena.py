@@ -1053,6 +1053,47 @@ def build_board(
     }
 
 
+def _badge_color(rank: int) -> str:
+    """Shields.io named color for a leaderboard rank."""
+    if rank == 1:
+        return "brightgreen"
+    if rank <= 3:
+        return "green"
+    if rank <= 6:
+        return "yellowgreen"
+    return "orange"
+
+
+def _badge_payloads(board: dict) -> list[tuple[str, dict]]:
+    """One Shields.io endpoint-schema payload per ranked entrant.
+
+    ``run_build`` writes them to ``badges/<entrant-id>.json`` so entrants
+    can embed a live rank badge in their own README via
+    ``https://img.shields.io/endpoint?url=<site>/badges/<id>.json``.
+    Entrant ids are curated in ``arena.yaml`` and must stay filename-safe.
+    """
+    payloads: list[tuple[str, dict]] = []
+    for rank, row in enumerate(board["leaderboard"], start=1):
+        brier = row.get("brier")
+        message = (
+            f"#{rank} · Brier {brier:.3f}"
+            if isinstance(brier, (int, float))
+            else f"#{rank}"
+        )
+        payloads.append(
+            (
+                str(row["entrant"]),
+                {
+                    "schemaVersion": 1,
+                    "label": "forecast arena",
+                    "message": message,
+                    "color": _badge_color(rank),
+                },
+            )
+        )
+    return payloads
+
+
 def run_build(
     data_dir: Path,
     config_path: Path | None = None,
@@ -1060,7 +1101,7 @@ def run_build(
     *,
     now: datetime | None = None,
 ) -> dict:
-    """Build the board and write ``site/`` (data.json, index.html, app.js, CNAME)."""
+    """Build the board and write ``site/`` (data.json, index.html, app.js, CNAME, badges/)."""
     from importlib.resources import files
 
     from pm_benchmark.arena_site import render_site
@@ -1084,9 +1125,18 @@ def run_build(
     )
     (out_dir / "CNAME").write_text(f"{CNAME_DOMAIN}\n")
 
+    badges_dir = out_dir / "badges"
+    badges_dir.mkdir(parents=True, exist_ok=True)
+    badges = _badge_payloads(board)
+    for entrant_id, payload in badges:
+        (badges_dir / f"{entrant_id}.json").write_text(
+            json.dumps(payload) + "\n"
+        )
+
     return {
         "data_json": str(data_path),
         "index_html": str(index_path),
         "markets_open": len(board["open"]),
         "leaderboard": len(board["leaderboard"]),
+        "badges": len(badges),
     }

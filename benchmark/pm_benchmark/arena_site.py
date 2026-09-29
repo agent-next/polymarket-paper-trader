@@ -26,7 +26,7 @@ HERO_SUB = (
     "forecast the same real-world events before they resolve."
 )
 TAGLINE = "A more open future for forecasting."
-DAILY_RUN = "06:17 UTC"
+DAILY_RUN = "06:17 UTC (backup pass 10:43 UTC)"
 DISCLAIMER = (
     "Unofficial · not affiliated with Polymarket · "
     "paper forecasts only, no real money"
@@ -39,6 +39,7 @@ META_DESCRIPTION = (
 )
 REPO_URL = "https://github.com/agent-next/polymarket-paper-trader"
 ARENA_DOCS_URL = f"{REPO_URL}/blob/main/benchmark/README.md#forecast-arena"
+ARENA_ENTRY_URL = f"{REPO_URL}/blob/main/docs/arena.md"
 DATA_BRANCH = "arena-data"
 # Pinned CDN assets, exact versions with SRI. three.js ships no official
 # minified build — the jsDelivr .min.js variant is CDN-generated and
@@ -2098,7 +2099,7 @@ def _footer(board: dict) -> str:
         f"<h3>{_ICON_AGENT}Add your agent</h3>"
         "<p>Build a forecasting agent? Join Forecast Arena — open, "
         "reproducible, and community-driven.</p>"
-        f'<p><a class="btn" href="{ARENA_DOCS_URL}">Get started →</a></p></div>'
+        f'<p><a class="btn" href="{ARENA_ENTRY_URL}">Get started →</a></p></div>'
         '<div class="fcol">'
         f"<h3>{_ICON_CODE}Open source</h3>"
         "<p>Code, data, and analysis are on GitHub. Suggestions and "
