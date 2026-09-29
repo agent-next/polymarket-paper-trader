@@ -257,36 +257,36 @@ class Engine:
                 required=total_outflow, available=available_cash
             )
 
-        # Update cash
-        new_cash = account.cash - total_outflow
-        self.db.update_cash(new_cash)
+        # Cash debit + trade row + position row land in ONE transaction
+        # (issue #69): a crash between the writes must not leave the cash
+        # debited with no position.
+        with self.db.atomic():
+            self.db.update_cash(account.cash - total_outflow)
 
-        # Record trade
-        trade = self.db.insert_trade(
-            market_condition_id=market.condition_id,
-            market_slug=market.slug,
-            market_question=market.question,
-            outcome=outcome,
-            side="buy",
-            order_type=order_type,
-            avg_price=fill.avg_price,
-            amount_usd=fill.total_cost,
-            shares=fill.total_shares,
-            fee_rate_bps=fee_rate_bps,
-            fee=fill.fee,
-            slippage=fill.slippage_bps,
-            levels_filled=fill.levels_filled,
-            is_partial=fill.is_partial,
-        )
+            trade = self.db.insert_trade(
+                market_condition_id=market.condition_id,
+                market_slug=market.slug,
+                market_question=market.question,
+                outcome=outcome,
+                side="buy",
+                order_type=order_type,
+                avg_price=fill.avg_price,
+                amount_usd=fill.total_cost,
+                shares=fill.total_shares,
+                fee_rate_bps=fee_rate_bps,
+                fee=fill.fee,
+                slippage=fill.slippage_bps,
+                levels_filled=fill.levels_filled,
+                is_partial=fill.is_partial,
+            )
 
-        # Update position
-        self._update_position_after_buy(
-            market=market,
-            outcome=outcome,
-            new_shares=fill.total_shares,
-            cost=fill.total_cost + fill.fee,
-            avg_fill_price=fill.avg_price,
-        )
+            self._update_position_after_buy(
+                market=market,
+                outcome=outcome,
+                new_shares=fill.total_shares,
+                cost=fill.total_cost + fill.fee,
+                avg_fill_price=fill.avg_price,
+            )
 
         updated_account = self.get_account()
         return TradeResult(trade=trade, account=updated_account)
@@ -378,35 +378,34 @@ class Engine:
         # Net proceeds = gross - fee
         net_proceeds = fill.total_cost - fill.fee
 
-        # Update cash
-        new_cash = account.cash + net_proceeds
-        self.db.update_cash(new_cash)
+        # Cash credit + trade row + position row land in ONE transaction
+        # (issue #69, mirror of the buy path).
+        with self.db.atomic():
+            self.db.update_cash(account.cash + net_proceeds)
 
-        # Record trade
-        trade = self.db.insert_trade(
-            market_condition_id=market.condition_id,
-            market_slug=market.slug,
-            market_question=market.question,
-            outcome=outcome,
-            side="sell",
-            order_type=order_type,
-            avg_price=fill.avg_price,
-            amount_usd=fill.total_cost,
-            shares=fill.total_shares,
-            fee_rate_bps=fee_rate_bps,
-            fee=fill.fee,
-            slippage=fill.slippage_bps,
-            levels_filled=fill.levels_filled,
-            is_partial=fill.is_partial,
-        )
+            trade = self.db.insert_trade(
+                market_condition_id=market.condition_id,
+                market_slug=market.slug,
+                market_question=market.question,
+                outcome=outcome,
+                side="sell",
+                order_type=order_type,
+                avg_price=fill.avg_price,
+                amount_usd=fill.total_cost,
+                shares=fill.total_shares,
+                fee_rate_bps=fee_rate_bps,
+                fee=fill.fee,
+                slippage=fill.slippage_bps,
+                levels_filled=fill.levels_filled,
+                is_partial=fill.is_partial,
+            )
 
-        # Update position
-        self._update_position_after_sell(
-            market=market,
-            outcome=outcome,
-            sold_shares=fill.total_shares,
-            proceeds=net_proceeds,
-        )
+            self._update_position_after_sell(
+                market=market,
+                outcome=outcome,
+                sold_shares=fill.total_shares,
+                proceeds=net_proceeds,
+            )
 
         updated_account = self.get_account()
         return TradeResult(trade=trade, account=updated_account)
@@ -746,6 +745,13 @@ class Engine:
                     "order": _order_to_dict(updated),
                     "action": updated.status,
                 })
+            except InsufficientBalanceError:
+                # Transient (issue #66): a resting buy that passed the
+                # placement gate can hit a cash shortage at fill when another
+                # order spent the unreserved fee headroom meanwhile. The
+                # order rests and retries — killing it here was a terminal
+                # reject of an approved order.
+                continue
             except _PERMANENT_ORDER_ERRORS as e:
                 # Permanent failure — mark rejected so it's not retried
                 updated = reject_order(self.db.conn, order.id)
@@ -774,30 +780,32 @@ class Engine:
             raise InsufficientBalanceError(
                 required=total_outflow, available=account.cash,
             )
-        self.db.update_cash(account.cash - total_outflow)
-        self.db.insert_trade(
-            market_condition_id=market.condition_id,
-            market_slug=market.slug,
-            market_question=market.question,
-            outcome=order.outcome,
-            side="buy",
-            order_type="fak",
-            avg_price=fill.avg_price,
-            amount_usd=fill.total_cost,
-            shares=fill.total_shares,
-            fee_rate_bps=fee_rate_bps,
-            fee=fee,
-            slippage=fill.slippage_bps,
-            levels_filled=fill.levels_filled,
-            is_partial=fill.is_partial,
-        )
-        self._update_position_after_buy(
-            market=market,
-            outcome=order.outcome,
-            new_shares=fill.total_shares,
-            cost=fill.total_cost + fee,
-            avg_fill_price=fill.avg_price,
-        )
+        # One transaction for all three writes (issue #69).
+        with self.db.atomic():
+            self.db.update_cash(account.cash - total_outflow)
+            self.db.insert_trade(
+                market_condition_id=market.condition_id,
+                market_slug=market.slug,
+                market_question=market.question,
+                outcome=order.outcome,
+                side="buy",
+                order_type="fak",
+                avg_price=fill.avg_price,
+                amount_usd=fill.total_cost,
+                shares=fill.total_shares,
+                fee_rate_bps=fee_rate_bps,
+                fee=fee,
+                slippage=fill.slippage_bps,
+                levels_filled=fill.levels_filled,
+                is_partial=fill.is_partial,
+            )
+            self._update_position_after_buy(
+                market=market,
+                outcome=order.outcome,
+                new_shares=fill.total_shares,
+                cost=fill.total_cost + fee,
+                avg_fill_price=fill.avg_price,
+            )
 
     def _execute_limit_sell(self, market, order, fill, fee_rate_bps: int, *, maker: bool = True) -> None:
         """Record a limit sell fill using a pre-computed FillResult.
@@ -818,29 +826,31 @@ class Engine:
                 f"only hold {position.shares:.4f}"
             )
         net_proceeds = fill.total_cost - fee
-        self.db.update_cash(account.cash + net_proceeds)
-        self.db.insert_trade(
-            market_condition_id=market.condition_id,
-            market_slug=market.slug,
-            market_question=market.question,
-            outcome=order.outcome,
-            side="sell",
-            order_type="fak",
-            avg_price=fill.avg_price,
-            amount_usd=fill.total_cost,
-            shares=fill.total_shares,
-            fee_rate_bps=fee_rate_bps,
-            fee=fee,
-            slippage=fill.slippage_bps,
-            levels_filled=fill.levels_filled,
-            is_partial=fill.is_partial,
-        )
-        self._update_position_after_sell(
-            market=market,
-            outcome=order.outcome,
-            sold_shares=fill.total_shares,
-            proceeds=net_proceeds,
-        )
+        # One transaction for all writes (issue #69).
+        with self.db.atomic():
+            self.db.update_cash(account.cash + net_proceeds)
+            self.db.insert_trade(
+                market_condition_id=market.condition_id,
+                market_slug=market.slug,
+                market_question=market.question,
+                outcome=order.outcome,
+                side="sell",
+                order_type="fak",
+                avg_price=fill.avg_price,
+                amount_usd=fill.total_cost,
+                shares=fill.total_shares,
+                fee_rate_bps=fee_rate_bps,
+                fee=fee,
+                slippage=fill.slippage_bps,
+                levels_filled=fill.levels_filled,
+                is_partial=fill.is_partial,
+            )
+            self._update_position_after_sell(
+                market=market,
+                outcome=order.outcome,
+                sold_shares=fill.total_shares,
+                proceeds=net_proceeds,
+            )
 
     def watch_prices(
         self, slugs_or_ids: list[str], outcomes: list[str] | None = None,
