@@ -4,6 +4,18 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Forecast Arena entry path**: `docs/arena.md` (rules, the exact prompt
+  contract, badge embeds) + an "Enter a model in Forecast Arena" issue
+  template; the site's "Add your agent" CTA now points at the guide.
+- **Live rank badges**: every arena build writes `badges/<entrant>.json`
+  (Shields.io endpoint schema, rank-tinted) so entrants can embed a live
+  rank/Brier badge in their own README.
+
+### Fixed
+- **CI**: arena workflow gains a 10:43 UTC backup pass — GitHub delayed the
+  06:17 schedule by ~7h on both 2026-09-28 and 2026-09-29.
+
 ### Changed
 - **Forecast Arena prioritises soon-resolving markets**: eligible markets
   ending within 3 days (`PRIORITY_DAYS`) now rank ahead of the rest of the

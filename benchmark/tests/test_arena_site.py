@@ -357,7 +357,7 @@ class TestHero:
         assert '<span class="stat-num">180</span>' in html
         assert '<span class="stat-num">30</span>' in html
         assert '<span class="stat-num">6</span>' in html
-        assert '<span class="stat-num">06:17 UTC</span>' in html
+        assert '06:17 UTC (backup pass 10:43 UTC)' in html
 
     def test_resolved_count_replaces_first_resolution(self) -> None:
         html = render_site(sample_board())
@@ -1426,11 +1426,11 @@ class TestFooter:
             'href="https://github.com/agent-next/polymarket-paper-trader"'
             in html
         )
-        # Get started points at the arena docs anchor, not a bare link
+        # Get started points at the model-entry guide
         assert (
             '<a class="btn" '
             'href="https://github.com/agent-next/polymarket-paper-trader'
-            '/blob/main/benchmark/README.md#forecast-arena">'
+            '/blob/main/docs/arena.md">'
             "Get started →</a>" in html
         )
         # every in-page anchor target exists
