@@ -1404,10 +1404,10 @@ class TestMethodology:
         assert "10 equal-width bins" in html
         assert "≥100 resolved forecasts" in html
         assert "at most 2 markets per event" in html
-        assert "top 20 by volume" in html
+        assert "top 60 by volume" in html
         assert "markets ending within 3 days rank first" in html
         assert "[0.03, 0.97]" in html
-        assert "liquidity ≥ $10k" in html
+        assert "liquidity ≥ $2k" in html
         assert "not forecasting ability in general" in html
         assert "contamination" in html
         assert "coin" in html and "50%" in html

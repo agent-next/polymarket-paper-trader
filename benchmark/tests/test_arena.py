@@ -282,8 +282,8 @@ class TestSelectMarkets:
         assert _yes_prob(m) == 0.6
 
     def test_liquidity_floor(self):
-        assert self._run([_info("a", liquidity=9_999.0)]) == []
-        assert len(self._run([_info("b", liquidity=10_000.0)])) == 1
+        assert self._run([_info("a", liquidity=1_999.0)]) == []
+        assert len(self._run([_info("b", liquidity=2_000.0)])) == 1
 
     def test_end_date_window(self):
         too_soon = (NOW + timedelta(hours=12)).strftime("%Y-%m-%dT%H:%M:%SZ")

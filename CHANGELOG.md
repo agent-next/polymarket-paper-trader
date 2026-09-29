@@ -4,6 +4,13 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+### Changed
+- **Forecast Arena covers ~3x more markets per run**: `TOP_N` 20 -> 60 and
+  the liquidity floor $10k -> $2k (live-probed pool in the 1-14 day window:
+  200+ markets at $10k, 300+ at $2k, 400+ at $1k). The [0.03, 0.97] price
+  band, binary-market filter and 2-markets-per-event cap are unchanged, so
+  the crowd baseline keeps a meaningful price on every scored market.
+
 ### Added
 - **Forecast Arena entry path**: `docs/arena.md` (rules, the exact prompt
   contract, badge embeds) + an "Enter a model in Forecast Arena" issue
