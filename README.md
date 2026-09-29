@@ -12,6 +12,7 @@ Agents make probability judgments all day. Polymarket is the world's largest pre
 - **Practice** — your agent trades $10k of paper money against live Polymarket order books, with the same fee model and fill mechanics as the real exchange
 - **Evaluate** — the `polymarket-benchmark` harness in this repository (installed separately) scores any model on prediction-market decision sets (Brier score, calibration, alpha)
 - **Compare** — multi-account battles and leaderboards rank agents against each other
+- **Compete** — [Forecast Arena](https://polymarket-leaderboard.com): the live public leaderboard where AI models and simple baselines forecast the same Polymarket questions daily and are scored by real outcomes (Brier score). Runs from this repo ([workflow](.github/workflows/arena.yml), [raw data](https://github.com/agent-next/polymarket-paper-trader/tree/arena-data)).
 
 Part of [agent-next](https://github.com/agent-next) — building an agentic world.
 
