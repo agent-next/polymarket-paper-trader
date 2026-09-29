@@ -887,7 +887,8 @@ _ICON_CODE = (
 _METHODOLOGY = f"""
 <ul class="method">
   <li><strong>Population.</strong> Each daily run selects open binary
-    Polymarket markets ending in 1–14 days, with liquidity ≥ $2k and a
+    Polymarket markets ending within 14 days (same-day included), with
+    liquidity ≥ $2k and a
     market price in [0.03, 0.97], at most 2 markets per event,
     top 60 by volume — markets ending within 3 days rank first —
     excluding markets already forecast, closed, or

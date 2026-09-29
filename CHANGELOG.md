@@ -10,6 +10,11 @@ All notable changes to `polymarket-paper-trader` are documented here.
   200+ markets at $10k, 300+ at $2k, 400+ at $1k). The [0.03, 0.97] price
   band, binary-market filter and 2-markets-per-event cap are unchanged, so
   the crowd baseline keeps a meaningful price on every scored market.
+- **Forecast Arena includes same-day markets**: `MIN_DAYS` 1 -> 0. The
+  pool of markets ending before midnight UTC is 200+ on a typical sports
+  day (live-probed 2026-09-29) and settles within hours — the fastest
+  possible fill for the board. Pre-registration is unchanged: forecasts
+  are still recorded before resolution on the append-only branch.
 
 ### Added
 - **Forecast Arena entry path**: `docs/arena.md` (rules, the exact prompt

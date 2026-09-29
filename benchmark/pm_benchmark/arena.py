@@ -66,7 +66,7 @@ MIN_LIQUIDITY = 2_000.0
 MIN_SECRET_LEN = 12
 MIN_PRICE = 0.03
 MAX_PRICE = 0.97
-MIN_DAYS = 1
+MIN_DAYS = 0    # same-day markets included (sports fixtures settle within hours)
 MAX_DAYS = 14
 PRIORITY_DAYS = 3    # markets ending within this many days rank first
 
