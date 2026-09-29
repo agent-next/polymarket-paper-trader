@@ -286,9 +286,9 @@ class TestSelectMarkets:
         assert len(self._run([_info("b", liquidity=2_000.0)])) == 1
 
     def test_end_date_window(self):
-        too_soon = (NOW + timedelta(hours=12)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        same_day = (NOW + timedelta(hours=12)).strftime("%Y-%m-%dT%H:%M:%SZ")
         too_late = (NOW + timedelta(days=15)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        assert self._run([_info("soon", end_date=too_soon)]) == []
+        assert len(self._run([_info("soon", end_date=same_day)])) == 1
         assert self._run([_info("late", end_date=too_late)]) == []
         boundary = (NOW + timedelta(days=14)).strftime("%Y-%m-%dT%H:%M:%SZ")
         assert len(self._run([_info("edge", end_date=boundary)])) == 1
@@ -388,11 +388,11 @@ class TestListCandidateMarkets:
         assert [m.slug for m in got] == ["m0", "m1", "m2", "m3"]
         # the 1..PRIORITY_DAYS window pages before the full 1..MAX_DAYS one
         first = mock.call_args_list[0].kwargs
-        assert first["end_date_min"] == "2026-09-27T12:00:00Z"
+        assert first["end_date_min"] == "2026-09-26T12:00:00Z"
         assert first["end_date_max"] == "2026-09-29T12:00:00Z"
         assert first["liquidity_min"] == arena.MIN_LIQUIDITY
         full = mock.call_args_list[2].kwargs
-        assert full["end_date_min"] == "2026-09-27T12:00:00Z"
+        assert full["end_date_min"] == "2026-09-26T12:00:00Z"
         assert full["end_date_max"] == "2026-10-10T12:00:00Z"
         assert mock.call_count == 3
         assert mock.call_args_list[0].kwargs["offset"] == 0
@@ -435,9 +435,9 @@ class TestListCandidateMarkets:
         assert [m.slug for m in got] == ["soon", "later"]
         assert got[0].volume == 1.0
         calls = mock.call_args_list
-        assert calls[0].kwargs["end_date_min"] == "2026-09-27T12:00:00Z"
+        assert calls[0].kwargs["end_date_min"] == "2026-09-26T12:00:00Z"
         assert calls[0].kwargs["end_date_max"] == "2026-09-29T12:00:00Z"
-        assert calls[1].kwargs["end_date_min"] == "2026-09-27T12:00:00Z"
+        assert calls[1].kwargs["end_date_min"] == "2026-09-26T12:00:00Z"
         assert calls[1].kwargs["end_date_max"] == "2026-10-10T12:00:00Z"
 
     def test_empty_first_page(self, monkeypatch):
