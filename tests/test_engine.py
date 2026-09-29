@@ -1542,13 +1542,14 @@ class TestEstimateBuyFee:
             SAMPLE_MARKET, "tok_yes", 100.0,
         ) == 0.0
 
-    def test_fill_time_cash_guard_rejects_fee_slack_exhaustion(
+    def test_fill_time_cash_guard_skips_insufficient_order(
         self, initialized_engine: Engine,
     ):
         """The fill-time raw-cash check in _execute_limit_buy stays the final
-        guard: two resting buys whose worst-case fees together exceed the cash
-        (the placement gate reserves remaining_amount only) fill one and
-        permanently reject the other, instead of going negative."""
+        guard (cash never goes negative), but an approved order that cannot
+        afford its fill right now RESTS and retries (issue #66) instead of
+        being terminally rejected: two resting buys whose worst-case fees
+        together exceed the cash fill one; the other stays pending."""
         schedule = {"rate": 0.07, "exponent": 1, "takerOnly": False}
         _mock_api(initialized_engine, market=_schedule_market(**schedule))
         initialized_engine.db.update_cash(213.0)
@@ -1569,9 +1570,11 @@ class TestEstimateBuyFee:
         results = initialized_engine.check_orders()
         actions = {r["order"]["id"]: r["action"] for r in results}
         assert actions[first["id"]] == "filled"
-        assert actions[second["id"]] == "rejected"
-        rejected = next(r for r in results if r["order"]["id"] == second["id"])
-        assert "Insufficient balance" in rejected["reason"]
+        # The second order could not afford its fill: no action, still pending
+        assert second["id"] not in actions
+        pending_ids = [o["id"] for o in initialized_engine.get_pending_orders()]
+        assert second["id"] in pending_ids
+        assert initialized_engine.get_account().cash == pytest.approx(106.07, abs=0.01)
 
 
 # ---------------------------------------------------------------------------
@@ -1648,3 +1651,56 @@ class TestBalanceReservedKeys:
 
         bal = initialized_engine.get_balance()
         assert bal["reserved_cash"] == pytest.approx(67.0)
+
+
+class TestEngineAtomicity:
+    def test_buy_crash_between_writes_rolls_back_cash(self, engine: Engine):
+        """#69: buy() is a cash debit + trade row + position row. A crash
+        after the debit must not leave the cash debited with no position."""
+        engine.init_account(10_000.0)
+        _mock_api(engine)
+        with patch.object(
+            Database, "insert_trade", side_effect=RuntimeError("crash mid-buy")
+        ):
+            with pytest.raises(RuntimeError, match="crash mid-buy"):
+                engine.buy("will-bitcoin-hit-100k", "yes", 100.0)
+        assert engine.get_account().cash == 10_000.0
+        assert engine.db.get_position("0xabc123", "yes") is None
+
+
+class TestRestingFillInsufficientCash:
+    def test_insufficient_cash_at_fill_is_transient_not_terminal(
+        self, engine: Engine
+    ):
+        """#66: a resting buy that passed the placement gate (notional + fee
+        estimate) must not be terminally rejected at fill when a concurrent
+        market order ate the fee headroom — it rests and retries."""
+        engine.init_account(104.0)
+        maker_pays = replace(
+            SAMPLE_MARKET,
+            fee_schedule={"rate": 0.02, "exponent": 1, "takerOnly": False},
+        )
+        resting_book = _make_book(bids=[(0.55, 500)], asks=[(0.70, 500)])
+        _mock_api(engine, market=maker_pays, book=resting_book, fee_rate=0)
+
+        # Gate passes: 100 + 0.02*100 estimate = 102 <= 104; order rests
+        order = engine.place_limit_order(
+            "will-bitcoin-hit-100k", "yes", "buy", 100.0, 0.60
+        )
+        assert order["status"] == "pending"
+
+        # A market buy spends the unreserved fee headroom (available = 4)
+        crossable = _make_book(bids=[(0.55, 500)], asks=[(0.65, 500)])
+        engine.api.get_order_book = MagicMock(return_value=crossable)
+        engine.buy("will-bitcoin-hit-100k", "yes", 3.5)
+        # cash = 104 - (3.5 cost + 0.0245 fee) ~ 100.4755
+
+        # The book moves through the resting limit; the maker fill needs
+        # ~100.8 (fee 0.8 on a maker-pays market) > cash ~100.4755
+        fill_book = _make_book(bids=[(0.55, 500)], asks=[(0.60, 5000)])
+        engine.api.get_order_book = MagicMock(return_value=fill_book)
+        results = engine.check_orders()
+
+        assert [r for r in results if r["action"] == "rejected"] == []
+        assert len(engine.get_pending_orders()) == 1
+        assert engine.get_account().cash == pytest.approx(100.4755, abs=1e-3)

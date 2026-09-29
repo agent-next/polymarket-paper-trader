@@ -4,6 +4,16 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- **Atomic trade writes** (#69): buy/sell (market and limit paths) now land
+  the cash update, trade row and position row in ONE transaction — a crash
+  between the writes can no longer debit cash without recording the
+  position/trade. `Database.atomic()` refuses to nest.
+- **Insufficient cash at fill is transient** (#66): a resting buy that
+  passed the placement gate but cannot afford its fill (another order spent
+  the unreserved fee headroom) now rests and retries instead of being
+  terminally rejected.
+
 ### Changed
 - **Forecast Arena covers ~3x more markets per run**: `TOP_N` 20 -> 60 and
   the liquidity floor $10k -> $2k (live-probed pool in the 1-14 day window:

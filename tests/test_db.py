@@ -635,3 +635,29 @@ class TestConstraints:
                 ) VALUES ('0x1', 's', 'q', '', 10, 0.5, 5.0)
                 """
             )
+
+
+class TestAtomic:
+    def test_atomic_blocks_do_not_nest(self, db):
+        """Nesting is refused loudly: no call path needs it."""
+        with pytest.raises(RuntimeError, match="do not nest"):
+            with db.atomic():
+                with db.atomic():
+                    pass  # pragma: no cover — never reached
+
+    def test_atomic_commits_and_rolls_back(self, db):
+        """Writes inside atomic() commit on success; an error rolls back all."""
+        import sqlite3 as _s
+
+        db.init_account(100.0)
+        with db.atomic():
+            db.update_cash(80.0)
+        assert db.get_account().cash == 80.0
+
+        with pytest.raises(RuntimeError, match="boom"), db.atomic():
+            db.update_cash(50.0)
+            raise RuntimeError("boom")
+        assert db.get_account().cash == 80.0
+        # A fresh connection sees the committed state, not the rolled-back one
+        raw = _s.connect(str(db.db_path))
+        assert raw.execute("SELECT cash FROM account").fetchone()[0] == 80.0

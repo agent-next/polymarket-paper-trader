@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 
 from pm_trader.models import Account, Position, Trade
@@ -65,11 +66,40 @@ class Database:
     def __init__(self, data_dir: Path) -> None:
         self.data_dir = data_dir
         self.db_path = data_dir / "paper.db"
+        self._txn_depth = 0
         self._ensure_dir()
         self._conn: sqlite3.Connection | None = None
 
     def _ensure_dir(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
+
+    def _commit(self) -> None:
+        """Commit unless an atomic() block owns the transaction."""
+        if self._txn_depth == 0:
+            self.conn.commit()
+
+    @contextmanager
+    def atomic(self):
+        """Group every write inside the block into one transaction.
+
+        buy()/sell() debit cash, insert a trade row and update a position as
+        three independent commits — a crash between them left the cash
+        debited with no position (issue #69). Inside this block the
+        per-method commits are suppressed and a single COMMIT (or ROLLBACK
+        on error) lands the whole sequence atomically. Nesting is refused:
+        no call path needs it and silently allowing it would mask bugs.
+        """
+        if self._txn_depth > 0:
+            raise RuntimeError("atomic() blocks do not nest")
+        self._txn_depth = 1
+        try:
+            yield
+            self.conn.commit()
+        except BaseException:
+            self.conn.rollback()
+            raise
+        finally:
+            self._txn_depth = 0
 
     @property
     def conn(self) -> sqlite3.Connection:
@@ -103,7 +133,7 @@ class Database:
             "INSERT OR REPLACE INTO account (id, starting_balance, cash) VALUES (1, ?, ?)",
             (balance, balance),
         )
-        self.conn.commit()
+        self._commit()
         return self.get_account()
 
     def get_account(self) -> Account | None:
@@ -121,7 +151,7 @@ class Database:
     def update_cash(self, new_cash: float) -> None:
         """Update the account cash balance."""
         self.conn.execute("UPDATE account SET cash = ? WHERE id = 1", (new_cash,))
-        self.conn.commit()
+        self._commit()
 
     # ------------------------------------------------------------------
     # Reset
@@ -181,7 +211,7 @@ class Database:
                 levels_filled, int(is_partial),
             ),
         )
-        self.conn.commit()
+        self._commit()
         trade_id = cursor.lastrowid
         row = self.conn.execute(
             "SELECT * FROM trades WHERE id = ?", (trade_id,)
@@ -229,7 +259,7 @@ class Database:
                 outcome, shares, avg_entry_price, total_cost, realized_pnl,
             ),
         )
-        self.conn.commit()
+        self._commit()
         return self.get_position(market_condition_id, outcome)
 
     def get_position(self, market_condition_id: str, outcome: str) -> Position | None:
@@ -285,7 +315,7 @@ class Database:
             """,
             (new_realized, market_condition_id, outcome),
         )
-        self.conn.commit()
+        self._commit()
         return self.get_position(market_condition_id, outcome)
 
     # ------------------------------------------------------------------
@@ -301,7 +331,7 @@ class Database:
             """,
             (key, json.dumps(data)),
         )
-        self.conn.commit()
+        self._commit()
 
     def get_cache(self, key: str) -> dict | list | None:
         """Return cached data, or None if not found."""
