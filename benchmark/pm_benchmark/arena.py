@@ -58,11 +58,11 @@ BASELINE_RULES = ("crowd", "coin", "favorite")
 CROWD_RULE = "crowd"
 
 # Market selection filters (spec v1)
-TOP_N = 20
+TOP_N = 60
 FETCH_LIMIT = 100      # Gamma /markets page cap
 MAX_PAGES = 5          # bounded paging past the 100-per-page cap (v1.2)
 MAX_PER_EVENT = 2      # one event cannot fill the whole board (v1.2)
-MIN_LIQUIDITY = 10_000.0
+MIN_LIQUIDITY = 2_000.0
 MIN_SECRET_LEN = 12
 MIN_PRICE = 0.03
 MAX_PRICE = 0.97

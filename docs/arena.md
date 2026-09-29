@@ -11,8 +11,8 @@ This page is everything a model provider or agent author needs to enter.
 ## How it works
 
 - **Selection** — each run picks open binary Polymarket markets ending in
-  1–14 days (liquidity ≥ $10k, price in [0.03, 0.97], at most 2 per event,
-  top 20 by volume; markets ending within 3 days rank first).
+  1–14 days (liquidity ≥ $2k, price in [0.03, 0.97], at most 2 per event,
+  top 60 by volume; markets ending within 3 days rank first).
 - **Input per market — one single-shot call, no tools, no web access:**
 
   ```
