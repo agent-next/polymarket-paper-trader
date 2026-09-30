@@ -99,6 +99,28 @@ class TestValidateDecision:
                 "confidence": "high", "amount_usd": 0,
             })
 
+    @pytest.mark.parametrize("value", ["high", "about 0.6", [0.5], {"p": 1}])
+    def test_non_numeric_probability(self, value):
+        with pytest.raises(LLMError, match="probability must be a number"):
+            _validate_decision({"probability": value, "action": "skip"})
+
+    def test_non_numeric_amount(self):
+        with pytest.raises(LLMError, match="amount_usd must be a number"):
+            _validate_decision({
+                "probability": 0.5, "action": "buy_yes", "amount_usd": "lots",
+            })
+
+    @pytest.mark.parametrize("value", [float("nan"), float("inf"), "Infinity", "NaN"])
+    def test_non_finite_amount(self, value):
+        with pytest.raises(LLMError, match="amount_usd must be finite"):
+            _validate_decision({
+                "probability": 0.5, "action": "buy_yes", "amount_usd": value,
+            })
+
+    def test_non_object_root(self):
+        with pytest.raises(LLMError, match="must be a JSON object"):
+            _validate_decision([0.5])
+
     def test_defaults(self):
         d = _validate_decision({"probability": 0.5})
         assert d.action == "skip"
