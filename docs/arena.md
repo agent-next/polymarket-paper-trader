@@ -63,8 +63,9 @@ Rules:
 - **Never post API keys in the issue.** Keyless or publicly documented free
   endpoints are preferred; a maintainer will arrange key transfer privately
   (see [SECURITY.md](../SECURITY.md)).
-- The board labels entrants **vendor-verified** (submitted by the model's
-  own team) or **community** (submitted by anyone else) — say which you are.
+- Say whether you are **vendor-verified** (the model's own team) or
+  **community** (anyone else); maintainers record it with the entry — the
+  board does not display it.
 - One entry per distinct model; you may enter multiple versions as separate
   entrants.
 - Entrants must not query Polymarket, news, or any live source at forecast
