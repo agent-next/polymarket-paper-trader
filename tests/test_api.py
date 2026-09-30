@@ -1801,3 +1801,20 @@ class TestGetEvent:
         )
         result = client.get_event("bad")
         assert result == {}
+
+
+class TestTakerOnlyStringBooleans:
+    @pytest.mark.parametrize("raw, expected", [("false", False), ("true", True), (True, True), (None, False)])
+    def test_gamma_fee_schedule_taker_only(self, raw, expected):
+        market = _parse_market({
+            "conditionId": "0x1",
+            "feeSchedule": {"rate": 0.07, "exponent": 1, "takerOnly": raw},
+        })
+        assert market.fee_schedule["takerOnly"] is expected
+
+    @pytest.mark.parametrize("raw, expected", [("false", False), ("true", True)])
+    def test_clob_fee_schedule_taker_only(self, raw, expected):
+        market = _parse_clob_market({
+            "c": "0x1", "t": [], "fd": {"r": 0.07, "e": 1, "to": raw},
+        })
+        assert market.fee_schedule["takerOnly"] is expected

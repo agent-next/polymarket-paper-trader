@@ -484,6 +484,15 @@ def _first_gamma_market(data: object) -> dict | None:
     return None
 
 
+def _to_bool(val: object, default: bool) -> bool:
+    """Coerce a wire boolean; Gamma sends ``"false"`` strings (``bool("false")`` is True)."""
+    if val is None:
+        return default
+    if isinstance(val, str):
+        return val.lower() == "true"
+    return bool(val)
+
+
 def _clob_fee_schedule(fd: object) -> dict | None:
     """Fee schedule from a CLOB abbreviated ``fd`` block.
 
@@ -496,7 +505,7 @@ def _clob_fee_schedule(fd: object) -> dict | None:
     return {
         "rate": float(fd.get("r", 0) or 0),
         "exponent": int(fd.get("e", 0) or 0),
-        "takerOnly": bool(fd.get("to", False)),
+        "takerOnly": _to_bool(fd.get("to"), False),
         "rebateRate": float(fd.get("rr", fd.get("rebateRate", 0)) or 0),
     }
 
@@ -519,11 +528,6 @@ def _parse_clob_market(data: dict) -> Market:
             "outcome": t.get("o") or t.get("outcome", ""),
         })
 
-    def _to_bool(val) -> bool:
-        if isinstance(val, str):
-            return val.lower() == "true"
-        return bool(val)
-
     return Market(
         condition_id=_clob_condition_id(data),
         slug=data.get("market_slug", ""),
@@ -532,10 +536,10 @@ def _parse_clob_market(data: dict) -> Market:
         outcomes=[t.get("outcome", "") for t in tokens] or ["Yes", "No"],
         outcome_prices=[0.0, 0.0],  # CLOB doesn't return prices here
         tokens=tokens,
-        active=_to_bool(data.get("active", True)),
-        closed=_to_bool(data.get("closed", False)),
-        accepting_orders=_to_bool(data.get("accepting_orders", True)),
-        neg_risk=_to_bool(data.get("neg_risk", False)),
+        active=_to_bool(data.get("active", True), False),
+        closed=_to_bool(data.get("closed", False), False),
+        accepting_orders=_to_bool(data.get("accepting_orders", True), False),
+        neg_risk=_to_bool(data.get("neg_risk", False), False),
         end_date=data.get("end_date_iso", ""),
         tick_size=float(data.get("mts", data.get("minimum_tick_size")) or 0),
         min_order_size=float(data.get("mos", 0) or 0),
@@ -610,13 +614,6 @@ def _parse_market(data: dict) -> Market:
     # condition_id: Gamma uses conditionId (camelCase)
     condition_id = data.get("conditionId", data.get("condition_id", ""))
 
-    def _to_bool(val, default: bool) -> bool:
-        if val is None:
-            return default
-        if isinstance(val, str):
-            return val.lower() == "true"
-        return bool(val)
-
     # tick size: Gamma uses orderPriceMinTickSize. Absent/0/None stays 0.0 —
     # "always read the active value from the market": place_limit_order then
     # consults the CLOB /tick-size endpoint instead of assuming 0.01
@@ -630,7 +627,7 @@ def _parse_market(data: dict) -> Market:
     fee_schedule = None if not isinstance(fs_raw, dict) else {
         "rate": float(fs_raw.get("rate", 0) or 0),
         "exponent": int(fs_raw.get("exponent", 0) or 0),
-        "takerOnly": bool(fs_raw.get("takerOnly", False)),
+        "takerOnly": _to_bool(fs_raw.get("takerOnly"), False),
         "rebateRate": float(fs_raw.get("rebateRate", 0) or 0),
     }
 
