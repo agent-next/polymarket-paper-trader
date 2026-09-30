@@ -10,7 +10,7 @@ from pathlib import Path
 import click
 
 from pm_trader.engine import Engine
-from pm_trader.models import SimError
+from pm_trader.models import SimError, is_valid_account_name
 
 DEFAULT_DATA_DIR = Path.home() / ".pm-trader"
 DEFAULT_ACCOUNT = "default"
@@ -74,7 +74,7 @@ def _get_account_dir(ctx: click.Context) -> Path:
     """Return the data directory for the active account."""
     base = ctx.obj["data_dir"]
     account = ctx.obj["account"]
-    if ".." in account or "/" in account or "\\" in account:
+    if not is_valid_account_name(account):
         raise click.BadParameter(f"Invalid account name: {account!r}")
     return base / account
 
@@ -594,7 +594,7 @@ def _safe_account_dir(base: Path, name: str) -> Path | None:
     Symlinked entries are refused: an alias to a sibling account would
     otherwise pass the containment check and delete that account.
     """
-    if not name or name == "." or ".." in name or "/" in name or "\\" in name:
+    if not is_valid_account_name(name):
         return None
     acct_dir = base / name
     if acct_dir.is_symlink() or acct_dir.resolve().parent != base.resolve():
