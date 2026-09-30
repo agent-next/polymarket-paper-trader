@@ -16,14 +16,19 @@ from datetime import datetime, timezone
 
 
 def _normalize_timestamp(ts: str) -> str:
-    """Normalize an ISO timestamp to a consistent format for TEXT comparison.
+    """Normalize an ISO timestamp to canonical UTC for TEXT comparison.
 
-    Replaces 'Z' suffix with '+00:00' and ensures the string sorts correctly
-    as TEXT in SQLite.
+    Parses the timestamp (a naive value is taken as UTC), converts it to UTC
+    and re-emits ``isoformat()``, so offsets and separators all sort the same
+    way as the UTC ``now`` that expire_orders compares against. Raises
+    ``ValueError`` on anything that is not an ISO timestamp.
     """
     if ts.endswith("Z"):
         ts = ts[:-1] + "+00:00"
-    return ts
+    parsed = datetime.fromisoformat(ts)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).isoformat()
 
 
 @dataclass

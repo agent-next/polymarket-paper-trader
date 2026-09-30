@@ -1829,3 +1829,23 @@ class TestResolveAtomicity:
         # A rerun still pays out
         results = engine.resolve_market("will-bitcoin-hit-100k")
         assert results[0].payout == pytest.approx(position.shares)
+
+
+class TestGtdExpiryValidation:
+    @pytest.mark.parametrize("bad", ["garbage", "2099-13-45T00:00:00Z"])
+    def test_invalid_expires_at_rejected(self, initialized_engine: Engine, bad: str):
+        _mock_api(initialized_engine)
+        with pytest.raises(OrderRejectedError, match="Invalid expires_at"):
+            initialized_engine.place_limit_order(
+                "btc", "yes", "buy", 100.0, 0.50,
+                order_type="gtd", expires_at=bad,
+            )
+        assert initialized_engine.get_pending_orders() == []
+
+    def test_offset_expiry_stored_as_utc(self, initialized_engine: Engine):
+        _mock_api(initialized_engine)
+        placed = initialized_engine.place_limit_order(
+            "btc", "yes", "buy", 100.0, 0.50,
+            order_type="gtd", expires_at="2099-01-01T08:00:00+08:00",
+        )
+        assert placed["expires_at"] == "2099-01-01T00:00:00+00:00"
