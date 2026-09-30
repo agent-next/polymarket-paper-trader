@@ -166,17 +166,36 @@ class Agent:
 
     def _get(self, path: str, params: dict | None = None) -> dict:
         resp = self._http.get(path, headers=self._headers(), params=params)
-        body = resp.json()
-        if not body.get("ok"):
-            raise AgentError(
-                body.get("error", "Request failed"),
-                body.get("code"),
-            )
-        return body["data"]
+        return self._unwrap(resp)
 
     def _post(self, path: str, payload: dict) -> dict:
         resp = self._http.post(path, json=payload, headers=self._headers())
-        body = resp.json()
+        return self._unwrap(resp)
+
+    @staticmethod
+    def _unwrap(resp: httpx.Response) -> dict:
+        try:
+            body = resp.json()
+        except ValueError:
+            raise AgentError(
+                f"HTTP {resp.status_code}: {resp.text[:200] or 'Request failed'}"
+            ) from None
+        if not isinstance(body, dict):
+            raise AgentError("Request failed")
+        if "detail" in body:
+            # FastAPI HTTPException / validation envelope: {"detail": ...}
+            detail = body["detail"]
+            if isinstance(detail, dict):
+                raise AgentError(
+                    detail.get("error", "Request failed"), detail.get("code")
+                )
+            if isinstance(detail, list):
+                msgs = "; ".join(
+                    str(d.get("msg", d)) if isinstance(d, dict) else str(d)
+                    for d in detail
+                )
+                raise AgentError(msgs or "Request failed", "VALIDATION_ERROR")
+            raise AgentError(str(detail))
         if not body.get("ok"):
             raise AgentError(
                 body.get("error", "Request failed"),
