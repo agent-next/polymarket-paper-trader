@@ -93,6 +93,39 @@ class TestCheckOrders:
         updated = db.get_account(account["id"])
         assert float(updated["cash"]) < 10000
 
+    def test_condition_mismatch_never_filled(self, db, sample_market, sample_book):
+        """An order whose stored condition differs from its slug's market is skipped."""
+        user = db.create_user("poison-bot")
+        account = db.create_account(user["id"], "default")
+        db.create_limit_order(
+            account_id=account["id"], market_slug="other-market",
+            market_condition_id="0xnot-this-market", outcome="yes", side="buy",
+            amount=100, limit_price=0.90,
+        )
+        pm = MockPolymarketClient(sample_market, sample_book)
+        assert check_orders_job(db, pm) == 0
+        assert db.get_trades(account["id"]) == []
+        assert len(db.get_pending_orders(account["id"])) == 1
+
+    def test_same_condition_different_slug_fetched_separately(self, db, sample_market, sample_book):
+        user = db.create_user("split-bot")
+        account = db.create_account(user["id"], "default")
+        for slug in ("slug-a", "slug-b"):
+            db.create_limit_order(
+                account_id=account["id"], market_slug=slug,
+                market_condition_id="0xabc123", outcome="yes", side="buy",
+                amount=10, limit_price=0.90,
+            )
+        fetched = []
+
+        class Recording(MockPolymarketClient):
+            def get_market(self, slug):
+                fetched.append(slug)
+                return super().get_market(slug)
+
+        check_orders_job(db, Recording(sample_market, sample_book))
+        assert sorted(fetched) == ["slug-a", "slug-b"]
+
     def test_mixed_outcomes_use_their_own_books(self, db, sample_market):
         """YES/NO orders in one market must not share the same order book."""
         user = db.create_user("mixed-outcome-bot")
@@ -247,6 +280,30 @@ class TestAutoResolve:
         # Position should be resolved
         positions = db.get_open_positions(account["id"])
         assert len(positions) == 0
+
+    def test_stale_position_snapshot_not_paid_twice(self, db):
+        user = db.create_user("stale-bot")
+        account = db.create_account(user["id"], "default")
+        db.upsert_position(
+            account_id=account["id"], market_condition_id="0xdef",
+            market_slug="resolved-market", market_question="Test?",
+            outcome="yes", shares=100, avg_entry_price=0.50,
+            total_cost=50, realized_pnl=0,
+        )
+        stale = db.get_all_open_positions()
+        db.resolve_position(stale[0]["id"], 50.0, credit=100.0)
+        db.get_all_open_positions = lambda: stale  # job loaded before resolution
+        resolved_market = Market(
+            condition_id="0xdef", slug="resolved-market", question="Test?",
+            description="", outcomes=["Yes", "No"], outcome_prices=[1.0, 0.0],
+            tokens=[{"token_id": "tok_yes", "outcome": "Yes"},
+                    {"token_id": "tok_no", "outcome": "No"}],
+            active=False, closed=True, volume=0, liquidity=0,
+            end_date="2026-01-01", fee_rate_bps=0, tick_size=0.01,
+        )
+        pm = MockPolymarketClient(resolved_market, OrderBook(bids=[], asks=[]))
+        assert auto_resolve_job(db, pm) == 0
+        assert float(db.get_account(account["id"])["cash"]) == 10100.0
 
     def test_resolve_losing_position(self, db):
         user = db.create_user("loser-bot")

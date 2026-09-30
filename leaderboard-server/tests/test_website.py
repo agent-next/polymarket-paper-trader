@@ -4,8 +4,19 @@ from __future__ import annotations
 import pytest
 
 from tests.conftest import (
-    _register, _headers, _register_and_create_account, _insert_trades,
+    _register, _headers, _register_and_create_account, _insert_trades, _buy,
 )
+
+
+class TestRoiMatchesApi:
+    def test_homepage_roi_marks_open_positions_to_market(self, client):
+        user, account, _ = _register_and_create_account(client, "mtm-bot")
+        for _i in range(10):
+            assert _buy(client, user["api_key"], account["id"], amount=20.0).status_code == 200
+        api_roi = client.get("/leaderboard").json()["data"][0]["roi_pct"]
+        assert abs(api_roi) < 0.5  # marked to 0.65 midpoint, not a -2% cash loss
+        assert f"{api_roi:.2f}%" in client.get("/").text
+        assert f"{api_roi:.2f}%" in client.get("/u/mtm-bot").text
 
 
 class TestHomepage:

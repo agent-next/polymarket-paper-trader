@@ -8,7 +8,7 @@ from __future__ import annotations
 import dataclasses
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from server.auth import get_current_user
 from server.db import DB
@@ -22,6 +22,8 @@ from server.adapters.polymarket import (
     MarketClosedError,
     NoPositionError,
     InvalidOutcomeError,
+    MarketNotFoundError,
+    ApiError,
 )
 
 router = APIRouter(prefix="/trade", tags=["trading"])
@@ -45,6 +47,20 @@ def _err(error: str, code: str, status: int = 400) -> None:
     raise HTTPException(status_code=status, detail={"error": error, "code": code})
 
 
+def _upstream(polymarket, fn_name: str, *args):
+    """Call a Polymarket client method, mapping failures to the JSON error envelope."""
+    if polymarket is None:
+        _err("Polymarket client unavailable", "UPSTREAM_UNAVAILABLE", 503)
+    try:
+        return getattr(polymarket, fn_name)(*args)
+    except MarketNotFoundError as e:
+        _err(str(e), e.code, 404)
+    except ApiError as e:
+        _err(str(e), "UPSTREAM_UNAVAILABLE", 503)
+    except Exception:
+        _err("Polymarket API unavailable", "UPSTREAM_UNAVAILABLE", 503)
+
+
 def _validate_account_ownership(account: dict, user: dict) -> None:
     if account["user_id"] != user["id"]:
         raise HTTPException(status_code=403, detail="Not your account")
@@ -56,7 +72,7 @@ class BuyRequest(BaseModel):
     account_id: int
     market_slug: str
     outcome: str
-    amount_usd: float
+    amount_usd: float = Field(allow_inf_nan=False)
     order_type: str = "fok"
 
     @field_validator("order_type")
@@ -78,7 +94,7 @@ class SellRequest(BaseModel):
     account_id: int
     market_slug: str
     outcome: str
-    shares: float
+    shares: float = Field(allow_inf_nan=False)
     order_type: str = "fok"
 
     @field_validator("order_type")
@@ -185,7 +201,7 @@ def buy(
     _validate_account_ownership(account, user)
 
     # 2. Fetch market
-    market = polymarket.get_market(req.market_slug)
+    market = _upstream(polymarket, "get_market", req.market_slug)
 
     # 3. Validate outcome
     try:
@@ -201,10 +217,10 @@ def buy(
     token_id = market.get_token_id(outcome)
 
     # 6. Fetch book (NEVER cached)
-    book = polymarket.get_order_book(token_id)
+    book = _upstream(polymarket, "get_order_book", token_id)
 
     # 7. Fetch fee rate
-    fee_rate_bps = polymarket.get_fee_rate(token_id)
+    fee_rate_bps = _upstream(polymarket, "get_fee_rate", token_id)
 
     # 8. Simulate fill
     fill = simulate_buy_fill(book, req.amount_usd, fee_rate_bps, req.order_type)
@@ -282,7 +298,7 @@ def sell(
     _validate_account_ownership(account, user)
 
     # 2. Fetch market and validate outcome
-    market = polymarket.get_market(req.market_slug)
+    market = _upstream(polymarket, "get_market", req.market_slug)
     try:
         outcome = validate_outcome(req.outcome, market)
     except InvalidOutcomeError as e:
@@ -305,8 +321,8 @@ def sell(
 
     # 5. Fetch book and fee rate
     token_id = market.get_token_id(outcome)
-    book = polymarket.get_order_book(token_id)
-    fee_rate_bps = polymarket.get_fee_rate(token_id)
+    book = _upstream(polymarket, "get_order_book", token_id)
+    fee_rate_bps = _upstream(polymarket, "get_fee_rate", token_id)
 
     # 6. Simulate fill
     fill = simulate_sell_fill(book, req.shares, fee_rate_bps, req.order_type)

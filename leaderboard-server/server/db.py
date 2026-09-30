@@ -189,16 +189,26 @@ class DB:
         )
         return [dict(r) for r in cur.fetchall()]
 
-    def resolve_position(self, position_id: int, payout: float) -> dict:
+    def resolve_position(self, position_id: int, payout: float,
+                         credit: float = 0.0) -> dict | None:
+        """Mark a position resolved and credit cash in one transaction.
+
+        Returns None (and credits nothing) if it was already resolved.
+        """
         cur = self._conn.execute("""
             UPDATE positions SET is_resolved = 1, resolved_at = CURRENT_TIMESTAMP,
                 realized_pnl = realized_pnl + ?
-            WHERE id = ?
+            WHERE id = ? AND is_resolved = 0
             RETURNING *
         """, (payout, position_id))
         row = cur.fetchone()
+        if row is not None:
+            self._conn.execute(
+                "UPDATE accounts SET cash = cash + ? WHERE id = ?",
+                (credit, row["account_id"]),
+            )
         self._conn.commit()
-        return dict(row)
+        return dict(row) if row else None
 
     # -- Book snapshots --
 

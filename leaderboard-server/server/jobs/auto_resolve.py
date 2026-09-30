@@ -59,14 +59,9 @@ def auto_resolve_job(db: DB, polymarket: PolymarketClient) -> int:
             else:
                 payout = 0.0
 
-            # Add payout to account cash
-            account = db.get_account(pos["account_id"])
-            new_cash = float(account["cash"]) + payout
-            db.update_cash(pos["account_id"], new_cash)
-
-            # Mark position as resolved
+            # Credit payout and mark resolved atomically (skips if already resolved)
             realized_pnl = payout - float(pos["total_cost"])
-            db.resolve_position(pos["id"], realized_pnl)
-            resolved_count += 1
+            if db.resolve_position(pos["id"], realized_pnl, credit=payout) is not None:
+                resolved_count += 1
 
     return resolved_count

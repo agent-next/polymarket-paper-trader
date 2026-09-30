@@ -191,6 +191,19 @@ class TestPositions:
         assert resolved["is_resolved"] == 1
         assert resolved["realized_pnl"] == 50.0
 
+    def test_resolve_position_credits_once(self, db):
+        account = self._make_account(db)
+        pos = db.upsert_position(
+            account_id=account["id"],
+            market_condition_id="0xabc", market_slug="test",
+            market_question="T?", outcome="yes",
+            shares=100, avg_entry_price=0.5, total_cost=50, realized_pnl=0,
+        )
+        assert db.resolve_position(pos["id"], 50.0, credit=100.0) is not None
+        assert db.resolve_position(pos["id"], 50.0, credit=100.0) is None
+        assert db.get_account(account["id"])["cash"] == 10100.0
+        assert db.get_position(account["id"], "0xabc", "yes")["realized_pnl"] == 50.0
+
 
 class TestLimitOrders:
     def _make_account(self, db):

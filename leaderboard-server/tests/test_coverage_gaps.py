@@ -506,7 +506,7 @@ class TestWebsiteGaps:
         user = _register(client, f"{tier}-bot")
         account = _create_account(client, user["api_key"], "default")
         _insert_trades(client, account["id"], count=trade_count)
-        with patch("server.routes.website.compute_stats", return_value=stats):
+        with patch("server.routes.leaderboard.compute_stats", return_value=stats):
             resp = client.get("/")
         assert resp.status_code == 200
         assert tier.upper() in resp.text
@@ -516,7 +516,7 @@ class TestWebsiteGaps:
         user = _register(client, "crash-bot")
         account = _create_account(client, user["api_key"], "default")
         _insert_trades(client, account["id"], count=10)
-        with patch("server.routes.website.compute_stats", side_effect=Exception("boom")):
+        with patch("server.routes.leaderboard.compute_stats", side_effect=Exception("boom")):
             resp = client.get("/")
         assert resp.status_code == 200
         assert "No qualified accounts" in resp.text
