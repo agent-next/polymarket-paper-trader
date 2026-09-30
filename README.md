@@ -163,8 +163,8 @@ Add to your Claude Code config:
 For MCP clients that only speak HTTP, run the server with `--transport streamable-http`:
 
 ```bash
-pm-trader-mcp --transport streamable-http --host 0.0.0.0 --port 8000
-# or: pm-trader mcp --transport streamable-http --host 0.0.0.0 --port 8000
+pm-trader-mcp --transport streamable-http --host 127.0.0.1 --port 8000
+# or: pm-trader mcp --transport streamable-http --host 127.0.0.1 --port 8000
 ```
 
 The MCP endpoint is then `http://<host>:<port>/mcp`. There is no isolation

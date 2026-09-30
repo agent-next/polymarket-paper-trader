@@ -2,7 +2,7 @@
 
 Run with:
     pm-trader mcp                  # stdio transport (default)
-    pm-trader-mcp --transport streamable-http --host 0.0.0.0 --port 8000
+    pm-trader-mcp --transport streamable-http --host 127.0.0.1 --port 8000
     python -m pm_trader.mcp_server # direct execution
 """
 
@@ -15,6 +15,7 @@ import importlib.metadata
 import importlib.resources
 import json
 import re
+import sys
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -936,8 +937,19 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 _LOCAL_ONLY_TOOLS = ("backtest", "pk_battle")
 
 
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
 def _run(transport: str, host: str, port: int) -> None:
     if transport == "streamable-http":
+        if host not in _LOOPBACK_HOSTS:
+            print(
+                f"WARNING: streamable-http is UNAUTHENTICATED and is binding to "
+                f"{host!r}: anyone who can reach it can trade, reset and resolve "
+                f"every account. Bind 127.0.0.1 or put it behind an "
+                f"authenticating proxy.",
+                file=sys.stderr,
+            )
         for name in _LOCAL_ONLY_TOOLS:
             mcp.remove_tool(name)
         mcp.run(transport="streamable-http", host=host, port=port)
