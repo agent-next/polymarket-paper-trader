@@ -121,8 +121,9 @@ directly confirmed; the command and stdio-server support are documented.
 
 xAI's Remote MCP Tools require Streamable HTTP or SSE — stdio isn't supported. Self-host
 instead: `pm-trader-mcp --transport streamable-http --host 127.0.0.1 --port 8765`, then
-register that URL as a remote MCP tool. The `--transport streamable-http` flag is a
-separate, not-yet-landed change in this repo; treat this as the target shape.
+expose it through an authenticating reverse proxy or tunnel and register that public
+`/mcp` URL as a remote MCP tool. The transport has no authentication of its own, so never
+bind it directly to a public interface.
 
 ## Agent Skills
 
