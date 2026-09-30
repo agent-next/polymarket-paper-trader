@@ -419,3 +419,25 @@ class TestOrdersMigrationAtomicity:
         second = expire_orders(conn)
         assert [o.id for o in second] == [2]
         assert all(o.status == "expired" for o in second)
+
+
+class TestNormalizeTimestamp:
+    @pytest.mark.parametrize(
+        "raw, expected",
+        [
+            ("2099-01-01T00:00:00Z", "2099-01-01T00:00:00+00:00"),
+            ("2099-01-01T08:00:00+08:00", "2099-01-01T00:00:00+00:00"),
+            ("2099-01-01 00:00:00", "2099-01-01T00:00:00+00:00"),
+            ("2099-01-01T00:00:00", "2099-01-01T00:00:00+00:00"),
+        ],
+    )
+    def test_canonical_utc(self, raw, expected):
+        from pm_trader.orders import _normalize_timestamp
+
+        assert _normalize_timestamp(raw) == expected
+
+    def test_garbage_raises(self):
+        from pm_trader.orders import _normalize_timestamp
+
+        with pytest.raises(ValueError):
+            _normalize_timestamp("garbage")

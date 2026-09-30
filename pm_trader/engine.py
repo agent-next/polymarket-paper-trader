@@ -29,6 +29,7 @@ from pm_trader.models import (
     TradeResult,
 )
 from pm_trader.orders import (
+    _normalize_timestamp,
     cancel_all_orders as _cancel_all_orders,
     cancel_order,
     create_order,
@@ -549,6 +550,13 @@ class Engine:
             raise OrderRejectedError(f"Invalid order_type: {order_type!r}. Must be 'gtc' or 'gtd'.")
         if order_type == "gtd" and not expires_at:
             raise OrderRejectedError("GTD orders require expires_at timestamp")
+        if order_type == "gtd":
+            try:
+                expires_at = _normalize_timestamp(expires_at)
+            except ValueError:
+                raise OrderRejectedError(
+                    f"Invalid expires_at: {expires_at!r}. Use an ISO 8601 timestamp."
+                ) from None
         if not math.isfinite(amount) or amount <= 0:
             raise OrderRejectedError(f"Order amount must be positive and finite, got {amount}")
         if side == "buy" and amount < MIN_ORDER_USD:
