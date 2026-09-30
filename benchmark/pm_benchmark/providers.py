@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import dataclass
 
@@ -214,10 +215,15 @@ def parse_decision(raw_response: str) -> MarketDecision:
 
 def _validate_decision(data: dict) -> MarketDecision:
     """Validate and construct a MarketDecision from parsed JSON."""
+    if not isinstance(data, dict):
+        raise LLMError(f"Decision must be a JSON object, got {type(data).__name__}")
     probability = data.get("probability")
     if probability is None:
         raise LLMError("Missing 'probability' in response")
-    probability = float(probability)
+    try:
+        probability = float(probability)
+    except (ValueError, TypeError) as e:
+        raise LLMError(f"probability must be a number, got {probability!r}") from e
     if not 0.0 <= probability <= 1.0:
         raise LLMError(f"probability must be 0.0-1.0, got {probability}")
 
@@ -231,7 +237,13 @@ def _validate_decision(data: dict) -> MarketDecision:
             f"Invalid confidence '{confidence}', must be one of {VALID_CONFIDENCES}"
         )
 
-    amount_usd = float(data.get("amount_usd", 0))
+    raw_amount = data.get("amount_usd", 0)
+    try:
+        amount_usd = float(raw_amount)
+    except (ValueError, TypeError) as e:
+        raise LLMError(f"amount_usd must be a number, got {raw_amount!r}") from e
+    if not math.isfinite(amount_usd):
+        raise LLMError(f"amount_usd must be finite, got {amount_usd}")
     if action != "skip" and amount_usd <= 0:
         raise LLMError(f"amount_usd must be positive for action '{action}'")
 
