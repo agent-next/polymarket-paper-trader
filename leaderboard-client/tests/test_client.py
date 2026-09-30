@@ -182,3 +182,85 @@ class TestLifecycle:
             assert agent.account_id == 1
         assert external.is_closed is False
         external.close()
+
+
+class TestServerErrorEnvelopes:
+    @respx.mock
+    def _err(self, response):
+        respx.get(f"{BASE}/accounts").mock(return_value=_ok([{"name": "default", "id": 1}]))
+        respx.post(f"{BASE}/trade/buy").mock(return_value=response)
+        agent = Agent(BASE, api_key="lb_sk_x", http_client=httpx.Client(base_url=BASE))
+        with pytest.raises(AgentError) as e:
+            agent.buy("m", "yes", 1)
+        return e.value
+
+    def test_detail_dict(self):
+        e = self._err(httpx.Response(400, json={"detail": {"error": "bad", "code": "X"}}))
+        assert (str(e), e.code) == ("bad", "X")
+
+    def test_detail_dict_missing_error(self):
+        e = self._err(httpx.Response(400, json={"detail": {}}))
+        assert (str(e), e.code) == ("Request failed", None)
+
+    def test_detail_str(self):
+        e = self._err(httpx.Response(403, json={"detail": "Not your account"}))
+        assert (str(e), e.code) == ("Not your account", None)
+
+    def test_detail_list(self):
+        e = self._err(httpx.Response(422, json={"detail": [{"msg": "a"}, {"msg": "b"}, "c"]}))
+        assert (str(e), e.code) == ("a; b; c", "VALIDATION_ERROR")
+
+    def test_detail_empty_list(self):
+        e = self._err(httpx.Response(422, json={"detail": []}))
+        assert (str(e), e.code) == ("Request failed", "VALIDATION_ERROR")
+
+    def test_non_json_body(self):
+        e = self._err(httpx.Response(500, text="Internal Server Error"))
+        assert str(e) == "HTTP 500: Internal Server Error"
+
+    def test_empty_non_json_body(self):
+        e = self._err(httpx.Response(502, text=""))
+        assert str(e) == "HTTP 502: Request failed"
+
+    def test_non_object_json(self):
+        e = self._err(httpx.Response(500, json=["x"]))
+        assert str(e) == "Request failed"
+
+
+def test_real_server_error_codes(monkeypatch):
+    """Drive the client against the real FastAPI app (no mocked envelope)."""
+    pytest.importorskip("fastapi")
+    server_app = pytest.importorskip("server.app")
+    from fastapi.testclient import TestClient
+
+    from server.adapters.polymarket import Market
+
+    market = Market(
+        condition_id="0xabc", slug="m", question="Q?", description="",
+        outcomes=["Yes", "No"], outcome_prices=[0.65, 0.35],
+        tokens=[{"token_id": "ty", "outcome": "Yes"}, {"token_id": "tn", "outcome": "No"}],
+        active=True, closed=False, volume=1.0, liquidity=1.0,
+        end_date="2026-12-31T23:59:59Z", fee_rate_bps=0, tick_size=0.01,
+    )
+
+    class _PM:
+        def get_market(self, slug):
+            return market
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(server_app.app.state, "polymarket", _PM(), raising=False)
+    monkeypatch.setattr(server_app.app.state, "scheduler", None, raising=False)
+    with TestClient(server_app.app) as tc:
+        agent = Agent("http://testserver", name="envelope-bot", http_client=tc)
+        with pytest.raises(AgentError) as e:
+            agent.buy("m", "maybe", 1)
+        assert e.value.code == "INVALID_OUTCOME"
+        assert "maybe" in str(e.value)
+        with pytest.raises(AgentError) as e:
+            agent._post("/trade/buy", {})
+        assert e.value.code == "VALIDATION_ERROR"
+        agent._account_id = 10**6
+        with pytest.raises(AgentError, match="Account not found"):
+            agent.balance()
