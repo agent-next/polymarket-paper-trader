@@ -22,6 +22,7 @@ from pathlib import Path
 from mcp.server import MCPServer
 
 from pm_trader.engine import Engine
+from pm_trader.models import is_valid_account_name
 
 DEFAULT_DATA_DIR = Path.home() / ".pm-trader" / "default"
 
@@ -118,9 +119,7 @@ _engine: Engine | None = None
 
 def _validate_account_name(account: str) -> str:
     """Validate account name to prevent path traversal."""
-    if not account or account == "." or ".." in account or "/" in account or "\\" in account:
-        raise ValueError(f"Invalid account name: {account!r}")
-    if account != account.strip():
+    if not is_valid_account_name(account):
         raise ValueError(f"Invalid account name: {account!r}")
     return account
 

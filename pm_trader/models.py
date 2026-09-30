@@ -6,6 +6,22 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
+def is_valid_account_name(name: str) -> bool:
+    """True if `name` is safe to use as an account directory name.
+
+    Rejects empty, ``.``, path separators, ``..`` and surrounding whitespace
+    (``base / ""`` and ``base / "."`` would land in the data-dir root).
+    """
+    return not (
+        not name
+        or name == "."
+        or ".." in name
+        or "/" in name
+        or "\\" in name
+        or name != name.strip()
+    )
+
+
 # ---------------------------------------------------------------------------
 # Error hierarchy
 # ---------------------------------------------------------------------------

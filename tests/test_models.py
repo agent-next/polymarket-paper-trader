@@ -86,3 +86,17 @@ class TestPositionMethods:
     def test_percent_pnl_zero_cost(self):
         pos = self._pos(total_cost=0.0)
         assert pos.percent_pnl(0.80) == 0.0
+
+
+@pytest.mark.parametrize("name", ["default", "alice", "a-b_c", "x.y"])
+def test_is_valid_account_name_accepts(name):
+    from pm_trader.models import is_valid_account_name
+
+    assert is_valid_account_name(name)
+
+
+@pytest.mark.parametrize("name", ["", ".", "..", " x", "x ", "a/b", "a\\b", "x..y"])
+def test_is_valid_account_name_rejects(name):
+    from pm_trader.models import is_valid_account_name
+
+    assert not is_valid_account_name(name)

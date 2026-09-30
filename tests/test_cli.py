@@ -1188,6 +1188,13 @@ class TestCliSimErrorPaths:
         result = _invoke(runner, ["--account", "../../etc", "init"], data_dir)
         assert result.exit_code != 0
 
+    @pytest.mark.parametrize("name", ["", ".", " x", "x ", "a/b"])
+    def test_account_name_weak_values_rejected(self, runner, data_dir, name):
+        """'' and '.' would write paper.db into the data-dir root."""
+        result = _invoke(runner, ["--account", name, "init", "--balance", "100"], data_dir)
+        assert result.exit_code != 0
+        assert not (data_dir / "paper.db").exists()
+
     @patch("pm_trader.mcp_server._run")
     def test_mcp_command(self, mock_mcp_run, runner, data_dir):
         """mcp command invokes the MCP server with stdio defaults."""
