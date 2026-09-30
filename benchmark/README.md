@@ -139,8 +139,9 @@ publish one YES probability per soon-resolving Polymarket binary market —
 
 How it works:
 
-- `predict` selects open binary markets ending in 1–14 days (liquidity ≥ $10k,
-  YES price in [0.03, 0.97], at most 2 markets per Gamma event, top 20 by
+- `predict` selects open binary markets ending in 0–14 days, same-day included
+  (liquidity ≥ $2k, YES price in [0.03, 0.97], at most 2 markets per Gamma
+  event, top 60 by
   volume — markets ending within 3 days rank first) and records one forecast
   per (entrant, market). AI entrants answer a single-shot prompt containing
   question + description + today's date + end date — **no market
@@ -151,9 +152,9 @@ How it works:
   (`resolutions.json`).
 - `build` writes `site/data.json` — the leaderboard board: per-entrant Brier,
   ECE, alpha vs crowd with a bootstrap CI, open forecasts, duels (largest
-  AI-vs-crowd disagreements), and a Hall of Wrong. When the
-  `pm_benchmark.arena_site` renderer is installed it also writes
-  `site/index.html` + `site/CNAME`.
+  AI-vs-crowd disagreements), and a Hall of Wrong. It also
+  writes `site/index.html`, `site/app.js`, `site/CNAME` and one rank badge per
+  ranked entrant under `site/badges/`.
 
 Data is append-only JSONL under a data directory (the CI job uses a checked-out
 `arena-data` branch): `forecasts/YYYY-MM-DD.jsonl` + `resolutions.json`.
