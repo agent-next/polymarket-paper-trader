@@ -1335,6 +1335,11 @@ class TestMakerFillFees:
             assert placed["status"] == "pending"
             assert initialized_engine.get_history(limit=1) == []
 
+            initialized_engine.db.upsert_position(
+                market_condition_id="0xabc123", market_slug="will-bitcoin-hit-100k",
+                market_question="Will Bitcoin hit $100k?", outcome="yes",
+                shares=5.0, avg_entry_price=0.5, total_cost=2.5, realized_pnl=0.0,
+            )
             placed_sell = initialized_engine.place_limit_order(
                 "btc", "yes", "sell", 1.0, 0.60,  # crosses (bid 0.64 > 0.60)
             )
@@ -1761,3 +1766,40 @@ class TestLimitSellFloatDust:
         big = replace(fill, total_shares=10.5)
         with pytest.raises(OrderRejectedError, match="only hold"):
             engine._execute_limit_sell(SAMPLE_MARKET, order, big, 0)
+
+
+class TestLimitOrderAmountValidation:
+    @pytest.mark.parametrize("amount", [0.0, -5.0, float("nan"), float("inf")])
+    @pytest.mark.parametrize("side", ["buy", "sell"])
+    def test_non_positive_or_non_finite_amount_rejected(
+        self, initialized_engine: Engine, side: str, amount: float
+    ):
+        _mock_api(initialized_engine)
+        with pytest.raises(OrderRejectedError, match="positive and finite"):
+            initialized_engine.place_limit_order("btc", "yes", side, amount, 0.90)
+        assert initialized_engine.get_pending_orders() == []
+
+    def test_sell_without_position_rejected(self, initialized_engine: Engine):
+        _mock_api(initialized_engine)
+        with pytest.raises(NoPositionError):
+            initialized_engine.place_limit_order("btc", "yes", "sell", 50.0, 0.90)
+        assert initialized_engine.get_pending_orders() == []
+
+    def test_sell_more_than_held_rejected(self, initialized_engine: Engine):
+        _mock_api(initialized_engine)
+        initialized_engine.buy("btc", "yes", 10.0)
+        held = initialized_engine.db.get_position("0xabc123", "yes").shares
+        with pytest.raises(OrderRejectedError, match="only hold"):
+            initialized_engine.place_limit_order(
+                "btc", "yes", "sell", held + 1, 0.90
+            )
+        assert initialized_engine.get_pending_orders() == []
+
+    def test_sell_within_position_rests(self, initialized_engine: Engine):
+        _mock_api(initialized_engine)
+        initialized_engine.buy("btc", "yes", 10.0)
+        held = initialized_engine.db.get_position("0xabc123", "yes").shares
+        placed = initialized_engine.place_limit_order(
+            "btc", "yes", "sell", held, 0.90
+        )
+        assert placed["status"] == "pending"
