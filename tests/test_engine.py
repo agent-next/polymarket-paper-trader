@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -14,6 +15,7 @@ from pm_trader.engine import Engine
 from pm_trader.orderbook import simulate_buy_fill
 from pm_trader.models import (
     ApiError,
+    FillResult,
     InsufficientBalanceError,
     InvalidOutcomeError,
     Market,
@@ -1704,3 +1706,58 @@ class TestRestingFillInsufficientCash:
         assert [r for r in results if r["action"] == "rejected"] == []
         assert len(engine.get_pending_orders()) == 1
         assert engine.get_account().cash == pytest.approx(100.4755, abs=1e-3)
+
+
+class TestLimitSellFloatDust:
+    def test_full_position_multi_level_limit_sell_fills_and_leaves_no_dust(
+        self, engine: Engine
+    ):
+        """A limit sell of the whole position across 3 bid levels sized
+        pos/3 sums to a float slightly above the position: it must fill, not
+        be rejected, and leave a flat (shares == 0) position."""
+        engine.init_account(10_000.0)
+        pos = 51.1539
+        third = pos / 3
+        assert third + third + third > pos  # float-sum overshoot precondition
+        book = _make_book(
+            bids=[(0.64, third), (0.63, third), (0.62, third)], asks=[(0.66, 500)]
+        )
+        _mock_api(engine, book=book)
+        engine.db.upsert_position(
+            market_condition_id="0xabc123", market_slug="will-bitcoin-hit-100k",
+            market_question="Will Bitcoin hit $100k?", outcome="yes",
+            shares=pos, avg_entry_price=0.5, total_cost=pos * 0.5, realized_pnl=0.0,
+        )
+        placed = engine.place_limit_order(
+            "will-bitcoin-hit-100k", "yes", "sell", pos, 0.60
+        )
+        assert placed["status"] == "filled"
+        position = engine.db.get_position("0xabc123", "yes")
+        assert position.shares == 0.0
+        assert position.total_cost == 0.0
+
+    def test_limit_sell_overshoot_within_epsilon_not_rejected(self, engine: Engine):
+        engine.init_account(10_000.0)
+        _mock_api(engine)
+        engine.db.upsert_position(
+            market_condition_id="0xabc123", market_slug="will-bitcoin-hit-100k",
+            market_question="Will Bitcoin hit $100k?", outcome="yes",
+            shares=10.0, avg_entry_price=0.5, total_cost=5.0, realized_pnl=0.0,
+        )
+        fill = FillResult(
+            filled=True, avg_price=0.64, total_cost=6.4 + 6.4e-12,
+            total_shares=10.0 + 1e-11, fee=0.0, slippage_bps=0.0,
+            levels_filled=1, is_partial=False,
+        )
+        order = SimpleNamespace(outcome="yes")
+        engine._execute_limit_sell(SAMPLE_MARKET, order, fill, 0)
+        assert engine.db.get_position("0xabc123", "yes").shares == 0.0
+        # A real overshoot is still refused
+        engine.db.upsert_position(
+            market_condition_id="0xabc123", market_slug="will-bitcoin-hit-100k",
+            market_question="Will Bitcoin hit $100k?", outcome="yes",
+            shares=10.0, avg_entry_price=0.5, total_cost=5.0, realized_pnl=0.0,
+        )
+        big = replace(fill, total_shares=10.5)
+        with pytest.raises(OrderRejectedError, match="only hold"):
+            engine._execute_limit_sell(SAMPLE_MARKET, order, big, 0)

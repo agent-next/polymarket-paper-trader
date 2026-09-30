@@ -424,6 +424,9 @@ class Engine:
             return
 
         remaining_shares = existing.shares - sold_shares
+        # Snap float-sum dust (e.g. 7e-15 after a multi-level sell) to a flat
+        # position so it does not linger as "open".
+        flat = remaining_shares <= FILL_EPSILON
         # Cost basis of sold portion
         cost_of_sold = (
             existing.avg_entry_price * sold_shares
@@ -438,9 +441,9 @@ class Engine:
             market_slug=market.slug,
             market_question=market.question,
             outcome=outcome,
-            shares=max(remaining_shares, 0.0),
+            shares=0.0 if flat else remaining_shares,
             avg_entry_price=existing.avg_entry_price,
-            total_cost=max(remaining_cost, 0.0),
+            total_cost=0.0 if flat else max(remaining_cost, 0.0),
             realized_pnl=realized_pnl,
         )
 
@@ -820,7 +823,7 @@ class Engine:
         position = self.db.get_position(market.condition_id, order.outcome)
         if position is None or position.shares <= 0:
             raise NoPositionError(market.slug, order.outcome)
-        if fill.total_shares > position.shares:
+        if fill.total_shares > position.shares + FILL_EPSILON:
             raise OrderRejectedError(
                 f"Cannot sell {fill.total_shares:.4f} shares, "
                 f"only hold {position.shares:.4f}"
