@@ -38,3 +38,18 @@ class TestPublishConcurrency:
         text = _workflow_text()
         assert re.search(r"tags:\s*$", text, re.M)
         assert re.search(r'-\s*"v\*"', text), "tag glob must stay v*"
+
+
+class TestPublishGuards:
+    def test_pypi_requires_tag_on_main(self) -> None:
+        """A tag pushed from an unmerged branch must not reach PyPI."""
+        text = _workflow_text()
+        assert "merge-base --is-ancestor" in text
+        assert re.search(r"publish-pypi:\s*\n\s*needs:\s*\[test, on-main\]", text)
+
+    def test_every_job_has_timeout(self) -> None:
+        jobs = _workflow_text().split("\njobs:\n", 1)[1]
+        for block in re.split(r"\n(?=  [a-z][\w-]*:\n)", jobs):
+            if "uses: ./" in block:  # reusable-workflow call
+                continue
+            assert "timeout-minutes:" in block, block.splitlines()[0]
