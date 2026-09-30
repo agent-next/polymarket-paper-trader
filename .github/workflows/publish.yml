@@ -23,6 +23,20 @@ permissions:
   contents: read
 
 jobs:
+  on-main:
+    name: Tag is on main
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Tagged commit is an ancestor of origin/main
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
+            || { echo "tag $GITHUB_REF_NAME ($GITHUB_SHA) is not on main"; exit 1; }
+
   test:
     name: Test before publish
     runs-on: ubuntu-latest
@@ -46,7 +60,7 @@ jobs:
         run: python -m pytest tests/ -x -q -m "not live" --cov=pm_trader --cov-report=term-missing --cov-fail-under=100
 
   publish-pypi:
-    needs: test
+    needs: [test, on-main]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -82,6 +96,7 @@ jobs:
   publish-clawhub:
     needs: publish-pypi  # the skill installs the package from PyPI
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -105,6 +120,7 @@ jobs:
   release:
     needs: publish-pypi  # no release notes for artifacts that never landed
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
