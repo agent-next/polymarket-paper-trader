@@ -223,6 +223,17 @@ class TestClosedLoopWiring:
             "issues": "write",
         }
 
+    def test_review_tolerates_cosmetic_reaction_403(self) -> None:
+        # The action reacts to its own comment, which needs pull-requests:
+        # write the read-only review token lacks (403, issue #94). Only the
+        # advisory opencode step is non-fatal; the key-staging step and the
+        # job permissions stay strict.
+        assert _opencode_step("review").get("continue-on-error") is True
+        assert _step("review", "Stage FreeInference key").get("continue-on-error") is None
+        assert _job("review").get("permissions", {}).get("pull-requests") == "read"
+        for name in ("comment", "triage", "implement"):
+            assert _opencode_step(name).get("continue-on-error") is None
+
     def test_review_cannot_approve_pull_requests(self) -> None:
         # Submitting a review requires pull-requests: write; a read token
         # makes an injected APPROVE impossible regardless of the prompt.
