@@ -9,6 +9,12 @@ on:
     paths:
       - "benchmark/pm_benchmark/arena*.py"
       - "benchmark/pm_benchmark/arena_static/**"
+      - "benchmark/arena.yaml"
+      - "benchmark/pm_benchmark/scoring.py"
+      - "benchmark/pm_benchmark/market_info.py"
+      - "benchmark/pm_benchmark/providers.py"
+      - "benchmark/pm_benchmark/jev.py"
+      - "benchmark/pm_benchmark/config.py"
       - ".github/workflows/arena-preview.yml"
 
 permissions:
