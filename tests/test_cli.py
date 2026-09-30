@@ -1188,6 +1188,13 @@ class TestCliSimErrorPaths:
         result = _invoke(runner, ["--account", "../../etc", "init"], data_dir)
         assert result.exit_code != 0
 
+    @pytest.mark.parametrize("cmd", [["history"], ["markets", "list"], ["markets", "search", "x"], ["export", "trades"]])
+    def test_non_positive_limit_rejected(self, runner, data_dir, cmd):
+        """A negative SQLite LIMIT means unlimited; the CLI must refuse it."""
+        result = _invoke(runner, cmd + ["--limit", "-1"], data_dir)
+        assert result.exit_code == 2
+        assert "--limit" in result.output
+
     @pytest.mark.parametrize("name", ["", ".", " x", "x ", "a/b"])
     def test_account_name_weak_values_rejected(self, runner, data_dir, name):
         """'' and '.' would write paper.db into the data-dir root."""
