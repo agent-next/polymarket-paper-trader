@@ -153,7 +153,7 @@ def markets() -> None:
 
 
 @markets.command("list")
-@click.option("--limit", type=int, default=20)
+@click.option("--limit", type=click.IntRange(min=1), default=20)
 @click.option("--sort", "sort_by", type=click.Choice(["volume", "liquidity"]), default="volume")
 @click.option("--tag", "tag_slug", default=None, help="Filter by tag slug.")
 @click.pass_context
@@ -175,7 +175,7 @@ def markets_list(ctx: click.Context, limit: int, sort_by: str, tag_slug: str | N
 
 @markets.command("search")
 @click.argument("query")
-@click.option("--limit", type=int, default=10)
+@click.option("--limit", type=click.IntRange(min=1), default=10)
 @click.pass_context
 def markets_search(ctx: click.Context, query: str, limit: int) -> None:
     """Search markets by text query."""
@@ -353,7 +353,7 @@ def portfolio(ctx: click.Context) -> None:
 
 
 @main.command()
-@click.option("--limit", type=int, default=50)
+@click.option("--limit", type=click.IntRange(min=1), default=50)
 @click.pass_context
 def history(ctx: click.Context, limit: int) -> None:
     """Show trade history."""
@@ -524,7 +524,7 @@ def export() -> None:
 @export.command("trades")
 @click.option("--format", "fmt", type=click.Choice(["csv", "json"]), default="csv")
 @click.option("--output", "output_file", type=click.Path(path_type=Path), default=None)
-@click.option("--limit", type=int, default=10_000)
+@click.option("--limit", type=click.IntRange(min=1), default=10_000)
 @click.pass_context
 def export_trades(ctx: click.Context, fmt: str, output_file: Path | None, limit: int) -> None:
     """Export trade history."""
