@@ -926,14 +926,16 @@ class Engine:
             else:
                 payout = 0.0
 
-            resolved_pos = self.db.resolve_position(
-                market.condition_id, pos.outcome, payout
-            )
-
-            # Add payout to cash
-            account = self.get_account()
-            new_cash = account.cash + payout
-            self.db.update_cash(new_cash)
+            # One transaction: a crash must not resolve the position
+            # (shares=0) without crediting the payout.
+            with self.db.atomic():
+                resolved_pos = self.db.resolve_position(
+                    market.condition_id, pos.outcome, payout
+                )
+                # Add payout to cash
+                account = self.get_account()
+                new_cash = account.cash + payout
+                self.db.update_cash(new_cash)
             account = self.get_account()
 
             results.append(ResolveResult(

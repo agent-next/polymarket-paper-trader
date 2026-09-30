@@ -1803,3 +1803,29 @@ class TestLimitOrderAmountValidation:
             "btc", "yes", "sell", held, 0.90
         )
         assert placed["status"] == "pending"
+
+
+class TestResolveAtomicity:
+    def test_resolve_crash_between_writes_rolls_back_position(self, engine: Engine):
+        """resolve_market() is a position resolve + cash credit; a crash after
+        the resolve must not leave shares=0 with the payout uncredited."""
+        engine.init_account(10_000.0)
+        _mock_api(engine)
+        engine.buy("will-bitcoin-hit-100k", "yes", 100.0)
+        cash_before = engine.get_account().cash
+        resolved_market = replace(
+            SAMPLE_MARKET, outcome_prices=[1.0, 0.0], active=False, closed=True,
+        )
+        engine.api.get_market = MagicMock(return_value=resolved_market)
+        with patch.object(
+            Database, "update_cash", side_effect=RuntimeError("crash mid-resolve")
+        ):
+            with pytest.raises(RuntimeError, match="crash mid-resolve"):
+                engine.resolve_market("will-bitcoin-hit-100k")
+        position = engine.db.get_position("0xabc123", "yes")
+        assert not position.is_resolved
+        assert position.shares > 0
+        assert engine.get_account().cash == cash_before
+        # A rerun still pays out
+        results = engine.resolve_market("will-bitcoin-hit-100k")
+        assert results[0].payout == pytest.approx(position.shares)
