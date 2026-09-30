@@ -1,4 +1,19 @@
 {
+  "bitcoin-above-82k-on-september-30-2026": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-09-30T16:30:26Z"
+  },
+  "bitcoin-above-84k-on-september-30-2026": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-09-30T16:30:26Z"
+  },
+  "bitcoin-above-86k-on-september-30-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-09-30T16:30:26Z"
+  },
   "elon-musk-of-tweets-september-22-september-29-2026-160-179": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -14,6 +29,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-09-30T12:44:56Z"
   },
+  "ethereum-above-2800-on-september-30-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-09-30T16:30:26Z"
+  },
   "trump-renames-ai-by-september-30": {
     "outcome": 1,
     "resolution_source": "uma",
@@ -23,6 +43,16 @@
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-09-28T23:31:07Z"
+  },
+  "will-bitcoin-reach-85k-in-september-2026-from-september-27": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-09-30T16:30:26Z"
+  },
+  "will-elon-tweet-800-839-times-in-september-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-09-30T16:30:26Z"
   },
   "will-wti-dip-to-90-in-september-2026-from-september-23": {
     "outcome": 1,
