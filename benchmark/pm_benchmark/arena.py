@@ -18,6 +18,7 @@ import json
 import math
 import os
 import random
+import re
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -59,6 +60,7 @@ CROWD_RULE = "crowd"
 
 # Market selection filters (spec v1)
 TOP_N = 60
+ENTRANT_ID_RE = re.compile(r"[a-z0-9][a-z0-9_-]*")  # filename-safe slug
 FETCH_LIMIT = 100      # Gamma /markets page cap
 MAX_PAGES = 5          # bounded paging past the 100-per-page cap (v1.2)
 MAX_PER_EVENT = 2      # one event cannot fill the whole board (v1.2)
@@ -141,6 +143,10 @@ class Entrant:
     def __post_init__(self) -> None:
         if not self.id:
             raise ArenaError("Entrant id cannot be empty")
+        if not ENTRANT_ID_RE.fullmatch(self.id):
+            raise ArenaError(
+                f"Entrant id '{self.id}' must match {ENTRANT_ID_RE.pattern}"
+            )
         if not self.label:
             raise ArenaError(f"Entrant '{self.id}' label cannot be empty")
         if self.kind not in VALID_KINDS:
@@ -1074,6 +1080,8 @@ def _badge_payloads(board: dict) -> list[tuple[str, dict]]:
     """
     payloads: list[tuple[str, dict]] = []
     for rank, row in enumerate(board["leaderboard"], start=1):
+        if not ENTRANT_ID_RE.fullmatch(str(row["entrant"])):
+            continue
         brier = row.get("brier")
         message = (
             f"#{rank} · Brier {brier:.3f}"

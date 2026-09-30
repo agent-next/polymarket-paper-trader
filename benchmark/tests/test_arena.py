@@ -189,6 +189,11 @@ class TestLoadEntrants:
 
 
 class TestEntrantValidation:
+    @pytest.mark.parametrize("bad", ["a/../../evil", "A", "-x", "a b", ".x", "a.json"])
+    def test_unsafe_id_rejected(self, bad):
+        with pytest.raises(ArenaError, match="must match"):
+            Entrant(id=bad, label="L", kind="ai", model="m")
+
     def test_empty_id(self):
         with pytest.raises(ArenaError, match="id cannot be empty"):
             Entrant(id="", label="L", kind="ai", model="m")
@@ -580,6 +585,17 @@ class TestForecastMarket:
         """A malformed answer gets exactly one fixed retry (L1)."""
         mock = MagicMock(side_effect=[
             "not json at all",
+            '{"probability": 0.6, "reasoning": "ok"}',
+        ])
+        monkeypatch.setattr(arena, "query_model", mock)
+        row = forecast_market(_entrant(), _info(), now=NOW,
+                              price_fetch=lambda m: 0.5)
+        assert row["prob"] == 0.6
+        assert mock.call_count == 2
+
+    def test_non_numeric_probability_retries_once(self, monkeypatch):
+        mock = MagicMock(side_effect=[
+            '{"probability": "about 0.6"}',
             '{"probability": 0.6, "reasoning": "ok"}',
         ])
         monkeypatch.setattr(arena, "query_model", mock)
@@ -1775,6 +1791,13 @@ class TestCli:
 
 
 class TestBadges:
+    def test_unsafe_historical_id_gets_no_badge(self, tmp_path):
+        board = {"leaderboard": [
+            {"entrant": "../evil", "brier": 0.1},
+            {"entrant": "ok-id", "brier": 0.2},
+        ]}
+        assert [i for i, _ in arena._badge_payloads(board)] == ["ok-id"]
+
     def test_badge_colors_follow_rank_tiers(self, tmp_path):
         data_dir = tmp_path / "data"
         entrants = [
@@ -1827,3 +1850,18 @@ class TestBadges:
         summary = run_build(data_dir, config, out, now=NOW)
         assert summary["badges"] == 0
         assert not (out / "badges" / "gpt.json").exists()
+
+
+class TestSelectionDocDrift:
+    """README and docs/arena.md must state the selection constants in code."""
+
+    def test_selection_constants_documented(self):
+        root = Path(__file__).resolve().parents[1]
+        readme = (root / "README.md").read_text(encoding="utf-8")
+        arena_doc = (root.parent / "docs" / "arena.md").read_text(encoding="utf-8")
+        liquidity = f"${int(arena.MIN_LIQUIDITY / 1000)}k"
+        for text in (readme, arena_doc):
+            assert f"liquidity ≥ {liquidity}" in text
+            assert f"top {arena.TOP_N} by" in text
+        assert f"{arena.MIN_DAYS}–{arena.MAX_DAYS} days" in readme
+        assert "renderer is installed" not in readme
