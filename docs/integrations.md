@@ -120,7 +120,7 @@ directly confirmed; the command and stdio-server support are documented.
 ## Grok / xAI (remote MCP only)
 
 xAI's Remote MCP Tools require Streamable HTTP or SSE — stdio isn't supported. Self-host
-instead: `pm-trader-mcp --transport streamable-http --host 0.0.0.0 --port 8765`, then
+instead: `pm-trader-mcp --transport streamable-http --host 127.0.0.1 --port 8765`, then
 register that URL as a remote MCP tool. The `--transport streamable-http` flag is a
 separate, not-yet-landed change in this repo; treat this as the target shape.
 

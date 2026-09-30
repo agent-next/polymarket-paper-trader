@@ -1420,6 +1420,15 @@ class TestLocalOnlyToolRemoval:
                 transport="streamable-http", host="0.0.0.0", port=9001
             )
 
+    @pytest.mark.parametrize("host, warns", [("127.0.0.1", False), ("0.0.0.0", True)])
+    def test_streamable_http_warns_on_non_loopback_host(self, capsys, host, warns):
+        with patch.object(mcp_server.mcp, "run"), patch.object(
+            mcp_server.mcp, "remove_tool"
+        ):
+            mcp_server._run("streamable-http", host, 9001)
+        err = capsys.readouterr().err
+        assert ("UNAUTHENTICATED" in err) is warns
+
 
 class TestStreamableHttpSmoke:
     def test_initialize_and_list_tools_over_real_http(self):
