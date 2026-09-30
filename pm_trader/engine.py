@@ -6,6 +6,7 @@ the API client, order book simulator, and database layer.
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 from pm_trader.api import PolymarketClient
@@ -548,12 +549,22 @@ class Engine:
             raise OrderRejectedError(f"Invalid order_type: {order_type!r}. Must be 'gtc' or 'gtd'.")
         if order_type == "gtd" and not expires_at:
             raise OrderRejectedError("GTD orders require expires_at timestamp")
+        if not math.isfinite(amount) or amount <= 0:
+            raise OrderRejectedError(f"Order amount must be positive and finite, got {amount}")
         if side == "buy" and amount < MIN_ORDER_USD:
             raise OrderRejectedError(f"Minimum buy order size is ${MIN_ORDER_USD:.2f}, got ${amount:.2f}")
 
         market = self.api.get_market(slug_or_id)
         outcome = self._validate_outcome(outcome, market)
         self._require_market_tradable(market)
+        if side == "sell":
+            position = self.db.get_position(market.condition_id, outcome)
+            if position is None or position.shares <= 0:
+                raise NoPositionError(market.slug, outcome)
+            if amount > position.shares + FILL_EPSILON:
+                raise OrderRejectedError(
+                    f"Cannot sell {amount:.4f} shares, only hold {position.shares:.4f}"
+                )
 
         # Resolve the outcome's token id once: the tick fallback and the
         # reservation gate below both need it (pure lookup — the outcome was
