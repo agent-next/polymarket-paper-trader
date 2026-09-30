@@ -14,7 +14,7 @@ from pm_trader.models import (
     Trade, Position, Account, TradeResult,
     SimError, InsufficientBalanceError, MarketClosedError,
     OrderRejectedError, AmbiguousResolutionError, NoPositionError,
-    InvalidOutcomeError,
+    InvalidOutcomeError, MarketNotFoundError, ApiError,
 )
 from pm_trader.api import PolymarketClient
 from pm_trader.db import Database

@@ -4,7 +4,8 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from server.config import DATABASE_URL
@@ -73,6 +74,14 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Polymarket Leaderboard", lifespan=lifespan)
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_error(request: Request, exc: RequestValidationError):
+    # The default handler echoes `input`; NaN/Infinity there is not JSON-encodable (500).
+    errors = [{k: v for k, v in e.items() if k not in ("input", "ctx")}
+              for e in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": errors})
 
 
 # Import and include routers after app is created

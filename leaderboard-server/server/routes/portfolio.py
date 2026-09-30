@@ -72,19 +72,26 @@ def _dict_to_account(d: dict) -> Account:
 
 def _enrich_positions(positions: list[dict], polymarket) -> list[dict]:
     """Add live_price, current_value, unrealized_pnl to each position."""
+    if positions and polymarket is None:
+        raise HTTPException(503, detail={
+            "error": "Polymarket client unavailable", "code": "UPSTREAM_UNAVAILABLE"})
     market_cache: dict[str, object] = {}
     enriched = []
     for pos in positions:
         cid = pos["market_condition_id"]
         outcome = pos["outcome"]
 
-        # Cache market lookup within request
-        if cid not in market_cache:
-            market_cache[cid] = polymarket.get_market(pos["market_slug"])
-        market = market_cache[cid]
+        try:
+            # Cache market lookup within request
+            if cid not in market_cache:
+                market_cache[cid] = polymarket.get_market(pos["market_slug"])
+            market = market_cache[cid]
 
-        token_id = market.get_token_id(outcome)
-        live_price = polymarket.get_midpoint(token_id)
+            token_id = market.get_token_id(outcome)
+            live_price = polymarket.get_midpoint(token_id)
+        except Exception:
+            raise HTTPException(503, detail={
+                "error": "Polymarket API unavailable", "code": "UPSTREAM_UNAVAILABLE"})
 
         current_value = pos["shares"] * live_price
         unrealized_pnl = current_value - pos["total_cost"]

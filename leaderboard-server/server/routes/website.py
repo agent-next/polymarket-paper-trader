@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from server.db import DB
-from server.adapters.polymarket import compute_stats, Trade, Account
+from server.routes.leaderboard import _stats_for_account
 
 router = APIRouter(tags=["web"])
 
@@ -20,37 +20,7 @@ def get_db(request: Request) -> DB:
     return request.app.state.db
 
 
-# -- Helpers (same converters as leaderboard.py) --
-
-def _dict_to_trade(d: dict) -> Trade:
-    return Trade(
-        id=d["id"],
-        market_condition_id=d["market_condition_id"],
-        market_slug=d["market_slug"],
-        market_question=d["market_question"],
-        outcome=d["outcome"],
-        side=d["side"],
-        order_type=d["order_type"],
-        avg_price=float(d["avg_price"]),
-        amount_usd=float(d["amount_usd"]),
-        shares=float(d["shares"]),
-        fee_rate_bps=d["fee_rate_bps"],
-        fee=float(d["fee"]),
-        slippage=float(d["slippage"]),
-        levels_filled=d["levels_filled"],
-        is_partial=bool(d["is_partial"]),
-        created_at=d["created_at"],
-    )
-
-
-def _dict_to_account(d: dict) -> Account:
-    return Account(
-        id=d["id"],
-        starting_balance=float(d["starting_balance"]),
-        cash=float(d["cash"]),
-        created_at=d["created_at"],
-    )
-
+# -- Helpers --
 
 def _compute_tier(trade_count: int, roi_pct: float, sharpe: float) -> str:
     if trade_count >= 50 and roi_pct > 20 and sharpe > 1.5:
@@ -62,20 +32,6 @@ def _compute_tier(trade_count: int, roi_pct: float, sharpe: float) -> str:
     return "bronze"
 
 
-def _stats_for_account(db: DB, account_dict: dict) -> dict | None:
-    account_id = account_dict["id"]
-    trade_dicts = db.get_trades(account_id, limit=10000)
-    if not trade_dicts:
-        return None
-    try:
-        trades = [_dict_to_trade(t) for t in trade_dicts]
-        account = _dict_to_account(account_dict)
-        stats = compute_stats(trades, account, positions_value=0.0)
-        return stats
-    except Exception:
-        return None
-
-
 # -- Routes --
 
 @router.get("/", response_class=HTMLResponse)
@@ -84,7 +40,7 @@ def homepage(request: Request, db: DB = Depends(get_db)):
     rows = db.get_leaderboard_accounts(min_trades=10)
     entries = []
     for row in rows:
-        stats = _stats_for_account(db, row)
+        stats = _stats_for_account(db, request.app.state.polymarket, row)
         if stats is None:
             continue
         trade_count = stats["total_trades"]
@@ -120,7 +76,7 @@ def user_page(agent_name: str, request: Request, db: DB = Depends(get_db)):
     account_list = []
     for acc in accounts:
         trade_count = db.get_trade_count(acc["id"])
-        stats = _stats_for_account(db, acc)
+        stats = _stats_for_account(db, request.app.state.polymarket, acc)
         account_list.append({
             **acc,
             "trade_count": trade_count,
@@ -178,7 +134,7 @@ def account_page(account_id: int, request: Request, db: DB = Depends(get_db)):
     roi_pct = (pnl / starting * 100) if starting else 0.0
 
     # Stats from trade history
-    stats = _stats_for_account(db, account)
+    stats = _stats_for_account(db, polymarket, account)
 
     trades = db.get_trades(account_id, limit=50)
     return templates.TemplateResponse(request, "account.html", {

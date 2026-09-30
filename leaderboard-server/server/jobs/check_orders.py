@@ -16,7 +16,7 @@ def check_orders_job(db: DB, polymarket: PolymarketClient) -> int:
     """Check all pending limit orders. Returns count of filled orders.
 
     1. Get all pending limit orders
-    2. Group by market_condition_id (minimize API calls)
+    2. Group by (slug, condition id) (minimize API calls)
     3. For each group, fetch live order book
     4. For each order, simulate fill with limit price
     5. If fillable: execute fill, update account/position/trade
@@ -30,18 +30,19 @@ def check_orders_job(db: DB, polymarket: PolymarketClient) -> int:
 
     filled_count = 0
 
-    # Group orders by market_condition_id to minimize API calls
-    by_condition: dict[str, list[dict]] = {}
+    # Group by (slug, condition) to minimize API calls without mixing markets
+    by_market: dict[tuple[str, str], list[dict]] = {}
     for order in pending:
-        key = order["market_condition_id"]
-        by_condition.setdefault(key, []).append(order)
+        key = (order["market_slug"], order["market_condition_id"])
+        by_market.setdefault(key, []).append(order)
 
-    for condition_id, orders in by_condition.items():
-        first = orders[0]
+    for (slug, condition_id), orders in by_market.items():
         try:
-            market = polymarket.get_market(first["market_slug"])
+            market = polymarket.get_market(slug)
         except Exception:
             continue  # Skip if API fails
+        if market.condition_id != condition_id:
+            continue  # Slug/condition mismatch: never fill against the wrong market
 
         # Reuse market context per token_id within this condition group.
         token_ctx: dict[str, tuple[object, int, int]] = {}

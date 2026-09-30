@@ -1,13 +1,19 @@
 """Limit order CRUD routes: place, list, cancel."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, field_validator
+from datetime import datetime, timezone
 
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field, field_validator
+
+from server.adapters.polymarket import InvalidOutcomeError, validate_outcome
 from server.auth import get_current_user
 from server.db import DB
+from server.routes.trading import _err, _get_polymarket, _upstream
 
 router = APIRouter(tags=["orders"])
+
+MAX_PENDING_ORDERS = 100
 
 
 def get_db(request: Request) -> DB:
@@ -19,8 +25,8 @@ class PlaceOrderRequest(BaseModel):
     market_condition_id: str
     outcome: str
     side: str
-    amount: float
-    limit_price: float
+    amount: float = Field(gt=0, allow_inf_nan=False)
+    limit_price: float = Field(allow_inf_nan=False)
     order_type: str = "gtc"
     expires_at: str | None = None
 
@@ -38,12 +44,19 @@ class PlaceOrderRequest(BaseModel):
             raise ValueError("limit_price must be between 0 and 1")
         return v
 
-    @field_validator("amount")
+    @field_validator("expires_at")
     @classmethod
-    def valid_amount(cls, v: float) -> float:
-        if v <= 0:
-            raise ValueError("amount must be positive")
-        return v
+    def valid_expires_at(cls, v: str | None) -> str | None:
+        """Normalize to an aware UTC ISO string so it sorts against now(utc)."""
+        if v is None:
+            return None
+        try:
+            parsed = datetime.fromisoformat(v.strip().replace("Z", "+00:00"))
+        except ValueError:
+            raise ValueError("expires_at must be an ISO 8601 datetime")
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc).isoformat()
 
     @field_validator("order_type")
     @classmethod
@@ -54,7 +67,7 @@ class PlaceOrderRequest(BaseModel):
 
 
 @router.post("/accounts/{account_id}/orders")
-def place_order(account_id: int, req: PlaceOrderRequest,
+def place_order(account_id: int, req: PlaceOrderRequest, request: Request,
                 user: dict = Depends(get_current_user), db: DB = Depends(get_db)):
     account = db.get_account(account_id)
     if account is None:
@@ -65,11 +78,23 @@ def place_order(account_id: int, req: PlaceOrderRequest,
     if req.order_type == "gtd" and not req.expires_at:
         raise HTTPException(400, detail={"error": "expires_at required for GTD orders", "code": "VALIDATION_ERROR"})
 
+    if len(db.get_pending_orders(account_id)) >= MAX_PENDING_ORDERS:
+        _err(f"Too many pending orders (max {MAX_PENDING_ORDERS})", "TOO_MANY_ORDERS")
+
+    # Identity comes from the real market, never from client-supplied ids.
+    market = _upstream(_get_polymarket(request), "get_market", req.market_slug)
+    try:
+        outcome = validate_outcome(req.outcome, market)
+    except InvalidOutcomeError as e:
+        _err(str(e), "INVALID_OUTCOME")
+    if market.closed:
+        _err(f"Market '{market.slug}' is closed", "MARKET_CLOSED")
+
     order = db.create_limit_order(
         account_id=account_id,
-        market_slug=req.market_slug,
-        market_condition_id=req.market_condition_id,
-        outcome=req.outcome,
+        market_slug=market.slug,
+        market_condition_id=market.condition_id,
+        outcome=outcome,
         side=req.side,
         amount=req.amount,
         limit_price=req.limit_price,
