@@ -9,4 +9,5 @@ PY=".venv/bin/python"
 [ -x "$PY" ] || PY="python3"
 # -m "not live": the live e2e suite needs Polymarket API egress (GitHub runners,
 # live.yml); on dev boxes it would fail on network, not on code.
+export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
 exec "$PY" -m pytest -x --maxfail=3 --tb=line -q --no-header tests/ -m "not live"
