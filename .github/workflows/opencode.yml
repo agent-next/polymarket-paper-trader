@@ -84,7 +84,7 @@ jobs:
           # via the {file:} reference in opencode.json.
           umask 077
           printf '%s' "$FREEINFERENCE_API_KEY" > "$HOME/.freeinference-api-key"
-      - uses: anomalyco/opencode/github@08462140ec0de1e4b17d4a353d8d5827f53cf7b0 # v2.0.14
+      - uses: anomalyco/opencode/github@cd9a14a6b688d4021bee381dfd39d2cef9c0f862 # v2.0.18
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -140,7 +140,7 @@ jobs:
           # via the {file:} reference in opencode.json.
           umask 077
           printf '%s' "$FREEINFERENCE_API_KEY" > "$HOME/.freeinference-api-key"
-      - uses: anomalyco/opencode/github@08462140ec0de1e4b17d4a353d8d5827f53cf7b0 # v2.0.14
+      - uses: anomalyco/opencode/github@cd9a14a6b688d4021bee381dfd39d2cef9c0f862 # v2.0.18
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -224,7 +224,7 @@ jobs:
           # via the {file:} reference in opencode.json.
           umask 077
           printf '%s' "$FREEINFERENCE_API_KEY" > "$HOME/.freeinference-api-key"
-      - uses: anomalyco/opencode/github@08462140ec0de1e4b17d4a353d8d5827f53cf7b0 # v2.0.14
+      - uses: anomalyco/opencode/github@cd9a14a6b688d4021bee381dfd39d2cef9c0f862 # v2.0.18
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -334,7 +334,7 @@ jobs:
           # via the {file:} reference in opencode.json.
           umask 077
           printf '%s' "$FREEINFERENCE_API_KEY" > "$HOME/.freeinference-api-key"
-      - uses: anomalyco/opencode/github@08462140ec0de1e4b17d4a353d8d5827f53cf7b0 # v2.0.14
+      - uses: anomalyco/opencode/github@cd9a14a6b688d4021bee381dfd39d2cef9c0f862 # v2.0.18
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
