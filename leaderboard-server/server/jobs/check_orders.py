@@ -27,6 +27,7 @@ def check_orders_job(db: DB, polymarket: PolymarketClient) -> int:
     """
     # Expire GTD orders first so check loop only sees still-actionable orders.
     db.expire_orders(datetime.now(timezone.utc).isoformat())
+    db.prune_book_snapshots()
 
     pending = db.get_pending_orders()  # all users' orders
     if not pending:

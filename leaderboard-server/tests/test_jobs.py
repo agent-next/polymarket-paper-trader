@@ -365,3 +365,13 @@ class TestAutoResolve:
         assert count == 0
         positions = db.get_open_positions(account["id"])
         assert len(positions) == 1
+
+
+def test_check_orders_job_prunes_stale_snapshots(db):
+    sid = db.save_book_snapshot("tok", {"bids": []})
+    db._conn.execute(
+        "UPDATE book_snapshots SET fetched_at = datetime('now', '-30 days') WHERE id = ?",
+        (sid,),
+    )
+    assert check_orders_job(db, MockPolymarketClient()) == 0
+    assert db._conn.execute("SELECT COUNT(*) FROM book_snapshots").fetchone()[0] == 0

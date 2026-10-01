@@ -321,6 +321,17 @@ class DB:
         self._commit()
         return row[0]
 
+    def prune_book_snapshots(self, older_than_days: int = 7) -> int:
+        """Delete snapshots older than the cutoff that no trade references."""
+        cur = self._execute("""
+            DELETE FROM book_snapshots
+            WHERE fetched_at < datetime('now', ?)
+              AND id NOT IN (SELECT book_snapshot_id FROM trades
+                             WHERE book_snapshot_id IS NOT NULL)
+        """, (f"-{int(older_than_days)} days",))
+        self._commit()
+        return cur.rowcount
+
     # -- Limit orders --
 
     def create_limit_order(self, *, account_id: int, market_slug: str,
