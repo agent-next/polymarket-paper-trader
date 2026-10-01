@@ -41,6 +41,7 @@ from pm_benchmark.market_info import (
     fetch_prices,
     fetch_resolution_detail,
     list_markets,
+    yes_price,
 )
 from pm_benchmark.providers import LLMError, parse_decision, query_model
 from pm_benchmark.scoring import (
@@ -218,20 +219,9 @@ def _parse_ts(value: str) -> datetime | None:
     return dt
 
 
-def _yes_index(outcomes: list[str]) -> int:
-    """Index of the Yes outcome by label; defaults to 0."""
-    for i, outcome in enumerate(outcomes):
-        if outcome.strip().lower() == "yes":
-            return i
-    return 0
-
-
 def _yes_prob(market: MarketInfo) -> float | None:
     """YES price from the listing payload; None when prices are missing."""
-    idx = _yes_index(market.outcomes)
-    if idx < len(market.outcome_prices):
-        return market.outcome_prices[idx]
-    return None
+    return yes_price(market)
 
 
 def _list_candidate_markets(

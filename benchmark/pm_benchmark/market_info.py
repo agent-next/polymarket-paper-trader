@@ -228,6 +228,14 @@ def _yes_index(outcomes: list[str]) -> int:
     return 0
 
 
+def yes_price(info: MarketInfo) -> float | None:
+    """YES price located by outcome label; None when prices are missing."""
+    idx = _yes_index(info.outcomes)
+    if idx < len(info.outcome_prices):
+        return info.outcome_prices[idx]
+    return None
+
+
 def _parse_market(data: dict) -> MarketInfo:
     """Parse raw Gamma API response into MarketInfo."""
     outcomes = _parse_list(data.get("outcomes", "[]"))
