@@ -39,6 +39,27 @@ class TestRegister:
         assert resp.status_code == 422
 
 
+    def test_register_name_too_long(self, client):
+        resp = client.post("/auth/register", json={"agent_name": "x" * 101})
+        assert resp.status_code == 422
+
+    def test_register_model_too_long(self, client):
+        resp = client.post("/auth/register", json={"agent_name": "ok", "model": "m" * 101})
+        assert resp.status_code == 422
+
+    def test_register_internal_error_not_409(self, client):
+        def boom(*a, **k):
+            raise RuntimeError("db down")
+
+        client.app.state.db.create_user = boom
+        with pytest.raises(RuntimeError):
+            client.post("/auth/register", json={"agent_name": "bot"})
+
+    def test_missing_auth_header_is_401(self, client):
+        resp = client.patch("/auth/model", json={"model": "gpt-4o"})
+        assert resp.status_code == 401
+
+
 class TestUpdateModel:
     def test_update_model(self, client):
         user = _register(client, "model-bot")

@@ -1,8 +1,10 @@
 """Auth routes: registration and profile updates."""
 from __future__ import annotations
 
+import sqlite3
+
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from server.auth import get_current_user
 from server.db import DB
@@ -10,13 +12,16 @@ from server.db import DB
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+MAX_NAME_LEN = 100
+
+
 def get_db(request: Request) -> DB:
     return request.app.state.db
 
 
 class RegisterRequest(BaseModel):
-    agent_name: str
-    model: str | None = None
+    agent_name: str = Field(max_length=MAX_NAME_LEN)
+    model: str | None = Field(default=None, max_length=MAX_NAME_LEN)
 
     @field_validator("agent_name")
     @classmethod
@@ -27,7 +32,7 @@ class RegisterRequest(BaseModel):
 
 
 class UpdateModelRequest(BaseModel):
-    model: str
+    model: str = Field(max_length=MAX_NAME_LEN)
 
     @field_validator("model")
     @classmethod
@@ -47,7 +52,7 @@ def register(req: RegisterRequest, db: DB = Depends(get_db)):
             "agent_name": user["agent_name"],
             "model": user["model"],
         }}
-    except Exception:
+    except sqlite3.IntegrityError:
         raise HTTPException(409, detail="agent_name already taken")
 
 
