@@ -147,12 +147,15 @@ def _err(msg: str, code: str = "error") -> str:
     return json.dumps({"ok": False, "error": msg, "code": code})
 
 
-def _err_from(e: Exception) -> str:
-    """Return an error envelope from an exception, sanitizing internals."""
+def _err_from(e: Exception, code: str | None = None) -> str:
+    """Return an error envelope from an exception, sanitizing internals.
+
+    ``code`` overrides the code of exposed (SimError/ValueError/TypeError) errors.
+    """
     from pm_trader.models import SimError
 
     if isinstance(e, (SimError, ValueError, TypeError)):
-        return _err(str(e), getattr(e, "code", type(e).__name__))
+        return _err(str(e), code or getattr(e, "code", type(e).__name__))
     return _err("Internal error", "internal_error")
 
 
@@ -204,7 +207,7 @@ def get_balance(account: str = "default") -> str:
         bal = engine.get_balance()
         return _ok(bal)
     except Exception as e:
-        return _err(str(e), "not_initialized")
+        return _err_from(e, "not_initialized")
 
 
 @_tool
@@ -261,7 +264,7 @@ def get_market(slug_or_id: str) -> str:
         m = engine.api.get_market(slug_or_id)
         return _ok(_market_to_dict(m))
     except Exception as e:
-        return _err(str(e), "market_not_found")
+        return _err_from(e, "market_not_found")
 
 
 @_tool
@@ -279,7 +282,7 @@ def get_order_book(slug_or_id: str, outcome: str = "yes") -> str:
             "bids": [{"price": b.price, "size": b.size} for b in book.bids],
         })
     except Exception as e:
-        return _err(str(e), "order_book_error")
+        return _err_from(e, "order_book_error")
 
 
 @_tool
