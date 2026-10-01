@@ -150,8 +150,31 @@ class TestRunner:
         result = runner.run()
 
         assert agent.buy.call_count == 3
-        skipped = [r for r in result.market_results if r.skipped_reason == "Max trades per market reached"]
-        assert len(skipped) == 3
+        capped = [r for r in result.market_results if r.capped]
+        assert len(capped) == 3
+        assert result.capped_count == 3
+        assert result.skipped_count == 0
+        assert all(r.skipped_reason is None for r in capped)
+        assert all(r.model_probability is not None for r in capped)
+
+    def test_amount_clamped_to_position_size(self):
+        config = RunConfig(
+            llm=LLMConfig(model="test-model"),
+            market_set="mini",
+            position_size_pct=5.0,
+        )
+        fetcher = MagicMock(side_effect=lambda slug, **kw: _make_market(slug=slug))
+        caller = MagicMock(return_value=_make_decision_json(action="buy_yes", amount=9000))
+        agent = MagicMock()
+        agent.balance.return_value = {"cash": 10_000.0}
+        agent.portfolio.return_value = []
+        agent.buy.return_value = {"shares": 1}
+        agent.stats.return_value = {}
+
+        result = Runner(config, agent=agent, market_fetcher=fetcher, model_caller=caller).run()
+
+        assert all(c.args[2] == pytest.approx(500.0) for c in agent.buy.call_args_list)
+        assert all(r.amount_usd == pytest.approx(500.0) for r in result.market_results)
 
     def test_timeout_marks_market_error(self):
         config = RunConfig(
