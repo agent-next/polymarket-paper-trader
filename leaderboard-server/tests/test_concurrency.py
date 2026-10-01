@@ -172,25 +172,22 @@ class TestDbAtomics:
         assert db.fill_order(cancelled["id"]) is None
 
     def test_failing_transaction_cannot_discard_other_threads_write(self, db):
+        # Pause the writer after its statement ran but before its _commit():
+        # that is the window in which another thread's rollback used to
+        # discard the executed-but-uncommitted row.
         executed, resume, b_done = threading.Event(), threading.Event(), threading.Event()
-        real = db._conn
+        real_commit = db._commit
 
-        class _PausingConn:
-            def execute(self, sql, params=()):
-                cur = real.execute(sql, params)
-                if sql.startswith("INSERT INTO users") and threading.current_thread().name == "writer":
-                    executed.set()
-                    resume.wait(5)
-                return cur
+        def pausing_commit():
+            if threading.current_thread().name == "writer":
+                executed.set()
+                resume.wait(5)
+            real_commit()
 
-            def __getattr__(self, name):
-                return getattr(real, name)
-
-        db._conn = _PausingConn()
-        created = {}
+        db._commit = pausing_commit
 
         def writer():
-            created["user"] = db.create_user("racer")
+            db.create_user("racer")
 
         def failing_tx():
             with pytest.raises(RuntimeError):
@@ -203,9 +200,45 @@ class TestDbAtomics:
         assert executed.wait(5)
         b = threading.Thread(target=failing_tx)
         b.start()
-        b_done.wait(0.5)  # a correct DB keeps B blocked behind A's write
+        assert b_done.wait(5)  # B's rollback lands inside A's window
         resume.set()
         a.join(5)
         b.join(5)
-        db._conn = real
+        del db._commit
         assert db.get_user_by_name("racer") is not None
+
+    def test_resolve_position_rolls_back_when_credit_fails(self, db):
+        user = db.create_user("resolver")
+        account = db.create_account(user["id"], "default")
+        pos = db.upsert_position(
+            account_id=account["id"], market_condition_id="0xabc",
+            market_slug="test", market_question="T?", outcome="yes",
+            shares=10.0, avg_entry_price=0.5, total_cost=5.0, realized_pnl=0.0,
+        )
+        real_execute = db._execute
+
+        def failing_execute(sql, params=()):
+            if sql.startswith("UPDATE accounts"):
+                raise RuntimeError("credit failed")
+            return real_execute(sql, params)
+
+        db._execute = failing_execute
+        with pytest.raises(RuntimeError):
+            db.resolve_position(pos["id"], 5.0, credit=10.0)
+        del db._execute
+        after = db.get_position(account["id"], "0xabc", "yes")
+        assert not after["is_resolved"]
+        assert db.get_account(account["id"])["cash"] == account["cash"]
+        # A retry still pays exactly once.
+        assert db.resolve_position(pos["id"], 5.0, credit=10.0) is not None
+        assert db.get_account(account["id"])["cash"] == account["cash"] + 10.0
+
+    def test_nested_transaction_joins_the_outer_one(self, db):
+        with pytest.raises(RuntimeError):
+            with db.transaction():
+                db.create_user("outer")
+                with db.transaction():
+                    db.create_user("inner")
+                raise RuntimeError("roll back both")
+        assert db.get_user_by_name("outer") is None
+        assert db.get_user_by_name("inner") is None
