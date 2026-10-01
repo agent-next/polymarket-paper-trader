@@ -47,6 +47,8 @@ class BacktestResult:
     win_rate: float
     max_drawdown: float
     snapshots_processed: int
+    strategy_errors: int = 0
+    last_error: str | None = None
 
 
 def load_snapshots_csv(path: Path) -> list[PriceSnapshot]:
@@ -125,8 +127,13 @@ def run_backtest(
         - snapshot: current PriceSnapshot
         - prices: dict mapping "slug:outcome" -> midpoint for all observed prices
 
-    The engine's API is patched to use synthetic order books derived from
-    the historical prices, so no live API calls are made.
+    The engine's midpoint, order book and fee-rate lookups are patched to use
+    synthetic values derived from the historical prices. Other API calls the
+    strategy makes (e.g. ``engine.api.get_market``) are NOT patched and may hit
+    the live API.
+
+    Exceptions raised by the strategy do not stop the backtest; they are counted
+    in ``BacktestResult.strategy_errors`` (last message in ``last_error``).
     """
     import tempfile
 
@@ -136,6 +143,8 @@ def run_backtest(
 
         # Track latest prices for all market/outcome pairs
         prices: dict[str, float] = {}
+        strategy_errors = 0
+        last_error: str | None = None
 
         for snapshot in snapshots:
             key = f"{snapshot.market_slug}:{snapshot.outcome}"
@@ -162,8 +171,9 @@ def run_backtest(
 
             try:
                 strategy(engine, snapshot, dict(prices))
-            except Exception:
-                continue  # Strategy errors don't stop the backtest
+            except Exception as e:
+                strategy_errors += 1  # Strategy errors don't stop the backtest
+                last_error = f"{type(e).__name__}: {e}"
 
         # Compute results
         account = engine.get_account()
@@ -186,6 +196,8 @@ def run_backtest(
             win_rate=stats["win_rate"],
             max_drawdown=stats["max_drawdown"],
             snapshots_processed=len(snapshots),
+            strategy_errors=strategy_errors,
+            last_error=last_error,
         )
 
         engine.close()

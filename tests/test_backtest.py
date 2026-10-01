@@ -160,6 +160,25 @@ class TestRunBacktest:
         assert result.snapshots_processed == 1
         assert result.total_trades == 0
 
+    def test_strategy_errors_are_reported(self):
+        def offline_strategy(engine, snapshot, prices):
+            raise ConnectionError("offline")
+
+        snapshots = [
+            PriceSnapshot("2026-01-01T00:00:00Z", "m1", "yes", 0.50),
+            PriceSnapshot("2026-01-01T01:00:00Z", "m1", "yes", 0.55),
+        ]
+        result = run_backtest(snapshots, offline_strategy, "offline")
+        assert result.total_trades == 0
+        assert result.strategy_errors == 2
+        assert result.last_error == "ConnectionError: offline"
+
+    def test_clean_run_reports_no_errors(self):
+        snapshots = [PriceSnapshot("2026-01-01T00:00:00Z", "m1", "yes", 0.50)]
+        result = run_backtest(snapshots, noop_strategy)
+        assert result.strategy_errors == 0
+        assert result.last_error is None
+
     def test_result_fields(self):
         snapshots = [PriceSnapshot("2026-01-01T00:00:00Z", "m1", "yes", 0.50)]
         result = run_backtest(snapshots, noop_strategy)
