@@ -352,3 +352,40 @@ class TestScoreRun:
         # No predictions → worst Brier
         assert scores.brier_score == 1.0
         assert scores.details["n_errors"] == 3
+
+
+class TestResolvedAlphaAndErrorPenalty:
+    def _run(self, probs: dict[str, tuple[float, float]]) -> EvalRun:
+        run = EvalRun(model="t", market_set="mini", budget=10000)
+        for slug, (p, mkt) in probs.items():
+            run.market_results.append(
+                MarketResult(slug=slug, question="Q", model_probability=p, market_price_yes=mkt)
+            )
+        return run
+
+    def test_unresolved_alpha_zero(self):
+        scores = score_run(self._run({"a": (0.9, 0.5), "b": (0.2, 0.5)}))
+        assert scores.alpha_score == 0.0
+        assert scores.details["alpha_n"] == 0
+        assert scores.details["n_resolved"] == 0
+
+    def test_alpha_only_over_resolved(self):
+        run = self._run({"a": (0.8, 0.5), "b": (0.9, 0.5)})
+        scores = score_run(run, resolved_outcomes={"a": 1.0})
+        # (0.8-1)^2 - (0.5-1)^2 = 0.04 - 0.25
+        assert scores.alpha_score == pytest.approx(-0.21)
+        assert scores.details["alpha_n"] == 1
+        assert scores.details["n_resolved"] == 1
+
+    def test_errors_count_in_skip_rate(self):
+        clean = self._run({"a": (0.6, 0.5)})
+        with_err = self._run({"a": (0.6, 0.5)})
+        with_err.market_results.append(MarketResult(slug="e", question="E", error="Parse failed"))
+        with_skip = self._run({"a": (0.6, 0.5)})
+        with_skip.market_results.append(MarketResult(slug="s", question="S", skipped_reason="x"))
+        s_clean, s_err, s_skip = score_run(clean), score_run(with_err), score_run(with_skip)
+        assert s_clean.skip_rate == 0.0
+        assert s_err.skip_rate == 0.5
+        assert s_err.skip_rate == s_skip.skip_rate
+        assert s_err.composite_score < s_clean.composite_score
+        assert s_err.composite_score == s_skip.composite_score

@@ -219,7 +219,8 @@ def score_run(
     Args:
         eval_run: Completed evaluation run with market results.
         resolved_outcomes: Optional mapping of slug -> actual outcome (1.0=Yes, 0.0=No).
-            If None, uses market prices as proxy truth.
+            If None, uses market prices as proxy truth for Brier/calibration;
+            alpha is computed only over markets present in this mapping.
 
     Returns:
         BenchmarkScores with all computed metrics.
@@ -234,7 +235,8 @@ def score_run(
         market_price = r.market_price_yes if r.market_price_yes is not None else 0.5
         actual = _resolve_actual(r, resolved_outcomes)
         predictions.append((r.model_probability, actual))
-        alpha_triples.append((r.model_probability, market_price, actual))
+        if resolved_outcomes and r.slug in resolved_outcomes:
+            alpha_triples.append((r.model_probability, market_price, actual))
 
     brier = compute_brier_score(predictions)
     calibration = compute_calibration_error(predictions)
@@ -248,7 +250,10 @@ def score_run(
     max_dd = float(stats.get("max_drawdown", 0.0))
 
     total = len(eval_run.market_results)
-    skip_rate = eval_run.skipped_count / total if total > 0 else 0.0
+    # skip_rate includes errored/parse-failed markets so they are penalised
+    skip_rate = (
+        (eval_run.skipped_count + eval_run.error_count) / total if total > 0 else 0.0
+    )
 
     has_trades = any(r.trade_result is not None for r in eval_run.market_results)
     composite = compute_composite_score(
@@ -269,6 +274,8 @@ def score_run(
         "n_completed": eval_run.completed_count,
         "n_errors": eval_run.error_count,
         "n_skipped": eval_run.skipped_count,
+        "n_resolved": len(alpha_triples),
+        "alpha_n": len(alpha_triples),
     }
 
     # Per-round Brier if multiple rounds

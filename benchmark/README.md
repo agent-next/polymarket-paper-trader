@@ -88,12 +88,14 @@ Weight profiles differ per mode — see [Scoring](#scoring-methodology).
 Mean squared error between model probability and actual outcome. Uses market price as proxy truth when markets are unresolved.
 
 ### Alpha Score (negative is better)
-`alpha = model_brier - market_brier`. Measures whether the model outperforms market consensus. Negative = model beats market.
+`alpha = model_brier - market_brier`. Measures whether the model outperforms market consensus. Negative = model beats market. Computed only over markets with a real resolved outcome (`alpha_n` in the details); with none resolved, alpha is 0.0. `n_resolved` reports how many markets were truly resolved for Brier/calibration, which otherwise fall back to the market-price proxy.
 
 ### Calibration Error (lower is better, 0–1)
 Expected Calibration Error (ECE). Bins predictions and compares average predicted probability vs average actual outcome.
 
 ### Composite Score (higher is better, 0–100)
+
+`skip_rate` is (skipped + errored markets) / total markets; markets blocked only by `max_trades_per_market` are not skips.
 
 **LLM-only mode** (no trades):
 
