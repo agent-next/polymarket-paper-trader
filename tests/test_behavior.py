@@ -1331,6 +1331,25 @@ class TestSharedDbCash:
         assert len(first.get_all_trades()) == 3
         assert first.get_account().cash == pytest.approx(self._expected_cash(first))
 
+    def test_concurrent_sell_of_the_same_shares_is_rejected(self, pair):
+        first, second = pair
+        bought = first.buy("test-market", "yes", 100.0)
+        shares = bought.trade.shares
+        self._during_book_fetch(first, lambda: second.sell("test-market", "yes", shares))
+        with pytest.raises(NoPositionError):
+            first.sell("test-market", "yes", shares)
+        assert len(first.get_all_trades()) == 2
+        assert first.get_account().cash == pytest.approx(self._expected_cash(first))
+
+    def test_concurrent_partial_sell_leaves_too_few_shares(self, pair):
+        first, second = pair
+        bought = first.buy("test-market", "yes", 100.0)
+        shares = bought.trade.shares
+        self._during_book_fetch(first, lambda: second.sell("test-market", "yes", shares / 2))
+        with pytest.raises(OrderRejectedError):
+            first.sell("test-market", "yes", shares)
+        assert first.get_account().cash == pytest.approx(self._expected_cash(first))
+
     def test_buy_rechecks_cash_after_concurrent_spend(self, pair):
         first, second = pair
         self._during_book_fetch(first, lambda: second.buy("test-market", "yes", 9_950.0))
