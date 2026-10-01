@@ -112,6 +112,17 @@ def _write_forecasts(data_dir: Path, date: str, rows: list[dict]) -> Path:
     return path
 
 
+@pytest.fixture(autouse=True)
+def _frozen_clock(monkeypatch):
+    """Pin the fresh post-fetch timestamp to NOW unless a test moves it."""
+    monkeypatch.setattr(arena, "_utc_now", lambda: NOW)
+
+
+def test_utc_now_is_timezone_aware(monkeypatch):
+    monkeypatch.undo()
+    assert arena._utc_now().tzinfo == timezone.utc
+
+
 def _mock_price(monkeypatch, value: float = 0.5):
     """Mock the fresh YES-price fetch used before each model call."""
     mock = MagicMock(return_value=value)
@@ -688,6 +699,28 @@ class TestForecastMarket:
             forecast_market(_entrant(), past, now=NOW, price_fetch=fetch)
         fetch.assert_not_called()
 
+    def test_price_ts_taken_after_fetch(self, monkeypatch):
+        """price_ts is a fresh stamp from after the fetch; ts stays run start."""
+        later = NOW + timedelta(minutes=7)
+        monkeypatch.setattr(arena, "_utc_now", lambda: later)
+        row = forecast_market(
+            _entrant(kind="baseline", id="crowd"), _info(), now=NOW,
+            price_fetch=lambda m: 0.4,
+        )
+        assert row["ts"] == "2026-09-26T12:00:00Z"
+        assert row["price_ts"] == "2026-09-26T12:07:00Z"
+
+    def test_market_ending_during_fetch_rejected(self, monkeypatch):
+        """A market that ends between run start and the price snapshot is rejected."""
+        end = NOW + timedelta(minutes=3)
+        monkeypatch.setattr(arena, "_utc_now", lambda: NOW + timedelta(minutes=5))
+        market = _info("edge", end_date=end.strftime("%Y-%m-%dT%H:%M:%SZ"))
+        with pytest.raises(ArenaError, match="already ended"):
+            forecast_market(
+                _entrant(kind="baseline", id="crowd"), market, now=NOW,
+                price_fetch=lambda m: 0.4,
+            )
+
     def test_fetch_market_prob_requires_yes_label(self, monkeypatch):
         """A prices payload without a 'Yes' label is an error, not 0.5."""
         monkeypatch.setattr(
@@ -878,6 +911,39 @@ class TestRunPredict:
         assert summary["forecasts"] == 1
         new = [r for r in load_forecasts(tmp_path) if r["ts"] == "2026-09-26T12:00:00Z"]
         assert [(r["entrant"], r["prob"]) for r in new] == [("gpt", 0.7)]
+
+    def test_partial_failure_retries_only_missing_markets(self, tmp_path, monkeypatch):
+        """gpt has an ok row for m1 and a skip row for m2 today: a re-run
+        queries only (gpt, m2); no (entrant, slug) pair is ever duplicated."""
+        _write_forecasts(
+            tmp_path, "2026-09-26",
+            [_forecast_row("m1", "gpt", 0.6, ts="2026-09-26T07:00:00Z"),
+             _forecast_row("m2", "gpt", None, ts="2026-09-26T07:00:00Z",
+                           status="skip"),
+             _forecast_row("m1", "crowd", 0.5, ts="2026-09-26T07:00:00Z"),
+             _forecast_row("m2", "crowd", 0.5, ts="2026-09-26T07:00:00Z")],
+        )
+        monkeypatch.setattr(
+            arena, "list_markets",
+            MagicMock(return_value=[_info("m1"), _info("m2")]),
+        )
+        query = MagicMock(return_value='{"probability": 0.7, "reasoning": "r"}')
+        monkeypatch.setattr(arena, "query_model", query)
+        _mock_price(monkeypatch, 0.5)
+        config = self._config(tmp_path)
+        summary = run_predict(tmp_path, config, now=NOW)
+        assert summary["forecasts"] == 1
+        assert query.call_count == 1
+        ok_pairs = [
+            (r["entrant"], r["slug"]) for r in load_forecasts(tmp_path)
+            if r["prob"] is not None
+        ]
+        assert sorted(ok_pairs) == [
+            ("crowd", "m1"), ("crowd", "m2"), ("gpt", "m1"), ("gpt", "m2"),
+        ]
+        again = run_predict(tmp_path, config, now=NOW)
+        assert again["forecasts"] == 0
+        assert query.call_count == 1
 
     def test_prior_days_slugs_excluded(self, tmp_path, monkeypatch):
         """A slug forecast yesterday is not re-selected today."""
