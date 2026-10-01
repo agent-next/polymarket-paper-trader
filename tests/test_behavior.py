@@ -1271,3 +1271,79 @@ class TestResolutionAnalytics:
         assert res.payout == 0.0
         # Sell lost on spread (0.64 bid vs 0.66 ask), resolution lost: 0 / 2
         assert self._stats(acct)["win_rate"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Two Engines sharing one data dir (lost cash updates, issue: stale snapshot)
+# ---------------------------------------------------------------------------
+
+
+class TestSharedDbCash:
+    """Cash changes are relative, so a concurrent writer is never overwritten."""
+
+    @pytest.fixture
+    def pair(self, tmp_path):
+        first = Engine(tmp_path / "shared")
+        first.init_account(10_000.0)
+        second = Engine(tmp_path / "shared")
+        deep = _book(asks=[(0.66, 50_000)], bids=[(0.64, 50_000)])
+        _mock(first, book=deep)
+        _mock(second, book=deep)
+        yield first, second
+        first.close()
+        second.close()
+
+    @staticmethod
+    def _during_book_fetch(engine, action):
+        """Run `action` while `engine` sits between its account read and write."""
+        real = engine.api.get_order_book
+
+        def book(token_id):
+            result = real(token_id)
+            engine.api.get_order_book = real
+            action()
+            return result
+
+        engine.api.get_order_book = book
+
+    @staticmethod
+    def _expected_cash(engine, start=10_000.0):
+        """Start cash replayed from the shared trade log (both engines' rows)."""
+        cash = start
+        for t in engine.get_all_trades():
+            net = t.amount_usd + t.fee if t.side == "buy" else -(t.amount_usd - t.fee)
+            cash -= net
+        return cash
+
+    def test_interleaved_buys_keep_both_debits(self, pair):
+        first, second = pair
+        self._during_book_fetch(first, lambda: second.buy("test-market", "yes", 200.0))
+        first.buy("test-market", "yes", 100.0)
+        assert len(first.get_all_trades()) == 2
+        assert first.get_account().cash == pytest.approx(self._expected_cash(first))
+        assert first.get_account().cash == pytest.approx(9_700.0)
+
+    def test_interleaved_sell_keeps_other_writers_debit(self, pair):
+        first, second = pair
+        bought = first.buy("test-market", "yes", 100.0)
+        self._during_book_fetch(first, lambda: second.buy("test-market", "no", 50.0))
+        first.sell("test-market", "yes", bought.trade.shares / 2)
+        assert len(first.get_all_trades()) == 3
+        assert first.get_account().cash == pytest.approx(self._expected_cash(first))
+
+    def test_buy_rechecks_cash_after_concurrent_spend(self, pair):
+        first, second = pair
+        self._during_book_fetch(first, lambda: second.buy("test-market", "yes", 9_950.0))
+        with pytest.raises(InsufficientBalanceError):
+            first.buy("test-market", "yes", 100.0)
+        assert len(first.get_history()) == 1
+
+    def test_second_engine_cannot_double_pay_a_resolution(self, pair):
+        first, second = pair
+        first.buy("test-market", "yes", 100.0)
+        closed = _market(closed=True, outcome_prices=[1.0, 0.0])
+        first.api.get_market = MagicMock(return_value=closed)
+        second.api.get_market = MagicMock(return_value=closed)
+        paid = first.resolve_market("test-market")[0].payout
+        assert second.resolve_market("test-market") == []
+        assert second.get_account().cash == pytest.approx(10_000.0 - 100.0 + paid, abs=0.01)
