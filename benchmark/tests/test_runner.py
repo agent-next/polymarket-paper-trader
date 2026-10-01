@@ -373,6 +373,19 @@ class TestRunner:
         result = runner.run()
 
         assert result.agent_stats == {}
+        assert result.agent_stats_error == "RuntimeError: stats failed"
+
+    def test_agent_stats_error_none_on_success(self):
+        agent = MagicMock()
+        agent.balance.return_value = {"cash": 10_000.0}
+        agent.portfolio.return_value = []
+        agent.stats.return_value = {"roi_pct": 1.0}
+        runner = Runner(
+            _make_config("mini"), agent=agent,
+            market_fetcher=MagicMock(return_value=_make_market()),
+            model_caller=MagicMock(return_value=_make_decision_json(action="skip", amount=0)),
+        )
+        assert runner.run().agent_stats_error is None
 
     def test_agent_portfolio_with_positions(self):
         """Portfolio with positions is formatted in prompt."""

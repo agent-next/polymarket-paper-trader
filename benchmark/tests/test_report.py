@@ -81,7 +81,26 @@ class TestGenerateJsonReport:
         assert data["summary"]["skipped"] == 1
 
 
+    def test_agent_stats_and_error_serialised(self):
+        run = _make_eval_run()
+        run.agent_stats = {"roi_pct": 5.0}
+        run.agent_stats_error = "RuntimeError: boom"
+        data = json.loads(generate_json_report(run, _make_scores()))
+        assert data["agent_stats"] == {"roi_pct": 5.0}
+        assert data["summary"]["agent_stats_error"] == "RuntimeError: boom"
+
+
 class TestGenerateMarkdownReport:
+    def test_agent_stats_error_surfaced(self):
+        run = _make_eval_run()
+        run.agent_stats_error = "RuntimeError: boom"
+        md = generate_markdown_report(run, _make_scores())
+        assert "Agent stats unavailable:** RuntimeError: boom" in md
+
+    def test_no_agent_stats_line_without_error(self):
+        md = generate_markdown_report(_make_eval_run(), _make_scores())
+        assert "Agent stats unavailable" not in md
+
     def test_contains_headers(self):
         md = generate_markdown_report(_make_eval_run(), _make_scores())
         assert "# Benchmark Report: claude-opus-4" in md

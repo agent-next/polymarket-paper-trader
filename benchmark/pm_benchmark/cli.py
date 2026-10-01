@@ -34,6 +34,8 @@ def _load_eval_run(data: dict) -> EvalRun:
     )
     for r in data.get("market_results", []):
         eval_run.market_results.append(MarketResult(**r))
+    eval_run.agent_stats = data.get("agent_stats") or {}
+    eval_run.agent_stats_error = data.get("summary", {}).get("agent_stats_error")
     return eval_run
 
 
@@ -177,7 +179,6 @@ def score_cmd(results: Path, resolved: Path | None) -> None:
     try:
         data = json.loads(results.read_text())
         eval_run = _load_eval_run(data)
-        eval_run.agent_stats = data.get("scores", {}).get("details", {})
 
         resolved_outcomes = None
         if resolved:
