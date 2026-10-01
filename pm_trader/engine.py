@@ -32,6 +32,7 @@ from pm_trader.orders import (
     _normalize_timestamp,
     cancel_all_orders as _cancel_all_orders,
     cancel_order,
+    cancel_orders_for_market,
     create_order,
     expire_orders,
     get_order,
@@ -941,32 +942,31 @@ class Engine:
         winning_outcome = _determine_winner(market)
 
         results = []
-        for pos in positions:
-            if pos.is_resolved or pos.shares <= 0:
-                continue
+        # One transaction: payouts and the cancellation of resting orders
+        # (which releases their cash reservation) land together.
+        with self.db.atomic():
+            for pos in positions:
+                if pos.is_resolved or pos.shares <= 0:
+                    continue
 
-            if pos.outcome == winning_outcome:
-                payout = pos.shares * 1.0
-            else:
-                payout = 0.0
+                if pos.outcome == winning_outcome:
+                    payout = pos.shares * 1.0
+                else:
+                    payout = 0.0
 
-            # One transaction: a crash must not resolve the position
-            # (shares=0) without crediting the payout.
-            with self.db.atomic():
                 resolved_pos = self.db.resolve_position(
                     market.condition_id, pos.outcome, payout
                 )
-                # Add payout to cash
+                self.db.update_cash(self.get_account().cash + payout)
                 account = self.get_account()
-                new_cash = account.cash + payout
-                self.db.update_cash(new_cash)
-            account = self.get_account()
-
-            results.append(ResolveResult(
-                position=resolved_pos,
-                payout=payout,
-                account=account,
-            ))
+                results.append(ResolveResult(
+                    position=resolved_pos,
+                    payout=payout,
+                    account=account,
+                ))
+            cancel_orders_for_market(
+                self.db.conn, market.condition_id, commit=False,
+            )
 
         return results
 

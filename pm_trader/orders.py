@@ -220,6 +220,27 @@ def cancel_all_orders(conn: sqlite3.Connection) -> list[LimitOrder]:
     return [replace(o, status="cancelled") for o in pending]
 
 
+def cancel_orders_for_market(
+    conn: sqlite3.Connection, condition_id: str, *, commit: bool = True,
+) -> list[LimitOrder]:
+    """Cancel every open order on one market. Returns the cancelled orders."""
+    pending = [
+        o for o in get_pending_orders(conn)
+        if o.market_condition_id == condition_id
+    ]
+    if not pending:
+        return []
+    conn.execute(
+        "UPDATE limit_orders SET status = 'cancelled' "
+        "WHERE market_condition_id = ? "
+        "AND status IN ('pending', 'partially_filled')",
+        (condition_id,),
+    )
+    if commit:
+        conn.commit()
+    return [replace(o, status="cancelled") for o in pending]
+
+
 def mark_filled(
     conn: sqlite3.Connection, order_id: int, *, commit: bool = True,
 ) -> LimitOrder:
