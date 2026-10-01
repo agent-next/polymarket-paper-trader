@@ -58,7 +58,7 @@ jobs:
           # Authorization header) and rejects any other value with 401.
           ZEN_API_KEY: public
         run: |
-          rows_before=$(cat data/forecasts/*.jsonl 2>/dev/null | wc -l)
+          read -r rows_before ok_before < <(python scripts/arena_rows.py count data)
           resolve_rc=0; predict_rc=0
           polymarket-benchmark arena resolve --data data || resolve_rc=$?
           [ "$resolve_rc" -eq 0 ] || echo "::warning::resolve failed (rc=$resolve_rc)"
@@ -66,6 +66,7 @@ jobs:
           [ "$predict_rc" -eq 0 ] || echo "::warning::predict failed (rc=$predict_rc, partial results kept)"
           {
             echo "ARENA_ROWS_BEFORE=$rows_before"
+            echo "ARENA_OK_BEFORE=$ok_before"
             echo "ARENA_RESOLVE_RC=$resolve_rc"
             echo "ARENA_PREDICT_RC=$predict_rc"
           } >> "$GITHUB_ENV"
@@ -97,14 +98,9 @@ jobs:
           wranglerVersion: "4.141.0"
           command: pages deploy site --project-name=forecast-arena --branch=main
       - name: Fail the run when predict produced nothing
-        # Partial results are kept and deployed above; a run that failed outright is red.
+        # Partial results are kept and deployed above; a run that failed outright, or whose forecasts all skipped, is red.
         run: |
-          rows_after=$(cat data/forecasts/*.jsonl 2>/dev/null | wc -l)
-          echo "forecast rows: before=${ARENA_ROWS_BEFORE} after=${rows_after} resolve_rc=${ARENA_RESOLVE_RC} predict_rc=${ARENA_PREDICT_RC}"
-          if [ "$ARENA_PREDICT_RC" -ne 0 ] && [ "$rows_after" -le "$ARENA_ROWS_BEFORE" ]; then
-            echo "::error::predict failed and produced no new forecast rows"
-            exit 1
-          fi
+          python scripts/arena_rows.py guard data "$ARENA_ROWS_BEFORE" "$ARENA_OK_BEFORE" "$ARENA_PREDICT_RC"
 
   deploy:
     needs: run
