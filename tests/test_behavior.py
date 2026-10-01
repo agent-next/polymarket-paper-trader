@@ -1152,3 +1152,47 @@ class TestLimitFillAtomicity:
         assert acct.db.get_position("0xtest", "yes") is None
         assert acct.db.get_trades() == []
         assert get_pending_orders(acct.db.conn)[0].status == "pending"
+
+
+class TestResolveCancelsRestingOrders:
+    def test_reserved_cash_released_on_resolution(self, acct):
+        _mock(acct)
+        acct.buy("test-market", "yes", 50.0)
+        acct.place_limit_order("test-market", "yes", "buy", 100.0, 0.55)
+        assert acct.get_balance()["reserved_cash"] == pytest.approx(100.0)
+
+        acct.api.get_market = MagicMock(
+            return_value=_market(closed=True, outcome_prices=[1.0, 0.0])
+        )
+        acct.resolve_market("test-market")
+        bal = acct.get_balance()
+        assert bal["reserved_cash"] == 0.0
+        assert bal["available_cash"] == pytest.approx(bal["cash"])
+        assert get_pending_orders(acct.db.conn) == []
+
+    def test_other_market_orders_survive(self, acct):
+        _mock(acct)
+        acct.buy("test-market", "yes", 50.0)
+        create_order(
+            acct.db.conn, market_condition_id="0xother", market_slug="other",
+            outcome="yes", side="buy", amount=10.0, limit_price=0.4,
+            order_type="gtc", expires_at=None,
+        )
+        acct.api.get_market = MagicMock(
+            return_value=_market(closed=True, outcome_prices=[1.0, 0.0])
+        )
+        acct.resolve_market("test-market")
+        assert [o.market_condition_id for o in get_pending_orders(acct.db.conn)] == ["0xother"]
+
+
+class TestCancelOrdersForMarket:
+    def test_commits_by_default_and_noop_when_empty(self, acct):
+        from pm_trader.orders import cancel_orders_for_market
+        assert cancel_orders_for_market(acct.db.conn, "0xnone") == []
+        create_order(
+            acct.db.conn, market_condition_id="0xm", market_slug="m",
+            outcome="yes", side="buy", amount=10.0, limit_price=0.4,
+        )
+        cancelled = cancel_orders_for_market(acct.db.conn, "0xm")
+        assert [o.status for o in cancelled] == ["cancelled"]
+        assert get_pending_orders(acct.db.conn) == []
