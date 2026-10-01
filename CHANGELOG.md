@@ -4,6 +4,8 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-10-01
+
 ### Changed
 - **Benchmark scoring**: alpha vs the crowd is computed only over markets with
   a real resolved outcome (unresolved markets used the price as both truth and
