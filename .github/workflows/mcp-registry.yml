@@ -24,6 +24,11 @@ jobs:
             https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz
           echo "a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc  mcp-publisher.tar.gz" | sha256sum -c -
           tar xzf mcp-publisher.tar.gz mcp-publisher
+      - name: Require the version on PyPI
+        run: |
+          version=$(jq -r .version server.json)
+          curl -fsS -o /dev/null "https://pypi.org/pypi/polymarket-paper-trader/${version}/json" \
+            || { echo "::error::polymarket-paper-trader ${version} is not on PyPI"; exit 1; }
       - name: Publish
         run: |
           ./mcp-publisher login github-oidc
