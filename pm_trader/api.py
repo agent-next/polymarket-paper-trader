@@ -271,7 +271,7 @@ class PolymarketClient:
                 "/public-search",
                 params={"q": query, "limit_per_type": limit},
             )
-        )
+        )[:limit]
 
     def get_tags(self) -> list[dict]:
         """Fetch all market tags/categories from Gamma API.  Cached 5 min."""

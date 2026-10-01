@@ -405,6 +405,17 @@ class TestParseSearchResults:
         results = _parse_search_results(data)
         assert [m.slug for m in results] == ["will-bitcoin-hit-100k", "eth-etf"]
 
+    def test_search_truncates_nested_markets_to_limit(
+        self, client: PolymarketClient, httpx_mock
+    ):
+        nested = [
+            {**SAMPLE_GAMMA_MARKET, "slug": f"m{i}", "condition_id": f"0x{i}"}
+            for i in range(5)
+        ]
+        httpx_mock.add_response(json={"events": [{"markets": nested}]})
+        results = client.search_markets("crypto", limit=2)
+        assert [m.slug for m in results] == ["m0", "m1"]
+
     def test_event_without_markets(self):
         data = {"events": [{"title": "no markets"}, {"markets": None}]}
         assert _parse_search_results(data) == []
