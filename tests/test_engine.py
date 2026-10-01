@@ -1827,7 +1827,7 @@ class TestResolveAtomicity:
         )
         engine.api.get_market = MagicMock(return_value=resolved_market)
         with patch.object(
-            Database, "update_cash", side_effect=RuntimeError("crash mid-resolve")
+            Database, "add_cash", side_effect=RuntimeError("crash mid-resolve")
         ):
             with pytest.raises(RuntimeError, match="crash mid-resolve"):
                 engine.resolve_market("will-bitcoin-hit-100k")

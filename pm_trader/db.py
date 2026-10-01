@@ -91,6 +91,9 @@ class Database:
         """
         if self._txn_depth > 0:
             raise RuntimeError("atomic() blocks do not nest")
+        # IMMEDIATE takes the write lock up front: a second writer waits here
+        # instead of acting on a snapshot this transaction is about to change.
+        self.conn.execute("BEGIN IMMEDIATE")
         self._txn_depth = 1
         try:
             yield
@@ -151,6 +154,15 @@ class Database:
     def update_cash(self, new_cash: float) -> None:
         """Update the account cash balance."""
         self.conn.execute("UPDATE account SET cash = ? WHERE id = 1", (new_cash,))
+        self._commit()
+
+    def add_cash(self, delta: float) -> None:
+        """Add (or subtract) cash relative to the stored balance.
+
+        Relative so a concurrent writer's change is never overwritten by a
+        stale snapshot.
+        """
+        self.conn.execute("UPDATE account SET cash = cash + ? WHERE id = 1", (delta,))
         self._commit()
 
     # ------------------------------------------------------------------

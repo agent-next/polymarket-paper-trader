@@ -224,7 +224,7 @@ class Engine:
 
         Walks the real order book ASK side level-by-level.
         """
-        account = self._require_account()
+        self._require_account()
 
         if amount_usd < MIN_ORDER_USD:
             raise OrderRejectedError(
@@ -251,21 +251,22 @@ class Engine:
                 "Insufficient liquidity in order book (FOK rejected)"
             )
 
-        # Check cash: need total_cost + fee. Compare against AVAILABLE cash —
-        # open buy limit orders reserve their remaining_amount, and a market
-        # order must not spend that reserve.
         total_outflow = fill.total_cost + fill.fee
-        available_cash = self._available_cash()
-        if total_outflow > available_cash:
-            raise InsufficientBalanceError(
-                required=total_outflow, available=available_cash
-            )
 
         # Cash debit + trade row + position row land in ONE transaction
         # (issue #69): a crash between the writes must not leave the cash
         # debited with no position.
         with self.db.atomic():
-            self.db.update_cash(account.cash - total_outflow)
+            # Need total_cost + fee. Compare against AVAILABLE cash — open buy
+            # limit orders reserve their remaining_amount, and a market order
+            # must not spend that reserve. Read under the write lock so a
+            # concurrent writer cannot spend it between check and debit.
+            available_cash = self._available_cash()
+            if total_outflow > available_cash:
+                raise InsufficientBalanceError(
+                    required=total_outflow, available=available_cash
+                )
+            self.db.add_cash(-total_outflow)
 
             trade = self.db.insert_trade(
                 market_condition_id=market.condition_id,
@@ -341,7 +342,7 @@ class Engine:
 
         Walks the real order book BID side level-by-level.
         """
-        account = self._require_account()
+        self._require_account()
 
         # Fetch market and validate outcome against actual market outcomes
         market = self.api.get_market(slug_or_id)
@@ -385,7 +386,7 @@ class Engine:
         # Cash credit + trade row + position row land in ONE transaction
         # (issue #69, mirror of the buy path).
         with self.db.atomic():
-            self.db.update_cash(account.cash + net_proceeds)
+            self.db.add_cash(net_proceeds)
 
             trade = self.db.insert_trade(
                 market_condition_id=market.condition_id,
@@ -819,16 +820,17 @@ class Engine:
         marketable limit that crossed the book at placement passes
         ``maker=False`` and pays the taker fee.
         """
-        account = self._require_account()
+        self._require_account()
         fee = 0.0 if (maker and _maker_fee_exempt(market)) else fill.fee
         total_outflow = fill.total_cost + fee
-        if total_outflow > account.cash:
-            raise InsufficientBalanceError(
-                required=total_outflow, available=account.cash,
-            )
         # One transaction for all three writes (issue #69).
         with self.db.atomic():
-            self.db.update_cash(account.cash - total_outflow)
+            cash = self.get_account().cash
+            if total_outflow > cash:
+                raise InsufficientBalanceError(
+                    required=total_outflow, available=cash,
+                )
+            self.db.add_cash(-total_outflow)
             self.db.insert_trade(
                 market_condition_id=market.condition_id,
                 market_slug=market.slug,
@@ -865,7 +867,7 @@ class Engine:
         marketable limit that crossed the book at placement passes
         ``maker=False`` and pays the taker fee.
         """
-        account = self._require_account()
+        self._require_account()
         fee = 0.0 if (maker and _maker_fee_exempt(market)) else fill.fee
         position = self.db.get_position(market.condition_id, order.outcome)
         if position is None or position.shares <= 0:
@@ -878,7 +880,7 @@ class Engine:
         net_proceeds = fill.total_cost - fee
         # One transaction for all writes (issue #69).
         with self.db.atomic():
-            self.db.update_cash(account.cash + net_proceeds)
+            self.db.add_cash(net_proceeds)
             self.db.insert_trade(
                 market_condition_id=market.condition_id,
                 market_slug=market.slug,
@@ -947,16 +949,17 @@ class Engine:
                 f"{market.slug} is not yet closed/resolved"
             )
 
-        positions = self.db.get_positions_for_market(market.condition_id)
-        if not positions:
-            raise NoPositionError(market.slug, "any")
-
         winning_outcome = _determine_winner(market)
 
         results = []
         # One transaction: payouts and the cancellation of resting orders
-        # (which releases their cash reservation) land together.
+        # (which releases their cash reservation) land together. Positions
+        # are read under the write lock so a concurrent resolver cannot pay
+        # the same position twice.
         with self.db.atomic():
+            positions = self.db.get_positions_for_market(market.condition_id)
+            if not positions:
+                raise NoPositionError(market.slug, "any")
             for pos in positions:
                 if pos.is_resolved or pos.shares <= 0:
                     continue
@@ -969,7 +972,7 @@ class Engine:
                 resolved_pos = self.db.resolve_position(
                     market.condition_id, pos.outcome, payout
                 )
-                self.db.update_cash(self.get_account().cash + payout)
+                self.db.add_cash(payout)
                 account = self.get_account()
                 results.append(ResolveResult(
                     position=resolved_pos,
