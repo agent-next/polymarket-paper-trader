@@ -656,7 +656,9 @@ class Engine:
             )
             if not fill.filled and not fill.is_partial:
                 return False
-            self._execute_limit_buy(market, order, fill, fee_rate_bps, maker=False)
+            self._execute_limit_buy(
+                market, order, fill, fee_rate_bps, maker=False, settle=True,
+            )
         else:
             best_bid = max((l.price for l in book.bids), default=None)
             if best_bid is None or best_bid < order.limit_price:
@@ -667,9 +669,10 @@ class Engine:
             )
             if not fill.filled and not fill.is_partial:
                 return False
-            self._execute_limit_sell(market, order, fill, fee_rate_bps, maker=False)
+            self._execute_limit_sell(
+                market, order, fill, fee_rate_bps, maker=False, settle=True,
+            )
 
-        self._settle_order_fill(order, fill)
         return True
 
     def _settle_order_fill(self, order, fill) -> LimitOrder:
@@ -677,7 +680,8 @@ class Engine:
 
         Returns the updated order: ``filled`` when nothing (within
         FILL_EPSILON) is left, otherwise resting as ``partially_filled``
-        with the reduced remaining_amount.
+        with the reduced remaining_amount. Must run inside db.atomic():
+        the status update does not commit on its own.
         """
         remaining = (
             order.remaining_amount - fill.total_cost
@@ -685,8 +689,10 @@ class Engine:
             else order.remaining_amount - fill.total_shares
         )
         if remaining <= FILL_EPSILON:
-            return mark_filled(self.db.conn, order.id)
-        return mark_partially_filled(self.db.conn, order.id, remaining)
+            return mark_filled(self.db.conn, order.id, commit=False)
+        return mark_partially_filled(
+            self.db.conn, order.id, remaining, commit=False,
+        )
 
     def get_pending_orders(self) -> list[dict]:
         """Return all pending limit orders."""
@@ -756,13 +762,15 @@ class Engine:
                     continue  # No fillable liquidity within limit
 
                 # Execute the fill through normal trade recording
+                # (order status/remainder lands in the same transaction)
                 if order.side == "buy":
-                    self._execute_limit_buy(market, order, fill, fee_rate_bps)
+                    updated = self._execute_limit_buy(
+                        market, order, fill, fee_rate_bps, settle=True,
+                    )
                 else:
-                    self._execute_limit_sell(market, order, fill, fee_rate_bps)
-
-                # Keep any remainder open instead of dropping it
-                updated = self._settle_order_fill(order, fill)
+                    updated = self._execute_limit_sell(
+                        market, order, fill, fee_rate_bps, settle=True,
+                    )
                 results.append({
                     "order": _order_to_dict(updated),
                     "action": updated.status,
@@ -787,7 +795,10 @@ class Engine:
 
         return results
 
-    def _execute_limit_buy(self, market, order, fill, fee_rate_bps: int, *, maker: bool = True) -> None:
+    def _execute_limit_buy(
+        self, market, order, fill, fee_rate_bps: int, *,
+        maker: bool = True, settle: bool = False,
+    ) -> LimitOrder | None:
         """Record a limit buy fill using a pre-computed FillResult.
 
         A RESTING limit fill (``maker=True``, the default — the market later
@@ -828,8 +839,12 @@ class Engine:
                 cost=fill.total_cost + fee,
                 avg_fill_price=fill.avg_price,
             )
+            return self._settle_order_fill(order, fill) if settle else None
 
-    def _execute_limit_sell(self, market, order, fill, fee_rate_bps: int, *, maker: bool = True) -> None:
+    def _execute_limit_sell(
+        self, market, order, fill, fee_rate_bps: int, *,
+        maker: bool = True, settle: bool = False,
+    ) -> LimitOrder | None:
         """Record a limit sell fill using a pre-computed FillResult.
 
         A RESTING limit fill (``maker=True``, the default — the market later
@@ -873,6 +888,7 @@ class Engine:
                 sold_shares=fill.total_shares,
                 proceeds=net_proceeds,
             )
+            return self._settle_order_fill(order, fill) if settle else None
 
     def watch_prices(
         self, slugs_or_ids: list[str], outcomes: list[str] | None = None,
