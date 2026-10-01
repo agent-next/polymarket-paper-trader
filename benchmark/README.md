@@ -156,7 +156,8 @@ How it works:
   ECE, alpha vs crowd with a bootstrap CI, open forecasts, duels (largest
   AI-vs-crowd disagreements), and a Hall of Wrong. It also
   writes `site/index.html`, `site/app.js`, `site/CNAME` and one rank badge per
-  ranked entrant under `site/badges/`.
+  entrant under `site/badges/` (entrants with fewer than 20 scored forecasts are
+  listed unranked).
 
 Data is append-only JSONL under a data directory (the CI job uses a checked-out
 `arena-data` branch): `forecasts/YYYY-MM-DD.jsonl` + `resolutions.json`.
