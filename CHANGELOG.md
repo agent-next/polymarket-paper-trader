@@ -4,6 +4,34 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+### Changed
+- **Benchmark scoring**: alpha vs the crowd is computed only over markets with
+  a real resolved outcome (unresolved markets used the price as both truth and
+  baseline, so alpha was structurally >= 0); details report `alpha_n` and
+  `n_resolved`. Errored markets now count in the composite's skip penalty
+  (`skip_rate` = skipped + errored over total). A max-trades cap in multi-round
+  runs is no longer counted as a market skip (`capped_count`), and a
+  decision's trade size is clamped to the configured position size.
+- **Forecast Arena ranking**: entrants need at least 20 scored forecasts
+  (`MIN_RANKED_N`) to be ranked; others stay on the board unranked (rank shown
+  as "—", badge "unranked · n=k"). Each row exposes its `rank`.
+- **Analytics count resolutions**: market resolutions enter win rate, Sharpe
+  and max drawdown as closing events (they write no trade row) — in the CLI,
+  MCP, benchmark, backtest and the leaderboard server.
+
+### Fixed
+- **Shared-database cash**: cash changes use relative SQL inside
+  `BEGIN IMMEDIATE`, buys re-check cash and sells re-check held shares under the
+  write lock, so two processes on one account can no longer lose an update or
+  sell the same shares twice.
+- **Leaderboard server**: API keys are stored as SHA-256 digests (legacy
+  plaintext rows migrate idempotently at startup; the key is shown once at
+  registration); old book snapshots no trade references are pruned after 7
+  days; registration and account creation are rate limited per client IP
+  (`RATE_LIMIT_PER_MIN`, default 10; `TRUST_PROXY` for X-Forwarded-For); an
+  in-memory database logs a startup warning and `/ready` reports
+  `ephemeral_db`.
+
 ## [0.4.4] - 2026-10-01
 
 ### Fixed
