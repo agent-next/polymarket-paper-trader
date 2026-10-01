@@ -4,6 +4,8 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-10-01
+
 ### Fixed
 - **Resolution follows the settlement contract**: when Gamma reports
   `umaResolutionStatus`, a market pays out only once it is `"resolved"`; a
