@@ -1,6 +1,7 @@
 """Tests for pm_benchmark.runner."""
 from __future__ import annotations
 
+import dataclasses
 import json
 import time
 from unittest.mock import MagicMock
@@ -557,3 +558,22 @@ class TestRoundResult:
         assert r.round_number == 1
         assert r.market_results == []
         assert r.round_latency_seconds == 0.0
+
+
+class TestYesPriceOrdering:
+    def _run(self, **overrides):
+        market = dataclasses.replace(_make_market(), **overrides)
+        runner = Runner(
+            _make_config("mini"),
+            market_fetcher=MagicMock(return_value=market),
+            model_caller=MagicMock(return_value=_make_decision_json(action="skip", amount=0)),
+        )
+        return runner.run()
+
+    def test_reversed_outcomes_use_yes_label(self):
+        result = self._run(outcomes=["No", "Yes"], outcome_prices=[0.35, 0.65])
+        assert [r.market_price_yes for r in result.market_results] == [0.65] * 3
+
+    def test_missing_prices_give_none(self):
+        result = self._run(outcome_prices=[])
+        assert all(r.market_price_yes is None for r in result.market_results)

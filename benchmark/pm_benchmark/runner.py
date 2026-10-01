@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from pm_benchmark.config import RunConfig
-from pm_benchmark.market_info import MarketInfo, MarketInfoError, fetch_market_info
+from pm_benchmark.market_info import MarketInfo, MarketInfoError, fetch_market_info, yes_price
 from pm_benchmark.market_set import load_market_set
 from pm_benchmark.prompts import build_analysis_prompt, build_round_context, build_system_prompt
 from pm_benchmark.providers import LLMError, MarketDecision, parse_decision, query_model
@@ -193,8 +193,7 @@ class Runner:
             return result
 
         result.question = market.question
-        if market.outcome_prices:
-            result.market_price_yes = market.outcome_prices[0]
+        result.market_price_yes = yes_price(market)
 
         # Skip closed/inactive markets
         if market.closed or not market.active:
