@@ -5,15 +5,20 @@ client fixtures, and test helper functions.
 """
 from __future__ import annotations
 
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 
-from server.adapters.polymarket import (
+# Most tests register many users from one IP; rate-limit tests opt back in.
+os.environ.setdefault("RATE_LIMIT_PER_MIN", "0")
+
+from server.adapters.polymarket import (  # noqa: E402
     Market,
     OrderBook,
     OrderBookLevel,
 )
-from server.app import app
+from server.app import app  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

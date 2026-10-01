@@ -6,6 +6,7 @@ from pydantic import BaseModel, field_validator
 
 from server.auth import get_current_user
 from server.db import DB
+from server.ratelimit import rate_limit
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
@@ -25,7 +26,7 @@ class CreateAccountRequest(BaseModel):
         return v.strip()
 
 
-@router.post("")
+@router.post("", dependencies=[Depends(rate_limit("create_account"))])
 def create_account(req: CreateAccountRequest, user: dict = Depends(get_current_user),
                    db: DB = Depends(get_db)):
     try:
