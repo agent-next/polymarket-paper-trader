@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from pm_trader.benchmark import compare_accounts, pk_battle, run_strategy
 from pm_trader.engine import Engine
+from tests.conftest import seed_trades
 
 
 # ---------------------------------------------------------------------------
@@ -112,6 +113,15 @@ class TestCompareAccounts:
         assert results[0]["starting_balance"] == 10_000.0
         assert results[1]["account"] == "agent-b"
         assert results[1]["starting_balance"] == 5_000.0
+
+    def test_compare_counts_all_trades_beyond_10k(self, tmp_path: Path):
+        eng = Engine(tmp_path / "big")
+        eng.init_account(10_000.0)
+        seed_trades(eng.db, 10_005)
+        eng.close()
+
+        results = compare_accounts({"big": tmp_path / "big"})
+        assert results[0]["total_trades"] == 10_005
 
     def test_compare_empty(self):
         results = compare_accounts({})

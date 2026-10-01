@@ -177,7 +177,7 @@ def run_backtest(
 
         # Compute results
         account = engine.get_account()
-        trades = engine.db.get_trades(limit=100_000)
+        trades = engine.get_all_trades()
         total_trades = len(trades)
         ending_cash = account.cash
 

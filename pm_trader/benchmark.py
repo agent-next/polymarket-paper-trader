@@ -96,7 +96,7 @@ def run_strategy(
 
         # Compute analytics
         account = engine.get_account()
-        trades = engine.get_history(limit=10_000)
+        trades = engine.get_all_trades()
         portfolio = engine.get_portfolio()
         positions_value = sum(p["current_value"] for p in portfolio)
         stats = compute_stats(trades, account, positions_value)
@@ -126,7 +126,7 @@ def compare_accounts(
         engine = Engine(data_dir)
         try:
             account = engine.get_account()
-            trades = engine.get_history(limit=10_000)
+            trades = engine.get_all_trades()
             portfolio = engine.get_portfolio()
             positions_value = sum(p["current_value"] for p in portfolio)
             stats = compute_stats(trades, account, positions_value)
