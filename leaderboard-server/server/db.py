@@ -7,7 +7,24 @@ from __future__ import annotations
 import json
 import secrets
 import sqlite3
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
+
+
+class _Rows:
+    """Fully fetched statement result, safe to read after the connection lock is released."""
+
+    def __init__(self, rows: list[sqlite3.Row], rowcount: int):
+        self._rows = rows
+        self.rowcount = rowcount
+
+    def fetchone(self) -> sqlite3.Row | None:
+        return self._rows[0] if self._rows else None
+
+    def fetchall(self) -> list[sqlite3.Row]:
+        return self._rows
 
 
 class DB:
@@ -16,6 +33,8 @@ class DB:
     def __init__(self, database_url: str = ":memory:"):
         self._url = database_url
         self._conn: sqlite3.Connection | None = None
+        self._lock = threading.RLock()
+        self._in_tx = False
 
     def init_schema(self) -> None:
         self._conn = sqlite3.connect(self._url, check_same_thread=False)
@@ -32,6 +51,32 @@ class DB:
                 self._conn.execute(stmt)
         self._conn.commit()
 
+    def _execute(self, sql: str, params: tuple = ()) -> _Rows:
+        # One shared connection: every statement runs under the process lock.
+        with self._lock:
+            cur = self._conn.execute(sql, params)
+            return _Rows(cur.fetchall(), cur.rowcount)
+
+    def _commit(self) -> None:
+        # Blocks while another thread holds a transaction; a no-op inside one.
+        with self._lock:
+            if not self._in_tx:
+                self._conn.commit()
+
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        """Run several writes atomically; serialised across threads by a process lock."""
+        with self._lock:
+            self._in_tx = True
+            try:
+                yield
+                self._conn.commit()
+            except BaseException:
+                self._conn.rollback()
+                raise
+            finally:
+                self._in_tx = False
+
     def close(self) -> None:
         if self._conn:
             self._conn.close()
@@ -40,63 +85,78 @@ class DB:
 
     def create_user(self, agent_name: str, model: str | None = None) -> dict:
         api_key = f"lb_sk_{secrets.token_urlsafe(32)}"
-        cur = self._conn.execute(
+        cur = self._execute(
             "INSERT INTO users (agent_name, api_key, model) VALUES (?, ?, ?) RETURNING *",
             (agent_name, api_key, model),
         )
         row = cur.fetchone()
-        self._conn.commit()
+        self._commit()
         return dict(row)
 
     def update_model(self, user_id: int, model: str) -> dict:
-        cur = self._conn.execute(
+        cur = self._execute(
             "UPDATE users SET model = ? WHERE id = ? RETURNING *",
             (model, user_id),
         )
         row = cur.fetchone()
-        self._conn.commit()
+        self._commit()
         return dict(row)
 
     def get_user_by_api_key(self, api_key: str) -> dict | None:
-        cur = self._conn.execute("SELECT * FROM users WHERE api_key = ?", (api_key,))
+        cur = self._execute("SELECT * FROM users WHERE api_key = ?", (api_key,))
         row = cur.fetchone()
         return dict(row) if row else None
 
     def get_user_by_name(self, agent_name: str) -> dict | None:
-        cur = self._conn.execute("SELECT * FROM users WHERE agent_name = ?", (agent_name,))
+        cur = self._execute("SELECT * FROM users WHERE agent_name = ?", (agent_name,))
         row = cur.fetchone()
         return dict(row) if row else None
 
     def get_user_by_id(self, user_id: int) -> dict | None:
-        cur = self._conn.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+        cur = self._execute("SELECT * FROM users WHERE id = ?", (user_id,))
         row = cur.fetchone()
         return dict(row) if row else None
 
     # -- Accounts --
 
     def create_account(self, user_id: int, name: str) -> dict:
-        cur = self._conn.execute(
+        cur = self._execute(
             "INSERT INTO accounts (user_id, name) VALUES (?, ?) RETURNING *",
             (user_id, name),
         )
         row = cur.fetchone()
-        self._conn.commit()
+        self._commit()
         return dict(row)
 
     def get_account(self, account_id: int) -> dict | None:
-        cur = self._conn.execute("SELECT * FROM accounts WHERE id = ?", (account_id,))
+        cur = self._execute("SELECT * FROM accounts WHERE id = ?", (account_id,))
         row = cur.fetchone()
         return dict(row) if row else None
 
     def get_user_accounts(self, user_id: int) -> list[dict]:
-        cur = self._conn.execute(
+        cur = self._execute(
             "SELECT * FROM accounts WHERE user_id = ? ORDER BY created_at", (user_id,)
         )
         return [dict(r) for r in cur.fetchall()]
 
     def update_cash(self, account_id: int, cash: float) -> None:
-        self._conn.execute("UPDATE accounts SET cash = ? WHERE id = ?", (cash, account_id))
-        self._conn.commit()
+        self._execute("UPDATE accounts SET cash = ? WHERE id = ?", (cash, account_id))
+        self._commit()
+
+    def debit_cash(self, account_id: int, amount: float) -> bool:
+        """Atomically subtract cash; False (nothing written) if funds are short."""
+        cur = self._execute(
+            "UPDATE accounts SET cash = cash - ? WHERE id = ? AND cash >= ?",
+            (amount, account_id, amount),
+        )
+        self._commit()
+        return cur.rowcount == 1
+
+    def credit_cash(self, account_id: int, amount: float) -> None:
+        self._execute(
+            "UPDATE accounts SET cash = cash + ? WHERE id = ?", (amount, account_id)
+        )
+        self._commit()
 
     # -- Trades --
 
@@ -106,7 +166,7 @@ class DB:
                      amount_usd: float, shares: float, fee_rate_bps: int,
                      fee: float, slippage: float, levels_filled: int,
                      is_partial: bool, book_snapshot_id: int | None) -> dict:
-        cur = self._conn.execute("""
+        cur = self._execute("""
             INSERT INTO trades (account_id, market_condition_id, market_slug,
                 market_question, outcome, side, order_type, avg_price,
                 amount_usd, shares, fee_rate_bps, fee, slippage,
@@ -118,18 +178,18 @@ class DB:
               fee_rate_bps, fee, slippage, levels_filled, is_partial,
               book_snapshot_id))
         row = cur.fetchone()
-        self._conn.commit()
+        self._commit()
         return dict(row)
 
     def get_trades(self, account_id: int, limit: int = 50) -> list[dict]:
-        cur = self._conn.execute(
+        cur = self._execute(
             "SELECT * FROM trades WHERE account_id = ? ORDER BY id DESC LIMIT ?",
             (account_id, limit),
         )
         return [dict(r) for r in cur.fetchall()]
 
     def get_trade_count(self, account_id: int) -> int:
-        cur = self._conn.execute(
+        cur = self._execute(
             "SELECT COUNT(*) FROM trades WHERE account_id = ?", (account_id,)
         )
         return cur.fetchone()[0]
@@ -141,21 +201,21 @@ class DB:
                         shares: float, avg_entry_price: float, total_cost: float,
                         realized_pnl: float) -> dict:
         # Try update first, then insert
-        cur = self._conn.execute(
+        cur = self._execute(
             """SELECT id FROM positions
                WHERE account_id = ? AND market_condition_id = ? AND outcome = ?""",
             (account_id, market_condition_id, outcome),
         )
         existing = cur.fetchone()
         if existing:
-            cur = self._conn.execute("""
+            cur = self._execute("""
                 UPDATE positions SET shares=?, avg_entry_price=?, total_cost=?, realized_pnl=?
                 WHERE account_id=? AND market_condition_id=? AND outcome=?
                 RETURNING *
             """, (shares, avg_entry_price, total_cost, realized_pnl,
                   account_id, market_condition_id, outcome))
         else:
-            cur = self._conn.execute("""
+            cur = self._execute("""
                 INSERT INTO positions (account_id, market_condition_id, market_slug,
                     market_question, outcome, shares, avg_entry_price, total_cost, realized_pnl)
                 VALUES (?,?,?,?,?,?,?,?,?)
@@ -163,11 +223,11 @@ class DB:
             """, (account_id, market_condition_id, market_slug, market_question,
                   outcome, shares, avg_entry_price, total_cost, realized_pnl))
         row = cur.fetchone()
-        self._conn.commit()
+        self._commit()
         return dict(row)
 
     def get_position(self, account_id: int, market_condition_id: str, outcome: str) -> dict | None:
-        cur = self._conn.execute(
+        cur = self._execute(
             """SELECT * FROM positions
                WHERE account_id = ? AND market_condition_id = ? AND outcome = ?""",
             (account_id, market_condition_id, outcome),
@@ -176,7 +236,7 @@ class DB:
         return dict(row) if row else None
 
     def get_open_positions(self, account_id: int) -> list[dict]:
-        cur = self._conn.execute(
+        cur = self._execute(
             "SELECT * FROM positions WHERE account_id = ? AND shares > 0 AND is_resolved = 0",
             (account_id,),
         )
@@ -184,7 +244,7 @@ class DB:
 
     def get_all_open_positions(self) -> list[dict]:
         """Get all open positions across all accounts (for auto-resolve job)."""
-        cur = self._conn.execute(
+        cur = self._execute(
             "SELECT * FROM positions WHERE shares > 0 AND is_resolved = 0"
         )
         return [dict(r) for r in cur.fetchall()]
@@ -195,7 +255,7 @@ class DB:
 
         Returns None (and credits nothing) if it was already resolved.
         """
-        cur = self._conn.execute("""
+        cur = self._execute("""
             UPDATE positions SET is_resolved = 1, resolved_at = CURRENT_TIMESTAMP,
                 realized_pnl = realized_pnl + ?
             WHERE id = ? AND is_resolved = 0
@@ -203,22 +263,22 @@ class DB:
         """, (payout, position_id))
         row = cur.fetchone()
         if row is not None:
-            self._conn.execute(
+            self._execute(
                 "UPDATE accounts SET cash = cash + ? WHERE id = ?",
                 (credit, row["account_id"]),
             )
-        self._conn.commit()
+        self._commit()
         return dict(row) if row else None
 
     # -- Book snapshots --
 
     def save_book_snapshot(self, token_id: str, snapshot: dict) -> int:
-        cur = self._conn.execute(
+        cur = self._execute(
             "INSERT INTO book_snapshots (token_id, snapshot) VALUES (?, ?) RETURNING id",
             (token_id, json.dumps(snapshot)),
         )
         row = cur.fetchone()
-        self._conn.commit()
+        self._commit()
         return row[0]
 
     # -- Limit orders --
@@ -228,7 +288,7 @@ class DB:
                            amount: float, limit_price: float,
                            order_type: str = "gtc",
                            expires_at: str | None = None) -> dict:
-        cur = self._conn.execute("""
+        cur = self._execute("""
             INSERT INTO limit_orders (account_id, market_slug, market_condition_id,
                 outcome, side, amount, limit_price, order_type, expires_at)
             VALUES (?,?,?,?,?,?,?,?,?)
@@ -236,53 +296,54 @@ class DB:
         """, (account_id, market_slug, market_condition_id, outcome, side,
               amount, limit_price, order_type, expires_at))
         row = cur.fetchone()
-        self._conn.commit()
+        self._commit()
         return dict(row)
 
     def get_pending_orders(self, account_id: int | None = None) -> list[dict]:
         if account_id is not None:
-            cur = self._conn.execute(
+            cur = self._execute(
                 "SELECT * FROM limit_orders WHERE account_id = ? AND status = 'pending' ORDER BY created_at",
                 (account_id,),
             )
         else:
-            cur = self._conn.execute(
+            cur = self._execute(
                 "SELECT * FROM limit_orders WHERE status = 'pending' ORDER BY created_at"
             )
         return [dict(r) for r in cur.fetchall()]
 
-    def fill_order(self, order_id: int) -> dict:
-        cur = self._conn.execute("""
+    def fill_order(self, order_id: int) -> dict | None:
+        """Mark a pending order filled; None if it was no longer pending."""
+        cur = self._execute("""
             UPDATE limit_orders SET status = 'filled', filled_at = CURRENT_TIMESTAMP
-            WHERE id = ?
+            WHERE id = ? AND status = 'pending'
             RETURNING *
         """, (order_id,))
         row = cur.fetchone()
-        self._conn.commit()
-        return dict(row)
+        self._commit()
+        return dict(row) if row else None
 
     def cancel_order(self, order_id: int, account_id: int) -> dict | None:
-        cur = self._conn.execute("""
+        cur = self._execute("""
             UPDATE limit_orders SET status = 'cancelled'
             WHERE id = ? AND account_id = ? AND status = 'pending'
             RETURNING *
         """, (order_id, account_id))
         row = cur.fetchone()
-        self._conn.commit()
+        self._commit()
         return dict(row) if row else None
 
     def expire_orders(self, before: str) -> int:
-        cur = self._conn.execute("""
+        cur = self._execute("""
             UPDATE limit_orders SET status = 'expired'
             WHERE status = 'pending' AND order_type = 'gtd' AND expires_at <= ?
         """, (before,))
-        self._conn.commit()
+        self._commit()
         return cur.rowcount
 
     # -- Leaderboard --
 
     def get_leaderboard_accounts(self, min_trades: int = 10) -> list[dict]:
-        cur = self._conn.execute("""
+        cur = self._execute("""
             SELECT a.*, u.agent_name, u.model, COUNT(t.id) as trade_count
             FROM accounts a
             JOIN users u ON a.user_id = u.id
@@ -294,7 +355,7 @@ class DB:
         return [dict(r) for r in cur.fetchall()]
 
     def get_all_accounts_with_user(self) -> list[dict]:
-        cur = self._conn.execute("""
+        cur = self._execute("""
             SELECT a.*, u.agent_name, u.model
             FROM accounts a
             JOIN users u ON a.user_id = u.id
@@ -304,7 +365,7 @@ class DB:
 
     def get_recent_trades_global(self, limit: int = 20) -> list[dict]:
         """Recent trades across all accounts with agent names."""
-        cur = self._conn.execute("""
+        cur = self._execute("""
             SELECT t.*, u.agent_name, a.name as account_name
             FROM trades t
             JOIN accounts a ON t.account_id = a.id

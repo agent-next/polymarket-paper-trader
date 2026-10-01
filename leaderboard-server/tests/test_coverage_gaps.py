@@ -83,6 +83,43 @@ JOBS_BOOK = OrderBook(
 )
 
 
+class TestCheckOrdersSkips:
+    """Orders that cannot fill atomically are left untouched."""
+
+    def _order(self, db, side, amount):
+        user = db.create_user(f"skip-{side}")
+        account = db.create_account(user["id"], "default")
+        order = db.create_limit_order(
+            account_id=account["id"], market_slug="test-market",
+            market_condition_id="0xabc123", outcome="yes", side=side,
+            amount=amount, limit_price=0.50 if side == "buy" else 0.10,
+        )
+        return account, order
+
+    def _run(self, db):
+        return check_orders_job(db, MockPolymarketClient(JOBS_MARKET, JOBS_BOOK))
+
+    def test_buy_without_cash_stays_pending(self, jobs_db):
+        account, order = self._order(jobs_db, "buy", 100)
+        jobs_db.update_cash(account["id"], 1.0)
+        assert self._run(jobs_db) == 0
+        assert jobs_db.get_account(account["id"])["cash"] == 1.0
+        assert jobs_db.get_pending_orders(account["id"])[0]["id"] == order["id"]
+
+    def test_sell_without_position_stays_pending(self, jobs_db):
+        account, order = self._order(jobs_db, "sell", 10)
+        assert self._run(jobs_db) == 0
+        assert jobs_db.get_account(account["id"])["cash"] == 10000.0
+        assert jobs_db.get_pending_orders(account["id"])[0]["id"] == order["id"]
+
+    def test_order_filled_elsewhere_is_not_filled_twice(self, jobs_db):
+        account, order = self._order(jobs_db, "buy", 100)
+        with patch.object(jobs_db, "fill_order", return_value=None):
+            assert self._run(jobs_db) == 0
+        assert jobs_db.get_account(account["id"])["cash"] == 10000.0
+        assert jobs_db.get_trade_count(account["id"]) == 0
+
+
 # ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
@@ -608,18 +645,22 @@ class TestCheckOrdersGaps:
             )
 
         call_count = 0
-        original_get_account = jobs_db.get_account
+        original_insert_trade = jobs_db.insert_trade
 
-        def fail_first_get_account(account_id):
+        def fail_first_insert(**kwargs):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
                 raise RuntimeError("Simulated failure")
-            return original_get_account(account_id)
+            return original_insert_trade(**kwargs)
 
-        with patch.object(jobs_db, "get_account", side_effect=fail_first_get_account):
+        with patch.object(jobs_db, "insert_trade", side_effect=fail_first_insert):
             count = check_orders_job(jobs_db, MockPolymarketClient(JOBS_MARKET, JOBS_BOOK))
         assert count == 1
+        # The failed order rolled back completely: only one fill's cash and trade landed.
+        assert jobs_db.get_trade_count(account["id"]) == 1
+        assert len(jobs_db.get_pending_orders(account["id"])) == 1
+        assert jobs_db.get_account(account["id"])["cash"] == pytest.approx(9900.0)
 
 
 # ---------------------------------------------------------------------------
