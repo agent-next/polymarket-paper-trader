@@ -1131,3 +1131,24 @@ class TestResolutionStatus:
         assert m.uma_resolution_status is None
         acct.api.get_market = MagicMock(return_value=m)
         assert acct.resolve_market("test-market")[0].payout > 0
+
+
+class TestLimitFillAtomicity:
+    def test_mark_filled_failure_rolls_back_trade(self, acct, monkeypatch):
+        _mock(acct)
+        acct.place_limit_order("test-market", "yes", "buy", 100.0, 0.55)
+        acct.api.get_order_book = MagicMock(
+            return_value=_book(asks=[(0.50, 1000)], bids=[(0.49, 500)])
+        )
+        cash_before = acct.get_account().cash
+
+        def boom(*a, **k):
+            raise RuntimeError("injected")
+
+        monkeypatch.setattr("pm_trader.engine.mark_filled", boom)
+        results = acct.check_orders()  # generic errors rest the order
+        assert results == []
+        assert acct.get_account().cash == cash_before
+        assert acct.db.get_position("0xtest", "yes") is None
+        assert acct.db.get_trades() == []
+        assert get_pending_orders(acct.db.conn)[0].status == "pending"

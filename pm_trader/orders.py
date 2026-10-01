@@ -220,19 +220,23 @@ def cancel_all_orders(conn: sqlite3.Connection) -> list[LimitOrder]:
     return [replace(o, status="cancelled") for o in pending]
 
 
-def mark_filled(conn: sqlite3.Connection, order_id: int) -> LimitOrder:
-    """Mark an order as filled."""
+def mark_filled(
+    conn: sqlite3.Connection, order_id: int, *, commit: bool = True,
+) -> LimitOrder:
+    """Mark an order as filled. ``commit=False`` leaves the transaction open."""
     conn.execute(
         "UPDATE limit_orders SET status = 'filled', remaining_amount = 0, "
         "filled_at = datetime('now') WHERE id = ?",
         (order_id,),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
     return _get_order(conn, order_id)
 
 
 def mark_partially_filled(
     conn: sqlite3.Connection, order_id: int, remaining_amount: float,
+    *, commit: bool = True,
 ) -> LimitOrder:
     """Record a partial fill: the order stays open for remaining_amount."""
     conn.execute(
@@ -240,7 +244,8 @@ def mark_partially_filled(
         "remaining_amount = ? WHERE id = ?",
         (remaining_amount, order_id),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
     return _get_order(conn, order_id)
 
 
