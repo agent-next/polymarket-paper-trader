@@ -386,6 +386,7 @@ class Engine:
         # Cash credit + trade row + position row land in ONE transaction
         # (issue #69, mirror of the buy path).
         with self.db.atomic():
+            self._require_shares_locked(market, outcome, fill.total_shares)
             self.db.add_cash(net_proceeds)
 
             trade = self.db.insert_trade(
@@ -414,6 +415,20 @@ class Engine:
 
         updated_account = self.get_account()
         return TradeResult(trade=trade, account=updated_account)
+
+    def _require_shares_locked(self, market: Market, outcome: str, shares: float) -> None:
+        """Re-check the held shares under the write lock.
+
+        The pre-fill check runs before the order-book fetch; another writer on
+        the same database may have sold those shares in between.
+        """
+        position = self.db.get_position(market.condition_id, outcome)
+        if position is None or position.shares <= 0:
+            raise NoPositionError(market.slug, outcome)
+        if shares > position.shares + FILL_EPSILON:
+            raise OrderRejectedError(
+                f"Cannot sell {shares:.4f} shares, only hold {position.shares:.4f}"
+            )
 
     def _update_position_after_sell(
         self,
@@ -880,6 +895,7 @@ class Engine:
         net_proceeds = fill.total_cost - fee
         # One transaction for all writes (issue #69).
         with self.db.atomic():
+            self._require_shares_locked(market, order.outcome, fill.total_shares)
             self.db.add_cash(net_proceeds)
             self.db.insert_trade(
                 market_condition_id=market.condition_id,
