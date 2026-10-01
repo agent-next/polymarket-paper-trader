@@ -179,6 +179,11 @@ class TestParseMarket:
         market = _parse_market(data)
         assert market.outcome_prices == [0.7, 0.3]
 
+    def test_uma_resolution_status_parsed(self):
+        data = {**SAMPLE_GAMMA_MARKET, "umaResolutionStatus": "resolved"}
+        assert _parse_market(data).uma_resolution_status == "resolved"
+        assert _parse_market(SAMPLE_GAMMA_MARKET).uma_resolution_status is None
+
     def test_missing_fields_use_defaults(self):
         data = {"condition_id": "0x1"}
         market = _parse_market(data)

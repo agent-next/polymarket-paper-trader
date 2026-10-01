@@ -987,14 +987,20 @@ class Engine:
 def _determine_winner(market) -> str:
     """Determine the winning outcome from a resolved market's prices.
 
-    Raises SimError if no outcome has price >= 0.99, preventing silent
-    zero-payout on ambiguous or partially-resolved markets.
+    A Gamma market must report umaResolutionStatus "resolved" (a "proposed"
+    market can still be disputed); CLOB-only data carries no status and keeps
+    the price rule. Raises SimError if no outcome has price >= 0.99,
+    preventing silent zero-payout on ambiguous or partially-resolved markets.
     """
+    prices = dict(zip(market.outcomes, market.outcome_prices))
+    status = market.uma_resolution_status
+    if status is not None and status != "resolved":
+        raise AmbiguousResolutionError(market.slug, prices)
+    threshold = 0.99 if status is None else 1.0
     for i, outcome in enumerate(market.outcomes):
         price = market.outcome_prices[i] if i < len(market.outcome_prices) else 0.0
-        if price >= 0.99:
+        if price >= threshold:
             return outcome.lower()
-    prices = dict(zip(market.outcomes, market.outcome_prices))
     raise AmbiguousResolutionError(market.slug, prices)
 
 

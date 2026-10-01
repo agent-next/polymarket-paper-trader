@@ -1088,3 +1088,46 @@ class TestCashReservationWorkflow:
             account.cash + positions_value - account.starting_balance
         )
         assert stats["total_trades"] == 0  # a resting order is not a trade
+
+
+# ---------------------------------------------------------------------------
+# Resolution status gate, atomic limit fills, resolution cancels resting orders
+# ---------------------------------------------------------------------------
+
+
+class TestResolutionStatus:
+    @pytest.mark.parametrize("status", ["proposed", "disputed"])
+    def test_unsettled_status_is_ambiguous(self, acct, status):
+        _mock(acct)
+        acct.buy("test-market", "yes", 50.0)
+        m = _market(closed=True, outcome_prices=[1.0, 0.0])
+        m.uma_resolution_status = status
+        acct.api.get_market = MagicMock(return_value=m)
+        with pytest.raises(AmbiguousResolutionError):
+            acct.resolve_market("test-market")
+        assert acct.db.get_position("0xtest", "yes").shares > 0
+
+    def test_resolved_status_pays_out(self, acct):
+        _mock(acct)
+        acct.buy("test-market", "yes", 50.0)
+        m = _market(closed=True, outcome_prices=[1.0, 0.0])
+        m.uma_resolution_status = "resolved"
+        acct.api.get_market = MagicMock(return_value=m)
+        assert acct.resolve_market("test-market")[0].payout > 0
+
+    def test_resolved_status_requires_exact_price(self, acct):
+        _mock(acct)
+        acct.buy("test-market", "yes", 50.0)
+        m = _market(closed=True, outcome_prices=[0.99, 0.01])
+        m.uma_resolution_status = "resolved"
+        acct.api.get_market = MagicMock(return_value=m)
+        with pytest.raises(AmbiguousResolutionError):
+            acct.resolve_market("test-market")
+
+    def test_missing_status_keeps_price_rule(self, acct):
+        _mock(acct)
+        acct.buy("test-market", "yes", 50.0)
+        m = _market(closed=True, outcome_prices=[1.0, 0.0])
+        assert m.uma_resolution_status is None
+        acct.api.get_market = MagicMock(return_value=m)
+        assert acct.resolve_market("test-market")[0].payout > 0
