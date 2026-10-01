@@ -346,3 +346,38 @@ class TestApiKeyHashing:
             assert stored == digest
             assert again.get_user_by_api_key(legacy)["agent_name"] == "old"
             again.close()
+
+
+class TestPruneBookSnapshots:
+    def _snap(self, db, age_days):
+        sid = db.save_book_snapshot("tok", {"bids": []})
+        db._conn.execute(
+            "UPDATE book_snapshots SET fetched_at = datetime('now', ?) WHERE id = ?",
+            (f"-{age_days} days", sid),
+        )
+        return sid
+
+    def _ids(self, db):
+        return {r[0] for r in db._conn.execute("SELECT id FROM book_snapshots")}
+
+    def test_prunes_old_unreferenced_keeps_recent_and_referenced(self, db):
+        user = db.create_user("bot")
+        account = db.create_account(user["id"], "main")
+        old = self._snap(db, 10)
+        referenced = self._snap(db, 10)
+        recent = self._snap(db, 1)
+        db.insert_trade(
+            account_id=account["id"], market_condition_id="0x", market_slug="m",
+            market_question="Q?", outcome="yes", side="buy", order_type="fok",
+            avg_price=0.5, amount_usd=1, shares=2, fee_rate_bps=0, fee=0,
+            slippage=0, levels_filled=1, is_partial=False,
+            book_snapshot_id=referenced,
+        )
+        assert db.prune_book_snapshots(older_than_days=7) == 1
+        assert self._ids(db) == {referenced, recent}
+        assert old not in self._ids(db)
+
+    def test_default_cutoff_is_seven_days(self, db):
+        old, recent = self._snap(db, 8), self._snap(db, 6)
+        assert db.prune_book_snapshots() == 1
+        assert self._ids(db) == {recent}
