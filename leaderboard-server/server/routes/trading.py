@@ -237,44 +237,39 @@ def buy(
             "INSUFFICIENT_BALANCE",
         )
 
-    # 11. Save book snapshot
+    # 11-14. Cash, trade and position writes are one atomic unit
     book_snapshot = dataclasses.asdict(book)
-    snapshot_id = db.save_book_snapshot(token_id, book_snapshot)
-
-    # 12. Update cash
-    new_cash = account["cash"] - total_outflow
-    db.update_cash(req.account_id, new_cash)
-
-    # 13. Insert trade
-    trade = db.insert_trade(
-        account_id=req.account_id,
-        market_condition_id=market.condition_id,
-        market_slug=market.slug,
-        market_question=market.question,
-        outcome=outcome,
-        side="buy",
-        order_type=req.order_type,
-        avg_price=fill.avg_price,
-        amount_usd=fill.total_cost,
-        shares=fill.total_shares,
-        fee_rate_bps=fee_rate_bps,
-        fee=fill.fee,
-        slippage=fill.slippage_bps,
-        levels_filled=fill.levels_filled,
-        is_partial=fill.is_partial,
-        book_snapshot_id=snapshot_id,
-    )
-
-    # 14. Update position
-    _update_position_after_buy(
-        db,
-        account_id=req.account_id,
-        market=market,
-        outcome=outcome,
-        new_shares=fill.total_shares,
-        cost=fill.total_cost + fill.fee,
-        avg_fill_price=fill.avg_price,
-    )
+    with db.transaction():
+        snapshot_id = db.save_book_snapshot(token_id, book_snapshot)
+        if not db.debit_cash(req.account_id, total_outflow):
+            _err("Insufficient balance", "INSUFFICIENT_BALANCE")
+        trade = db.insert_trade(
+            account_id=req.account_id,
+            market_condition_id=market.condition_id,
+            market_slug=market.slug,
+            market_question=market.question,
+            outcome=outcome,
+            side="buy",
+            order_type=req.order_type,
+            avg_price=fill.avg_price,
+            amount_usd=fill.total_cost,
+            shares=fill.total_shares,
+            fee_rate_bps=fee_rate_bps,
+            fee=fill.fee,
+            slippage=fill.slippage_bps,
+            levels_filled=fill.levels_filled,
+            is_partial=fill.is_partial,
+            book_snapshot_id=snapshot_id,
+        )
+        _update_position_after_buy(
+            db,
+            account_id=req.account_id,
+            market=market,
+            outcome=outcome,
+            new_shares=fill.total_shares,
+            cost=fill.total_cost + fill.fee,
+            avg_fill_price=fill.avg_price,
+        )
 
     # 15. Return result
     updated_account = db.get_account(req.account_id)
@@ -334,43 +329,40 @@ def sell(
     # 8. Net proceeds
     net_proceeds = fill.total_cost - fill.fee
 
-    # 9. Save book snapshot
+    # 9-12. Cash, trade and position writes are one atomic unit
     book_snapshot = dataclasses.asdict(book)
-    snapshot_id = db.save_book_snapshot(token_id, book_snapshot)
-
-    # 10. Update cash
-    new_cash = account["cash"] + net_proceeds
-    db.update_cash(req.account_id, new_cash)
-
-    # 11. Insert trade
-    trade = db.insert_trade(
-        account_id=req.account_id,
-        market_condition_id=market.condition_id,
-        market_slug=market.slug,
-        market_question=market.question,
-        outcome=outcome,
-        side="sell",
-        order_type=req.order_type,
-        avg_price=fill.avg_price,
-        amount_usd=fill.total_cost,
-        shares=fill.total_shares,
-        fee_rate_bps=fee_rate_bps,
-        fee=fill.fee,
-        slippage=fill.slippage_bps,
-        levels_filled=fill.levels_filled,
-        is_partial=fill.is_partial,
-        book_snapshot_id=snapshot_id,
-    )
-
-    # 12. Update position
-    _update_position_after_sell(
-        db,
-        account_id=req.account_id,
-        market=market,
-        outcome=outcome,
-        sold_shares=fill.total_shares,
-        proceeds=net_proceeds,
-    )
+    with db.transaction():
+        held = db.get_position(req.account_id, market.condition_id, outcome)
+        if held is None or held["shares"] < fill.total_shares:
+            _err("Position changed; not enough shares to sell", "ORDER_REJECTED")
+        snapshot_id = db.save_book_snapshot(token_id, book_snapshot)
+        db.credit_cash(req.account_id, net_proceeds)
+        trade = db.insert_trade(
+            account_id=req.account_id,
+            market_condition_id=market.condition_id,
+            market_slug=market.slug,
+            market_question=market.question,
+            outcome=outcome,
+            side="sell",
+            order_type=req.order_type,
+            avg_price=fill.avg_price,
+            amount_usd=fill.total_cost,
+            shares=fill.total_shares,
+            fee_rate_bps=fee_rate_bps,
+            fee=fill.fee,
+            slippage=fill.slippage_bps,
+            levels_filled=fill.levels_filled,
+            is_partial=fill.is_partial,
+            book_snapshot_id=snapshot_id,
+        )
+        _update_position_after_sell(
+            db,
+            account_id=req.account_id,
+            market=market,
+            outcome=outcome,
+            sold_shares=fill.total_shares,
+            proceeds=net_proceeds,
+        )
 
     # 13. Return result
     updated_account = db.get_account(req.account_id)

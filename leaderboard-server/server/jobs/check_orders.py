@@ -12,6 +12,10 @@ from server.adapters.polymarket import (
 from server.db import DB
 
 
+class _SkipOrder(Exception):
+    """Abort one order's transaction; the order stays as it was."""
+
+
 def check_orders_job(db: DB, polymarket: PolymarketClient) -> int:
     """Check all pending limit orders. Returns count of filled orders.
 
@@ -71,13 +75,11 @@ def check_orders_job(db: DB, polymarket: PolymarketClient) -> int:
                     )
                     if fill.filled or fill.is_partial:
                         total_outflow = fill.total_cost + fill.fee
-                        account = db.get_account(order["account_id"])
-                        if total_outflow <= float(account["cash"]):
-                            # Execute fill
-                            db.update_cash(
-                                order["account_id"],
-                                float(account["cash"]) - total_outflow,
-                            )
+                        with db.transaction():
+                            if db.fill_order(order["id"]) is None or not db.debit_cash(
+                                order["account_id"], total_outflow,
+                            ):
+                                raise _SkipOrder
                             db.insert_trade(
                                 account_id=order["account_id"],
                                 market_condition_id=condition_id,
@@ -121,7 +123,6 @@ def check_orders_job(db: DB, polymarket: PolymarketClient) -> int:
                                     existing["realized_pnl"] if existing else 0.0
                                 ),
                             )
-                            db.fill_order(order["id"])
                             filled_count += 1
 
                 elif order["side"] == "sell":
@@ -135,15 +136,17 @@ def check_orders_job(db: DB, polymarket: PolymarketClient) -> int:
                     )
                     if fill.filled or fill.is_partial:
                         net_proceeds = fill.total_cost - fill.fee
-                        account = db.get_account(order["account_id"])
-                        existing = db.get_position(
-                            order["account_id"], condition_id, outcome,
-                        )
-                        if existing and existing["shares"] >= fill.total_shares:
-                            db.update_cash(
-                                order["account_id"],
-                                float(account["cash"]) + net_proceeds,
+                        with db.transaction():
+                            existing = db.get_position(
+                                order["account_id"], condition_id, outcome,
                             )
+                            if (
+                                db.fill_order(order["id"]) is None
+                                or not existing
+                                or existing["shares"] < fill.total_shares
+                            ):
+                                raise _SkipOrder
+                            db.credit_cash(order["account_id"], net_proceeds)
                             db.insert_trade(
                                 account_id=order["account_id"],
                                 market_condition_id=condition_id,
@@ -182,7 +185,6 @@ def check_orders_job(db: DB, polymarket: PolymarketClient) -> int:
                                 total_cost=max(remaining_cost, 0),
                                 realized_pnl=realized,
                             )
-                            db.fill_order(order["id"])
                             filled_count += 1
             except Exception:
                 continue
