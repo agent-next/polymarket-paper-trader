@@ -29,10 +29,80 @@
     "resolution_source": "uma",
     "resolved_at": "2026-09-30T12:44:56Z"
   },
+  "elon-musk-of-tweets-september-28-september-30-2026-40-64": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "elon-musk-of-tweets-september-28-september-30-2026-65-89": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
   "ethereum-above-2800-on-september-30-2026": {
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-09-30T16:30:26Z"
+  },
+  "fif-chn-tkm-2026-10-02-chn": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "fif-chn-tkm-2026-10-02-draw": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "fif-sey-sri-2026-09-30-sri": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "gemini-4pt0-released-by-september-30-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "iran-charges-hormuz-fees-by-september-30": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "iran-oman-hormuz-agreement-by-september-30-823-929": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "israel-military-action-against-lebanon-on-september-30-20260903": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "israel-military-action-against-syria-by-september-30-2026-21": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "israel-x-iran-ceasefire-continues-through-september-30": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "next-white-house-press-secretary-announced-by-september-30-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "russia-ukraine-peace-talks-by-september-30-2026-20260609012542188": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "saudi-oil-pipeline-east-west-restarts-by-september-30": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
   },
   "trump-renames-ai-by-september-30": {
     "outcome": 1,
@@ -44,19 +114,184 @@
     "resolution_source": "uma",
     "resolved_at": "2026-09-28T23:31:07Z"
   },
+  "us-announces-end-of-iranian-blockade-by-september-30-2026-20260727171615364-722-649-646-561-213-644-414-831": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "us-iran-hormuz-agreement-by-september-30": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "us-x-iran-ceasefire-continues-through-september-30-20260917": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "us-x-iran-diplomatic-meeting-by-march-31-2027-20260922": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "uwcl-asr-fcb-2026-09-30-asr": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-bitcoin-dip-to-77pt5k-in-september-2026-from-september-18": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-bitcoin-dip-to-80k-in-september-2026-from-september-18": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-bitcoin-dip-to-82pt5k-in-september-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
   "will-bitcoin-reach-85k-in-september-2026-from-september-27": {
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-09-30T16:30:26Z"
+  },
+  "will-bitcoin-reach-87pt5k-in-september-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-bitcoin-reach-90k-in-september-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
   },
   "will-elon-tweet-800-839-times-in-september-2026": {
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-09-30T16:30:26Z"
   },
+  "will-elon-tweet-840-879-times-in-september-2026": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-elon-tweet-880-919-times-in-september-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-elon-tweet-920-959-times-in-september-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-ethereum-dip-to-2500-in-september-2026-from-september-18": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-ethereum-dip-to-2600-in-september-2026-from-september-20": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-ethereum-reach-2800-in-september-2026-from-september-22": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-ethereum-reach-2900-in-september-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-ethereum-reach-3000-in-september-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-maria-corina-machado-enter-venezuela-by-september-30-20260728195821515": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-openai-resume-us-chatgpt-pro-signups-by-september-30-2026": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-russia-and-ukraine-hold-any-diplomatic-meeting-by-september-30-2026-20260819-521": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-solana-dip-to-110-in-september-2026-from-september-21": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-solana-reach-130-in-september-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-strc-hit-100-by-september-30-20260618001621118": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-the-next-google-gemini-pro-model-be-released-by-september-30-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-the-us-announce-a-diesel-export-ban-by-september-30": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-there-be-no-next-google-gemini-pro-model-release-by-september-30-2026": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-wti-dip-to-85-in-september-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
   "will-wti-dip-to-90-in-september-2026-from-september-23": {
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-09-30T12:44:56Z"
+  },
+  "will-wti-reach-100-in-september-2026-from-september-18": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-wti-reach-105-in-september-2026-from-september-16": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-xagusd-dip-to-60-in-september-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-xauusd-dip-to-4100-in-september-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-xrp-reach-1pt8-in-september-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-01T13:29:09Z"
   }
 }
