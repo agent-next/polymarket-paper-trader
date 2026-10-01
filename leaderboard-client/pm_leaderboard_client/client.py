@@ -140,8 +140,9 @@ class Agent:
         try:
             self._create_account(account_name)
         except Exception:
+            # The first POST may have landed before failing: find-or-create.
             try:
-                self._create_account(account_name)
+                self._resolve_account(account_name)
             except Exception as e:
                 raise AgentError(
                     f"Registered, but account creation failed: {e}. "
