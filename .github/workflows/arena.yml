@@ -24,6 +24,8 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: write  # push forecasts to arena-data (accepted risk: token is repo-wide)
+    outputs:
+      pages_ready: ${{ steps.pages.outcome == 'success' }}
     env:
       HAS_CF: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
     steps:
@@ -34,9 +36,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          if git ls-remote --exit-code --heads "$url" arena-data >/dev/null; then
-            git clone --quiet --single-branch --branch arena-data "$url" data
+          # The token is passed per command (never stored in data/.git/config), because
+          # third-party pip/LLM code runs later in this job.
+          url="https://github.com/${GITHUB_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          echo "::add-mask::${auth}"
+          if git -c "http.extraheader=AUTHORIZATION: basic ${auth}" ls-remote --exit-code --heads "$url" arena-data >/dev/null; then
+            git -c "http.extraheader=AUTHORIZATION: basic ${auth}" clone --quiet --single-branch --branch arena-data "$url" data
           else
             git init --quiet -b arena-data data && git -C data remote add origin "$url"
           fi
@@ -52,19 +58,33 @@ jobs:
           # Authorization header) and rejects any other value with 401.
           ZEN_API_KEY: public
         run: |
-          polymarket-benchmark arena resolve --data data || echo "::warning::resolve failed"
-          polymarket-benchmark arena predict --data data || echo "::warning::predict failed (partial results kept)"
+          rows_before=$(cat data/forecasts/*.jsonl 2>/dev/null | wc -l)
+          resolve_rc=0; predict_rc=0
+          polymarket-benchmark arena resolve --data data || resolve_rc=$?
+          [ "$resolve_rc" -eq 0 ] || echo "::warning::resolve failed (rc=$resolve_rc)"
+          polymarket-benchmark arena predict --data data || predict_rc=$?
+          [ "$predict_rc" -eq 0 ] || echo "::warning::predict failed (rc=$predict_rc, partial results kept)"
+          {
+            echo "ARENA_ROWS_BEFORE=$rows_before"
+            echo "ARENA_RESOLVE_RC=$resolve_rc"
+            echo "ARENA_PREDICT_RC=$predict_rc"
+          } >> "$GITHUB_ENV"
       - name: Commit data
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           cd data
           git add -A
           if git diff --cached --quiet; then echo "no new data"; exit 0; fi
           git commit --quiet -m "arena: $(date -u +%Y-%m-%d) run ${GITHUB_RUN_ID}"
           # Runs are serialized by the concurrency group, so a plain push cannot race.
-          git push --quiet origin arena-data
+          auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          echo "::add-mask::${auth}"
+          git -c "http.extraheader=AUTHORIZATION: basic ${auth}" push --quiet origin arena-data
       - name: Build site
         run: polymarket-benchmark arena build --data data --out site
-      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+      - id: pages
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: site
       - name: Deploy to Cloudflare Pages
@@ -76,9 +96,20 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: "4.141.0"
           command: pages deploy site --project-name=forecast-arena --branch=main
+      - name: Fail the run when predict produced nothing
+        # Partial results are kept and deployed above; a run that failed outright is red.
+        run: |
+          rows_after=$(cat data/forecasts/*.jsonl 2>/dev/null | wc -l)
+          echo "forecast rows: before=${ARENA_ROWS_BEFORE} after=${rows_after} resolve_rc=${ARENA_RESOLVE_RC} predict_rc=${ARENA_PREDICT_RC}"
+          if [ "$ARENA_PREDICT_RC" -ne 0 ] && [ "$rows_after" -le "$ARENA_ROWS_BEFORE" ]; then
+            echo "::error::predict failed and produced no new forecast rows"
+            exit 1
+          fi
 
   deploy:
     needs: run
+    # The guard step can fail the run after the site artifact exists; still deploy it.
+    if: ${{ !cancelled() && needs.run.outputs.pages_ready == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
