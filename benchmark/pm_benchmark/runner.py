@@ -38,6 +38,7 @@ class MarketResult:
     error: str | None = None
     skipped_reason: str | None = None
     market_price_yes: float | None = None
+    capped: bool = False
 
 
 @dataclass
@@ -66,6 +67,11 @@ class EvalRun:
     @property
     def completed_count(self) -> int:
         return sum(1 for r in self.market_results if r.error is None and r.skipped_reason is None)
+
+    @property
+    def capped_count(self) -> int:
+        """Markets whose trade was blocked by max_trades_per_market (prediction kept)."""
+        return sum(1 for r in self.market_results if r.capped)
 
     @property
     def error_count(self) -> int:
@@ -257,19 +263,19 @@ class Runner:
         result.model_probability = decision.probability
         result.action = decision.action
         result.confidence = decision.confidence
-        result.amount_usd = decision.amount_usd
+        result.amount_usd = min(decision.amount_usd, position_size)
         result.reasoning = decision.reasoning
 
         # 5. Execute trade
         if decision.action != "skip" and self._agent is not None:
             trades_done = self._market_trade_counts.get(slug, 0)
             if trades_done >= self._config.max_trades_per_market:
-                result.skipped_reason = "Max trades per market reached"
+                result.capped = True
                 result.latency_seconds = time.time() - start
                 return result
             try:
                 outcome = "yes" if decision.action == "buy_yes" else "no"
-                trade = self._agent.buy(slug, outcome, decision.amount_usd)
+                trade = self._agent.buy(slug, outcome, result.amount_usd)
                 result.trade_result = trade
                 self._market_trade_counts[slug] = trades_done + 1
                 self._check_timeout(start)
