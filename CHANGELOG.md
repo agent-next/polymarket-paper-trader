@@ -6,9 +6,9 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ### Fixed
 - **Resolution follows the settlement contract**: when Gamma reports
-  `umaResolutionStatus`, a market pays out only once it is `"resolved"` with
-  exact 0/1 prices; a `"proposed"` or disputed market raises
-  `AmbiguousResolutionError` instead of paying on a 0.99 closing price.
+  `umaResolutionStatus`, a market pays out only once it is `"resolved"`; a
+  `"proposed"` or disputed market raises `AmbiguousResolutionError` instead of
+  paying on a 0.99 closing price.
 - **Limit fills settle atomically**: the fill (cash, trade, position) and the
   order's status/remaining amount commit in one transaction, so a crash can
   no longer re-fill an order whose trade already posted.
