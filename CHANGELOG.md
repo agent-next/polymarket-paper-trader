@@ -4,7 +4,41 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-09-30
+
+### Security
+- **streamable-http** prints a warning when bound to a non-loopback host
+  (the transport is unauthenticated); README and integration docs use
+  `127.0.0.1` and point remote use at an authenticating proxy.
+
 ### Fixed
+- **Dust positions after multi-level sells**: float-sum remainders (e.g.
+  `7e-15` shares) snap to a flat position instead of lingering as "open";
+  limit sells tolerate the same float overshoot at fill time.
+- **Limit order placement validation**: zero, negative and non-finite
+  amounts are rejected; a sell needs an open position that covers its size.
+- **Atomic resolution payout**: `resolve_market` resolves the position and
+  credits the payout in one transaction.
+- **GTD expiry**: `expires_at` is parsed and stored as canonical UTC;
+  offsets were stored verbatim (expiring hours early/late) and non-ISO
+  strings never expired — both are now handled or rejected.
+- **CLI account names** use the MCP validator: `""`, `"."` and surrounding
+  whitespace no longer resolve to the data-dir root. `--limit` must be >= 1.
+- **Fee schedule `takerOnly`** is parsed with the string-aware boolean helper
+  (`"false"` was read as `True`).
+- **Benchmark**: malformed or non-finite numbers in a model decision raise
+  `LLMError` (the retry path) instead of aborting the whole run.
+- **Arena**: entrant ids must be filename-safe slugs (they name badge files).
+- **Leaderboard server**: limit orders take market identity from the live
+  market (never the client's condition id) and pending orders are capped
+  per account; NaN/inf inputs return 422 instead of 500; auto-resolve is
+  atomic and never pays a position twice; the HTML board ranks with the
+  same live positions value as `/leaderboard`; upstream Polymarket failures
+  return the JSON error envelope (404/503).
+- **Leaderboard client**: `AgentError` carries the server's error message
+  and code from FastAPI `detail` envelopes.
+- **CI**: publish refuses a tag that is not on main and every publish job has
+  a timeout; the arena preview runs on every input that changes the board.
 - **Atomic trade writes** (#69): buy/sell (market and limit paths) now land
   the cash update, trade row and position row in ONE transaction — a crash
   between the writes can no longer debit cash without recording the
@@ -13,6 +47,8 @@ All notable changes to `polymarket-paper-trader` are documented here.
   passed the placement gate but cannot afford its fill (another order spent
   the unreserved fee headroom) now rests and retries instead of being
   terminally rejected.
+- **CI**: arena workflow gains a 10:43 UTC backup pass — GitHub delayed the
+  06:17 schedule by ~7h on both 2026-09-28 and 2026-09-29.
 
 ### Changed
 - **Forecast Arena covers ~3x more markets per run**: `TOP_N` 20 -> 60 and
@@ -25,20 +61,6 @@ All notable changes to `polymarket-paper-trader` are documented here.
   day (live-probed 2026-09-29) and settles within hours — the fastest
   possible fill for the board. Pre-registration is unchanged: forecasts
   are still recorded before resolution on the append-only branch.
-
-### Added
-- **Forecast Arena entry path**: `docs/arena.md` (rules, the exact prompt
-  contract, badge embeds) + an "Enter a model in Forecast Arena" issue
-  template; the site's "Add your agent" CTA now points at the guide.
-- **Live rank badges**: every arena build writes `badges/<entrant>.json`
-  (Shields.io endpoint schema, rank-tinted) so entrants can embed a live
-  rank/Brier badge in their own README.
-
-### Fixed
-- **CI**: arena workflow gains a 10:43 UTC backup pass — GitHub delayed the
-  06:17 schedule by ~7h on both 2026-09-28 and 2026-09-29.
-
-### Changed
 - **Forecast Arena prioritises soon-resolving markets**: eligible markets
   ending within 3 days (`PRIORITY_DAYS`) now rank ahead of the rest of the
   1–14 day window (volume descending inside each bucket), so the board fills
@@ -48,6 +70,14 @@ All notable changes to `polymarket-paper-trader` are documented here.
   the Jev `state` built from it) now states `Today's Date (UTC)` before the
   resolution date so models can reason about time left; it still never
   contains a market price.
+
+### Added
+- **Forecast Arena entry path**: `docs/arena.md` (rules, the exact prompt
+  contract, badge embeds) + an "Enter a model in Forecast Arena" issue
+  template; the site's "Add your agent" CTA now points at the guide.
+- **Live rank badges**: every arena build writes `badges/<entrant>.json`
+  (Shields.io endpoint schema, rank-tinted) so entrants can embed a live
+  rank/Brier badge in their own README.
 
 ## [0.4.2] - 2026-09-28
 
