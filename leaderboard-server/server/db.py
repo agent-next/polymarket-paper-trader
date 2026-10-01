@@ -249,6 +249,14 @@ class DB:
         )
         return [dict(r) for r in cur.fetchall()]
 
+    def get_resolved_positions(self, account_id: int) -> list[dict]:
+        cur = self._execute(
+            """SELECT * FROM positions WHERE account_id = ? AND is_resolved = 1
+               ORDER BY resolved_at, id""",
+            (account_id,),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
     def get_all_open_positions(self) -> list[dict]:
         """Get all open positions across all accounts (for auto-resolve job)."""
         cur = self._execute(

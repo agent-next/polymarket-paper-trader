@@ -8,7 +8,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from pm_trader.orderbook import simulate_buy_fill, simulate_sell_fill, calculate_fee
-from pm_trader.analytics import compute_stats, win_rate, sharpe_ratio, max_drawdown
+from pm_trader.analytics import (
+    build_resolutions, compute_stats, win_rate, sharpe_ratio, max_drawdown, Resolution,
+)
 from pm_trader.models import (
     Market, OrderBook, OrderBookLevel, FillResult, Fill,
     Trade, Position, Account, TradeResult,
@@ -63,9 +65,29 @@ def validate_outcome(outcome: str, market: Market) -> str:
     return outcome
 
 
+def resolutions_from_rows(position_rows: list[dict], trades: list[Trade]) -> list[Resolution]:
+    """Resolution events for compute_stats from resolved position rows."""
+    positions = [
+        Position(
+            market_condition_id=r["market_condition_id"],
+            market_slug=r["market_slug"],
+            market_question=r["market_question"],
+            outcome=r["outcome"],
+            shares=float(r["shares"]),
+            avg_entry_price=float(r["avg_entry_price"]),
+            total_cost=float(r["total_cost"]),
+            realized_pnl=float(r["realized_pnl"]),
+            is_resolved=True,
+            resolved_at=r["resolved_at"],
+        )
+        for r in position_rows
+    ]
+    return build_resolutions(positions, trades)
+
+
 __all__ = [
     "simulate_buy_fill", "simulate_sell_fill", "calculate_fee",
-    "compute_stats", "win_rate", "sharpe_ratio", "max_drawdown",
+    "compute_stats", "win_rate", "sharpe_ratio", "max_drawdown", "resolutions_from_rows",
     "Market", "OrderBook", "OrderBookLevel", "FillResult", "Fill",
     "Trade", "Position", "Account", "TradeResult",
     "SimError", "InsufficientBalanceError", "MarketClosedError",
