@@ -1015,12 +1015,11 @@ def _determine_winner(market) -> str:
     """
     prices = dict(zip(market.outcomes, market.outcome_prices))
     status = market.uma_resolution_status
-    if status is not None and status != "resolved":
+    if status is not None and status.strip().lower() != "resolved":
         raise AmbiguousResolutionError(market.slug, prices)
-    threshold = 0.99 if status is None else 1.0
     for i, outcome in enumerate(market.outcomes):
         price = market.outcome_prices[i] if i < len(market.outcome_prices) else 0.0
-        if price >= threshold:
+        if price >= 0.99:
             return outcome.lower()
     raise AmbiguousResolutionError(market.slug, prices)
 
