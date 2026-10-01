@@ -19,6 +19,10 @@ async def lifespan(app: FastAPI):
     """Initialize DB on startup, close on shutdown."""
     db = DB(DATABASE_URL)
     db.init_schema()
+    if DATABASE_URL == ":memory:":
+        logger.warning(
+            "startup: DATABASE_URL is ':memory:'; all data is lost on restart"
+        )
     app.state.db = db
 
     # Polymarket client: set in production startup; tests override with mock
@@ -120,6 +124,10 @@ def ready():
         "polymarket": getattr(app.state, "polymarket", None) is not None,
         "scheduler": getattr(app.state, "scheduler", None) is not None,
     }
+    ephemeral_db = DATABASE_URL == ":memory:"
     if all(checks.values()):
-        return {"status": "ok", **checks}
-    return JSONResponse({"status": "degraded", **checks}, status_code=503)
+        return {"status": "ok", **checks, "ephemeral_db": ephemeral_db}
+    return JSONResponse(
+        {"status": "degraded", **checks, "ephemeral_db": ephemeral_db},
+        status_code=503,
+    )

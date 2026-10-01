@@ -139,6 +139,35 @@ class TestLayer1Discovery:
         assert body["polymarket"] is True
         assert body["scheduler"] is False
 
+    def test_ready_reports_ephemeral_db(self, client, monkeypatch):
+        """ephemeral_db flags an in-memory DB without changing the status code."""
+        resp = client.get("/ready")
+        assert resp.status_code == 503  # scheduler is off in this fixture
+        assert resp.json()["ephemeral_db"] is True
+        monkeypatch.setattr("server.app.DATABASE_URL", "/data/lb.db")
+        assert client.get("/ready").json()["ephemeral_db"] is False
+
+    def test_ready_ok_keeps_200_with_ephemeral_flag(self, client):
+        del client.app.state.scheduler
+        try:
+            with TestClient(client.app):
+                resp = client.get("/ready")
+                assert resp.status_code == 200
+                assert resp.json()["ephemeral_db"] is True
+        finally:
+            client.app.state.scheduler = None
+
+    def test_startup_warns_on_memory_db(self, client, caplog, monkeypatch, tmp_path):
+        caplog.set_level("WARNING", logger="server.app")
+        with TestClient(client.app):
+            pass
+        assert "':memory:'" in caplog.text
+        caplog.clear()
+        monkeypatch.setattr("server.app.DATABASE_URL", str(tmp_path / "lb.db"))
+        with TestClient(client.app):
+            pass
+        assert "':memory:'" not in caplog.text
+
     def test_ready_reports_ok_when_dependencies_healthy(self, client):
         """All dependencies up → /ready returns 200 ok."""
         del client.app.state.scheduler  # let lifespan boot the real scheduler
