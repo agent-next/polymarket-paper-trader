@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from server.db import DB
-from server.adapters.polymarket import compute_stats, Trade, Account
+from server.adapters.polymarket import compute_stats, resolutions_from_rows, Trade, Account
 
 router = APIRouter(prefix="/leaderboard", tags=["leaderboard"])
 
@@ -94,7 +94,9 @@ def _stats_for_account(db: DB, polymarket, account_dict: dict) -> dict | None:
         trades = [_dict_to_trade(t) for t in trade_dicts]
         account = _dict_to_account(account_dict)
         positions_value = _compute_positions_value(db, account_id, polymarket)
-        stats = compute_stats(trades, account, positions_value=positions_value)
+        resolutions = resolutions_from_rows(db.get_resolved_positions(account_id), trades)
+        stats = compute_stats(trades, account, positions_value=positions_value,
+                              resolutions=resolutions)
         return stats
     except Exception:
         return None

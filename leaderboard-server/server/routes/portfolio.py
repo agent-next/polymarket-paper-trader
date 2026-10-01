@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from server.auth import get_current_user
 from server.db import DB
-from server.adapters.polymarket import compute_stats, Trade, Account
+from server.adapters.polymarket import compute_stats, resolutions_from_rows, Trade, Account
 
 
 router = APIRouter(prefix="/accounts", tags=["portfolio"])
@@ -188,5 +188,7 @@ def get_stats(
     trade_objs = [_dict_to_trade(t) for t in trade_dicts]
     account_obj = _dict_to_account(account)
 
-    stats = compute_stats(trade_objs, account_obj, positions_value=positions_value)
+    resolutions = resolutions_from_rows(db.get_resolved_positions(account_id), trade_objs)
+    stats = compute_stats(trade_objs, account_obj, positions_value=positions_value,
+                          resolutions=resolutions)
     return _ok(stats)
