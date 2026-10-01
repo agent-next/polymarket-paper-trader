@@ -21,6 +21,7 @@ from pm_trader.models import (
 )
 
 from pm_trader import mcp_server
+from tests.conftest import seed_trades
 from pm_trader.mcp_server import (
     backtest,
     buy,
@@ -202,6 +203,13 @@ class TestStats:
         assert result["ok"] is True
         assert result["data"]["total_trades"] == 0
         assert result["data"]["win_rate"] == 0.0
+
+
+    def test_counts_more_than_10k_trades(self):
+        init_account()
+        from pm_trader.mcp_server import _get_engine
+        seed_trades(_get_engine().db, 10_005)
+        assert _parse(stats())["data"]["total_trades"] == 10_005
 
 
 class TestStatsCard:

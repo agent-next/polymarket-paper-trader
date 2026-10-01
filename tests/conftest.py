@@ -82,3 +82,34 @@ def sample_order_book() -> OrderBook:
             OrderBookLevel(price=0.70, size=400.0),
         ],
     )
+
+
+def seed_trades(db, total: int) -> None:
+    """Fill ``db`` with ``total`` trades by repeatedly doubling one seeded row."""
+    db.insert_trade(
+        market_condition_id="0xbulk",
+        market_slug="bulk",
+        market_question="Bulk?",
+        outcome="yes",
+        side="buy",
+        order_type="fok",
+        avg_price=0.5,
+        amount_usd=1.0,
+        shares=2.0,
+        fee_rate_bps=0,
+        fee=0.0,
+        slippage=0.0,
+        levels_filled=1,
+        is_partial=False,
+    )
+    cols = ", ".join(
+        r["name"] for r in db.conn.execute("PRAGMA table_info(trades)") if r["name"] != "id"
+    )
+    count = 1
+    while count < total:
+        take = min(count, total - count)
+        db.conn.execute(
+            f"INSERT INTO trades ({cols}) SELECT {cols} FROM trades LIMIT ?", (take,)
+        )
+        count += take
+    db.conn.commit()

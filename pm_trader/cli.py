@@ -416,7 +416,7 @@ def stats(ctx: click.Context, card: bool, plain: bool, tweet: bool) -> None:
     engine = _get_engine(ctx)
     try:
         account = engine.get_account()
-        trades = engine.get_history(limit=10_000)
+        trades = engine.get_all_trades()
         portfolio = engine.get_portfolio()
         positions_value = sum(p["current_value"] for p in portfolio)
         result = compute_stats(trades, account, positions_value)
@@ -447,7 +447,7 @@ def leaderboard(ctx: click.Context) -> None:
     engine = _get_engine(ctx)
     try:
         account = engine.get_account()
-        trades = engine.get_history(limit=10_000)
+        trades = engine.get_all_trades()
         portfolio = engine.get_portfolio()
         positions_value = sum(p["current_value"] for p in portfolio)
         result = compute_stats(trades, account, positions_value)
@@ -497,7 +497,7 @@ def pk(ctx: click.Context, account_a: str, account_b: str) -> None:
             engine = Engine(data_dir)
             try:
                 account = engine.get_account()
-                trades = engine.get_history(limit=10_000)
+                trades = engine.get_all_trades()
                 portfolio = engine.get_portfolio()
                 positions_value = sum(p["current_value"] for p in portfolio)
                 results[name] = compute_stats(trades, account, positions_value)

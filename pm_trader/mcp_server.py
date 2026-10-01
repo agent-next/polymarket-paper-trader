@@ -553,7 +553,7 @@ def stats(account: str = "default") -> str:
         from pm_trader.analytics import compute_stats
 
         acct = engine.get_account()
-        trades = engine.db.get_trades(limit=10_000)
+        trades = engine.db.get_all_trades()
         portfolio_items = engine.get_portfolio()
         positions_value = sum(p["current_value"] for p in portfolio_items)
 
@@ -577,7 +577,7 @@ def stats_card(account: str = "default", format: str = "markdown") -> str:
         from pm_trader.card import generate_card, generate_card_plain, generate_tweet
 
         acct = engine.get_account()
-        trades = engine.db.get_trades(limit=10_000)
+        trades = engine.db.get_all_trades()
         portfolio_items = engine.get_portfolio()
         positions_value = sum(p["current_value"] for p in portfolio_items)
 
@@ -606,7 +606,7 @@ def leaderboard_entry(account: str = "default") -> str:
         from pm_trader.analytics import compute_stats
 
         acct = engine.get_account()
-        trades = engine.db.get_trades(limit=10_000)
+        trades = engine.db.get_all_trades()
         portfolio_items = engine.get_portfolio()
         positions_value = sum(p["current_value"] for p in portfolio_items)
         result = compute_stats(trades, acct, positions_value)
@@ -660,7 +660,7 @@ def share_content(
 
         engine = _get_engine(account)
         acct = engine.get_account()
-        trades = engine.db.get_trades(limit=10_000)
+        trades = engine.db.get_all_trades()
         portfolio_items = engine.get_portfolio()
         positions_value = sum(p["current_value"] for p in portfolio_items)
         result = compute_stats(trades, acct, positions_value)
@@ -696,7 +696,7 @@ def pk_card(account_a: str = "default", account_b: str = "aggressive") -> str:
         for name in (account_a, account_b):
             engine = _get_engine(name)
             acct = engine.get_account()
-            trades = engine.db.get_trades(limit=10_000)
+            trades = engine.db.get_all_trades()
             portfolio_items = engine.get_portfolio()
             positions_value = sum(p["current_value"] for p in portfolio_items)
             results[name] = compute_stats(trades, acct, positions_value)
@@ -747,7 +747,7 @@ def leaderboard_card(accounts: str = "") -> str:
             try:
                 engine = _get_engine(name)
                 acct = engine.get_account()
-                trades = engine.db.get_trades(limit=10_000)
+                trades = engine.db.get_all_trades()
                 portfolio_items = engine.get_portfolio()
                 positions_value = sum(p["current_value"] for p in portfolio_items)
                 result = compute_stats(trades, acct, positions_value)
