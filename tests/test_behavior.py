@@ -1205,3 +1205,69 @@ class TestCancelOrdersForMarket:
         cancelled = cancel_orders_for_market(acct.db.conn, "0xm")
         assert [o.status for o in cancelled] == ["cancelled"]
         assert get_pending_orders(acct.db.conn) == []
+
+
+# ---------------------------------------------------------------------------
+# Resolution payouts in analytics (resolve_market writes no trade row)
+# ---------------------------------------------------------------------------
+
+
+class TestResolutionAnalytics:
+    """Win rate and the equity curve must count resolution payouts."""
+
+    def _stats(self, acct):
+        from pm_trader.analytics import compute_stats
+        return compute_stats(
+            acct.get_all_trades(), acct.get_account(), 0.0,
+            resolutions=acct.get_resolutions(),
+        )
+
+    def test_buy_then_win_counts_as_win_and_equity_ends_at_payout(self, acct):
+        from pm_trader.analytics import _daily_equity_curve
+        _mock(acct)
+        acct.buy("test-market", "yes", 100.0)
+        acct.api.get_market = MagicMock(
+            return_value=_market(closed=True, outcome_prices=[1.0, 0.0])
+        )
+        result = acct.resolve_market("test-market")[0]
+
+        stats = self._stats(acct)
+        assert stats["win_rate"] == 1.0
+        assert stats["total_value"] == pytest.approx(acct.get_account().cash)
+        assert stats["pnl"] == pytest.approx(result.payout - 100.0)
+        curve = _daily_equity_curve(
+            sorted(acct.get_all_trades(), key=lambda t: t.id),
+            10_000.0, acct.get_resolutions(),
+        )
+        assert curve[-1] == pytest.approx(acct.get_account().cash)
+        # Without the resolution the curve still marks the dead shares
+        plain = _daily_equity_curve(acct.get_all_trades(), 10_000.0)
+        assert plain[-1] == pytest.approx(10_000.0)
+
+    def test_buy_then_lose_drawdown_reflects_the_loss(self, acct):
+        _mock(acct)
+        acct.buy("test-market", "no", 100.0)
+        acct.api.get_market = MagicMock(
+            return_value=_market(closed=True, outcome_prices=[1.0, 0.0])
+        )
+        acct.resolve_market("test-market")
+
+        stats = self._stats(acct)
+        assert stats["win_rate"] == 0.0
+        assert stats["max_drawdown"] == pytest.approx(0.01)
+        assert stats["pnl"] == pytest.approx(-100.0)
+
+    def test_sell_then_resolve_rest_counts_both_closings(self, acct):
+        _mock(acct)
+        buy = acct.buy("test-market", "yes", 100.0)
+        acct.sell("test-market", "yes", buy.trade.shares / 2)
+        acct.api.get_market = MagicMock(
+            return_value=_market(closed=True, outcome_prices=[0.0, 1.0])
+        )
+        acct.resolve_market("test-market")
+
+        (res,) = acct.get_resolutions()
+        assert res.shares == pytest.approx(buy.trade.shares / 2)
+        assert res.payout == 0.0
+        # Sell lost on spread (0.64 bid vs 0.66 ask), resolution lost: 0 / 2
+        assert self._stats(acct)["win_rate"] == 0.0

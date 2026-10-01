@@ -99,7 +99,9 @@ def run_strategy(
         trades = engine.get_all_trades()
         portfolio = engine.get_portfolio()
         positions_value = sum(p["current_value"] for p in portfolio)
-        stats = compute_stats(trades, account, positions_value)
+        stats = compute_stats(
+            trades, account, positions_value, resolutions=engine.get_resolutions(),
+        )
 
         return {
             "strategy": strategy_path,
@@ -129,7 +131,9 @@ def compare_accounts(
             trades = engine.get_all_trades()
             portfolio = engine.get_portfolio()
             positions_value = sum(p["current_value"] for p in portfolio)
-            stats = compute_stats(trades, account, positions_value)
+            stats = compute_stats(
+                trades, account, positions_value, resolutions=engine.get_resolutions(),
+            )
             results.append({"account": name, **stats})
         finally:
             engine.close()

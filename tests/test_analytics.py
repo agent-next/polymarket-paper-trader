@@ -8,6 +8,8 @@ from datetime import datetime
 import pytest
 
 from pm_trader.analytics import (
+    Resolution,
+    build_resolutions,
     _daily_equity_curve,
     _daily_pnl,
     _parse_trade_datetime,
@@ -17,7 +19,7 @@ from pm_trader.analytics import (
     sharpe_ratio,
     win_rate,
 )
-from pm_trader.models import Account, Trade
+from pm_trader.models import Account, Position, Trade
 
 
 # ---------------------------------------------------------------------------
@@ -428,3 +430,98 @@ class TestAnalyticsInternals:
         # Non-padded month/day fail fromisoformat but match strptime's %m/%d.
         dt = _parse_trade_datetime("2026-1-1 10:00:00")
         assert (dt.year, dt.month, dt.day) == (2026, 1, 1)
+
+
+# ---------------------------------------------------------------------------
+# Resolutions
+# ---------------------------------------------------------------------------
+
+
+def _position(**kw) -> Position:
+    base = dict(
+        market_condition_id="0xabc", market_slug="test-market",
+        market_question="Test?", outcome="yes", shares=0.0,
+        avg_entry_price=0.6, total_cost=60.0, realized_pnl=40.0,
+        is_resolved=True, resolved_at="2026-01-16 12:00:00",
+    )
+    base.update(kw)
+    return Position(**base)
+
+
+class TestBuildResolutions:
+    def test_winner_payout_rebuilt_from_realized_pnl(self):
+        trades = [_trade(id=1, amount_usd=60.0, shares=100.0)]
+        (res,) = build_resolutions([_position()], trades)
+        assert res.shares == 100.0
+        assert res.payout == pytest.approx(100.0)
+        assert res.total_cost == 60.0
+
+    def test_loser_payout_is_zero(self):
+        trades = [_trade(id=1, amount_usd=60.0, shares=100.0)]
+        (res,) = build_resolutions([_position(realized_pnl=-60.0)], trades)
+        assert res.payout == 0.0
+
+    def test_prior_sell_realized_is_excluded(self):
+        trades = [
+            _trade(id=1, amount_usd=60.0, shares=100.0, created_at="2026-01-15 10:00:00"),
+            _trade(id=2, side="sell", amount_usd=35.0, shares=50.0, avg_price=0.7,
+                   created_at="2026-01-15 11:00:00"),
+        ]
+        # sell realized 35 - 30 = 5; winner resolution of the other 50 shares
+        pos = _position(total_cost=30.0, realized_pnl=5.0 + (50.0 - 30.0))
+        (res,) = build_resolutions([pos], trades)
+        assert res.shares == pytest.approx(50.0)
+        assert res.payout == pytest.approx(50.0)
+
+    def test_fully_sold_or_tradeless_positions_are_skipped(self):
+        trades = [
+            _trade(id=1, amount_usd=60.0, shares=100.0),
+            _trade(id=2, side="sell", amount_usd=70.0, shares=100.0),
+            _trade(id=3, side="sell", amount_usd=1.0, shares=1.0, outcome="no"),
+        ]
+        assert build_resolutions([_position(), _position(outcome="no")], trades) == []
+
+    def test_missing_resolved_at_and_ordering(self):
+        trades = [
+            _trade(id=1, market_condition_id="0xa"),
+            _trade(id=2, market_condition_id="0xb"),
+        ]
+        late = _position(market_condition_id="0xa", resolved_at="2026-02-01 00:00:00")
+        undated = _position(market_condition_id="0xb", resolved_at=None)
+        out = build_resolutions([late, undated], trades)
+        assert [r.market_condition_id for r in out] == ["0xb", "0xa"]
+        assert out[0].resolved_at == ""
+
+
+class TestResolutionStats:
+    def _res(self, payout: float, day: str = "2026-01-16 12:00:00") -> Resolution:
+        return Resolution("0xabc", "yes", 100.0, 60.0, payout, day)
+
+    def test_win_rate_counts_resolutions_with_sells(self):
+        trades = [
+            _trade(id=1, created_at="2026-01-15 10:00:00"),
+            _trade(id=2, side="sell", amount_usd=70.0, shares=50.0, avg_price=0.7,
+                   created_at="2026-01-15 11:00:00"),
+        ]
+        assert win_rate(trades) == 1.0
+        assert win_rate(trades, [self._res(0.0)]) == 0.5
+
+    def test_win_rate_resolution_only(self):
+        assert win_rate([], [self._res(100.0), self._res(0.0)]) == 0.5
+
+    def test_equity_curve_credits_payout_on_resolution_day(self):
+        trades = [_trade(id=1, created_at="2026-01-15 10:00:00")]
+        curve = _daily_equity_curve(trades, 10_000, [self._res(100.0)])
+        assert curve == [10_000, 10_000.0, 10_040.0]
+
+    def test_loss_resolution_drives_drawdown_and_sharpe_input(self):
+        trades = [_trade(id=1, created_at="2026-01-15 10:00:00")]
+        assert max_drawdown(trades, 10_000, [self._res(0.0)]) == pytest.approx(0.006)
+        assert sharpe_ratio(trades, 10_000, resolutions=[self._res(0.0)]) < 0
+
+    def test_compute_stats_accepts_resolutions(self):
+        trades = [_trade(id=1, created_at="2026-01-15 10:00:00")]
+        stats = compute_stats(
+            trades, _account(cash=10_040.0), 0.0, resolutions=[self._res(100.0)],
+        )
+        assert stats["win_rate"] == 1.0

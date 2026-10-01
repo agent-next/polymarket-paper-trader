@@ -284,6 +284,14 @@ class Database:
         ).fetchall()
         return [_row_to_position(row) for row in rows]
 
+    def get_resolved_positions(self) -> list[Position]:
+        """Return all resolved positions, oldest resolution first."""
+        rows = self.conn.execute(
+            "SELECT * FROM positions WHERE is_resolved = 1 "
+            "ORDER BY resolved_at, rowid"
+        ).fetchall()
+        return [_row_to_position(row) for row in rows]
+
     def get_positions_for_market(self, market_condition_id: str) -> list[Position]:
         """Return all positions for a given market (YES and NO)."""
         rows = self.conn.execute(

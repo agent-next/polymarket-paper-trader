@@ -188,7 +188,10 @@ def run_backtest(
             )
             for pos in engine.db.get_open_positions()
         )
-        stats = compute_stats(trades, account, positions_value=positions_value)
+        stats = compute_stats(
+            trades, account, positions_value=positions_value,
+            resolutions=engine.get_resolutions(),
+        )
         pnl = stats["pnl"]
         roi_pct = stats["roi_pct"]
 
