@@ -1115,10 +1115,19 @@ class TestResolutionStatus:
         acct.api.get_market = MagicMock(return_value=m)
         assert acct.resolve_market("test-market")[0].payout > 0
 
-    def test_resolved_status_requires_exact_price(self, acct):
+    @pytest.mark.parametrize("status", ["resolved", "Resolved", " RESOLVED "])
+    def test_resolved_status_tolerates_near_one_price_and_case(self, acct, status):
         _mock(acct)
         acct.buy("test-market", "yes", 50.0)
-        m = _market(closed=True, outcome_prices=[0.99, 0.01])
+        m = _market(closed=True, outcome_prices=[0.9995, 0.0005])
+        m.uma_resolution_status = status
+        acct.api.get_market = MagicMock(return_value=m)
+        assert acct.resolve_market("test-market")[0].payout > 0
+
+    def test_resolved_status_without_a_winner_is_ambiguous(self, acct):
+        _mock(acct)
+        acct.buy("test-market", "yes", 50.0)
+        m = _market(closed=True, outcome_prices=[0.5, 0.5])
         m.uma_resolution_status = "resolved"
         acct.api.get_market = MagicMock(return_value=m)
         with pytest.raises(AmbiguousResolutionError):
