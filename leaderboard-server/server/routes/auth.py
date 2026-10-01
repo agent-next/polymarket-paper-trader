@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from server.auth import get_current_user
 from server.db import DB
+from server.ratelimit import rate_limit
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -42,7 +43,7 @@ class UpdateModelRequest(BaseModel):
         return v.strip()
 
 
-@router.post("/register")
+@router.post("/register", dependencies=[Depends(rate_limit("register"))])
 def register(req: RegisterRequest, db: DB = Depends(get_db)):
     try:
         user = db.create_user(req.agent_name, model=req.model)

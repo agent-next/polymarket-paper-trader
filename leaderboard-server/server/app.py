@@ -8,8 +8,9 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from server.config import DATABASE_URL
+from server.config import DATABASE_URL, RATE_LIMIT_PER_MIN, TRUST_PROXY
 from server.db import DB
+from server.ratelimit import RateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ async def lifespan(app: FastAPI):
             "startup: DATABASE_URL is ':memory:'; all data is lost on restart"
         )
     app.state.db = db
+    app.state.rate_limiter = RateLimiter(RATE_LIMIT_PER_MIN, trust_proxy=TRUST_PROXY)
 
     # Polymarket client: set in production startup; tests override with mock
     if not hasattr(app.state, "polymarket"):
