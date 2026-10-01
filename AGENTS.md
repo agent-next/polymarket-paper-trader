@@ -50,7 +50,7 @@ Narrow variant: run the same pytest command inside the one package directory you
 
 ## Project state (2026-09-25)
 
-Current release: **v0.4.3** (PyPI + ClawHub + GitHub Releases, all `latest`). The client is
+Current release: **v0.4.4** (PyPI + ClawHub + GitHub Releases, all `latest`). The client is
 aligned with the current official API surface (Gamma keyset pagination, CLOB market data,
 Data API v2 price history) and the fee simulation follows the official per-match curve.
 Live e2e tests run weekly on CI (`live.yml`) and include bias assertions: simulated fills
@@ -67,7 +67,9 @@ the skill (`trading_playbook` prompt/resource), streamable-HTTP transport (no
 `backtest`/`pk_battle` over HTTP), Dockerfile, Jev strategy, outsider install gate ·
 v0.4.2 fee-basis and cost-basis fixes, account-path and backtest hardening, MCP error
 envelopes, leaderboard `/ready` · v0.4.3 audit fixes: atomic trade and resolution writes,
-limit-order validation, GTD UTC expiry, leaderboard-server order identity and upstream errors.
+limit-order validation, GTD UTC expiry, leaderboard-server order identity and upstream errors ·
+v0.4.4 UMA-status resolution, atomic limit fills, uncapped analytics, backtest mark-to-market,
+atomic leaderboard trades, honest-red arena CI.
 
 ## Verified upstream contract facts (live-probed; the docs disagree)
 
