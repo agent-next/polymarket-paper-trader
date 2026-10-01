@@ -205,6 +205,34 @@ class TestRunBacktest:
         # Should have spent some cash on the buy
         assert result.ending_cash < 10_000.0
 
+    def test_open_position_marked_at_last_snapshot(self):
+        snapshots = [
+            PriceSnapshot("2026-01-01T00:00:00Z", "mkt", "yes", 0.60),
+            PriceSnapshot("2026-01-01T01:00:00Z", "mkt", "yes", 0.80),
+        ]
+        result = run_backtest(snapshots, trading_strategy, "mark", balance=10_000.0)
+
+        spent = 10_000.0 - result.ending_cash
+        shares = 100.0 / 0.61  # filled at the synthetic ask (0.60 + 0.01)
+        assert spent == pytest.approx(100.0)
+        assert result.pnl == pytest.approx(result.ending_cash + shares * 0.80 - 10_000.0, abs=0.05)
+        assert result.pnl > 0
+        assert result.roi_pct == pytest.approx(result.pnl / 10_000.0 * 100)
+
+    def test_open_position_without_snapshot_valued_at_cost(self):
+        def buy_unseen(engine, snapshot, prices):
+            if engine.get_portfolio():
+                return
+            engine.api.get_market = MagicMock(
+                return_value=_make_market("other", "yes", snapshot.midpoint)
+            )
+            engine.buy("other", "yes", 100.0)
+
+        snapshots = [PriceSnapshot("2026-01-01T00:00:00Z", "mkt", "yes", 0.60)]
+        result = run_backtest(snapshots, buy_unseen, "unseen", balance=10_000.0)
+        assert result.total_trades == 1
+        assert result.pnl == pytest.approx(0.0, abs=1e-6)
+
     def test_trading_strategy_multiple_snapshots(self):
         """Verify closures capture correct midpoint per snapshot."""
         snapshots = [

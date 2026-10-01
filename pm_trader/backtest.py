@@ -39,7 +39,7 @@ class BacktestResult:
 
     strategy: str
     starting_balance: float
-    ending_cash: float
+    ending_cash: float  # cash only; open positions are valued in pnl/roi_pct
     total_trades: int
     pnl: float
     roi_pct: float
@@ -180,10 +180,17 @@ def run_backtest(
         trades = engine.db.get_trades(limit=100_000)
         total_trades = len(trades)
         ending_cash = account.cash
-        pnl = ending_cash - balance
-        roi_pct = (pnl / balance) * 100 if balance > 0 else 0.0
 
-        stats = compute_stats(trades, account, positions_value=0.0)
+        # Mark open positions at the last snapshot price (cost basis if unseen)
+        positions_value = sum(
+            pos.current_value(
+                prices.get(f"{pos.market_slug}:{pos.outcome}", pos.avg_entry_price)
+            )
+            for pos in engine.db.get_open_positions()
+        )
+        stats = compute_stats(trades, account, positions_value=positions_value)
+        pnl = stats["pnl"]
+        roi_pct = stats["roi_pct"]
 
         result = BacktestResult(
             strategy=strategy_name,
