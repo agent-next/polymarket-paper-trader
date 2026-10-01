@@ -24,6 +24,18 @@ def _err(error: str, code: str = "ERROR") -> str:
     return json.dumps({"ok": False, "error": error, "code": code}, indent=2)
 
 
+_AGENT_STAT_KEYS = ("roi_pct", "sharpe_ratio", "win_rate", "max_drawdown")
+
+
+def _legacy_agent_stats(data: dict) -> dict:
+    """Agent stats from a report written before ``agent_stats`` was persisted.
+
+    Those reports only carry the scored values under ``scores``.
+    """
+    scores = data.get("scores") or {}
+    return {k: scores[k] for k in _AGENT_STAT_KEYS if k in scores}
+
+
 def _load_eval_run(data: dict) -> EvalRun:
     """Deserialize an EvalRun from a JSON report dict."""
     eval_run = EvalRun(
@@ -34,7 +46,7 @@ def _load_eval_run(data: dict) -> EvalRun:
     )
     for r in data.get("market_results", []):
         eval_run.market_results.append(MarketResult(**r))
-    eval_run.agent_stats = data.get("agent_stats") or {}
+    eval_run.agent_stats = data.get("agent_stats") or _legacy_agent_stats(data)
     eval_run.agent_stats_error = data.get("summary", {}).get("agent_stats_error")
     return eval_run
 

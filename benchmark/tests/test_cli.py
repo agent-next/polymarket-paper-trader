@@ -314,6 +314,30 @@ class TestScoreCmd:
         assert data["composite_score"] == scores.composite_score
         assert data["roi_pct"] == 12.0
 
+    def test_score_legacy_report_reads_stats_from_scores(self, cli_runner, tmp_path):
+        from pm_benchmark.report import generate_json_report
+        from pm_benchmark.scoring import score_run
+
+        run = EvalRun(model="test", market_set="mini", budget=10000.0)
+        run.market_results = [MarketResult(
+            slug="m1", question="Q?", model_probability=0.6, action="buy_yes",
+            amount_usd=100.0, trade_result={"shares": 10}, market_price_yes=0.65,
+        )]
+        run.agent_stats = {
+            "roi_pct": 12.0, "sharpe_ratio": 1.5,
+            "win_rate": 0.6, "max_drawdown": 0.05,
+        }
+        scores = score_run(run)
+        report = json.loads(generate_json_report(run, scores))
+        del report["agent_stats"]  # written before agent_stats was persisted
+        path = tmp_path / "legacy.json"
+        path.write_text(json.dumps(report))
+
+        result = cli_runner.invoke(main, ["score", "--results", str(path)])
+        data = json.loads(result.output)["data"]
+        assert data["roi_pct"] == 12.0
+        assert data["composite_score"] == scores.composite_score
+
     def test_score_with_resolved(self, cli_runner, tmp_path):
         results_path = tmp_path / "run.json"
         self._write_results(results_path)
