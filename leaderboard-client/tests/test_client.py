@@ -55,8 +55,22 @@ class TestConstruction:
         respx.post(f"{BASE}/accounts").mock(
             return_value=httpx.Response(200, json={"ok": False, "error": "no account"})
         )
-        with pytest.raises(AgentError, match="no account"):
+        with pytest.raises(AgentError, match="no account") as e:
             Agent(BASE, name="bot")
+        assert e.value.api_key == "lb_sk_x"
+
+    @respx.mock
+    def test_account_creation_retried_once(self):
+        respx.post(f"{BASE}/auth/register").mock(
+            return_value=_ok({"api_key": "lb_sk_x", "agent_name": "bot"})
+        )
+        route = respx.post(f"{BASE}/accounts").mock(
+            side_effect=[httpx.ConnectError("down"), _ok({"id": 9})]
+        )
+        agent = Agent(BASE, name="bot")
+        assert route.call_count == 2
+        assert agent.account_id == 9
+        assert agent.api_key == "lb_sk_x"
 
 
 class TestReconnect:
