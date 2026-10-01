@@ -71,6 +71,9 @@ class DB:
     def transaction(self) -> Iterator[None]:
         """Run several writes atomically; serialised across threads by a process lock."""
         with self._lock:
+            if self._in_tx:  # nested: join the outer transaction
+                yield
+                return
             self._in_tx = True
             try:
                 yield
@@ -259,19 +262,19 @@ class DB:
 
         Returns None (and credits nothing) if it was already resolved.
         """
-        cur = self._execute("""
-            UPDATE positions SET is_resolved = 1, resolved_at = CURRENT_TIMESTAMP,
-                realized_pnl = realized_pnl + ?
-            WHERE id = ? AND is_resolved = 0
-            RETURNING *
-        """, (payout, position_id))
-        row = cur.fetchone()
-        if row is not None:
-            self._execute(
-                "UPDATE accounts SET cash = cash + ? WHERE id = ?",
-                (credit, row["account_id"]),
-            )
-        self._commit()
+        with self.transaction():
+            cur = self._execute("""
+                UPDATE positions SET is_resolved = 1, resolved_at = CURRENT_TIMESTAMP,
+                    realized_pnl = realized_pnl + ?
+                WHERE id = ? AND is_resolved = 0
+                RETURNING *
+            """, (payout, position_id))
+            row = cur.fetchone()
+            if row is not None:
+                self._execute(
+                    "UPDATE accounts SET cash = cash + ? WHERE id = ?",
+                    (credit, row["account_id"]),
+                )
         return dict(row) if row else None
 
     # -- Book snapshots --
