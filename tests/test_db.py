@@ -8,6 +8,7 @@ import pytest
 
 from pm_trader.db import Database
 from pm_trader.models import Account, Position, Trade
+from tests.conftest import seed_trades
 
 
 @pytest.fixture
@@ -291,6 +292,13 @@ class TestTrades:
         trades = db.get_trades(limit=3)
         assert len(trades) == 3
         assert trades[0].id == 10
+
+    def test_get_all_trades_is_uncapped_newest_first(self, db: Database) -> None:
+        seed_trades(db, 10_050)
+        trades = db.get_all_trades()
+        assert len(trades) == 10_050
+        assert trades[0].id == 10_050
+        assert trades[-1].id == 1
 
     def test_get_trades_empty(self, db: Database) -> None:
         assert db.get_trades() == []

@@ -13,6 +13,7 @@ import pytest
 from pm_trader.db import Database
 from pm_trader.engine import Engine
 from pm_trader.orderbook import simulate_buy_fill
+from tests.conftest import seed_trades
 from pm_trader.models import (
     ApiError,
     FillResult,
@@ -433,6 +434,14 @@ class TestBalance:
 
 
 class TestHistory:
+    def test_get_all_trades_uncapped(self, initialized_engine: Engine):
+        seed_trades(initialized_engine.db, 10_005)
+        assert len(initialized_engine.get_all_trades()) == 10_005
+
+    def test_get_all_trades_not_initialized(self, engine: Engine):
+        with pytest.raises(NotInitializedError):
+            engine.get_all_trades()
+
     def test_empty_history(self, initialized_engine: Engine):
         trades = initialized_engine.get_history()
         assert trades == []

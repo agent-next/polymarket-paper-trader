@@ -527,6 +527,11 @@ class Engine:
         self._require_account()
         return self.db.get_trades(limit)
 
+    def get_all_trades(self) -> list[Trade]:
+        """Return every trade, uncapped (for analytics)."""
+        self._require_account()
+        return self.db.get_all_trades()
+
     # ------------------------------------------------------------------
     # Limit orders (GTC / GTD)
     # ------------------------------------------------------------------

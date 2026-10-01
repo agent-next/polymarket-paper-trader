@@ -225,6 +225,11 @@ class Database:
         ).fetchall()
         return [_row_to_trade(row) for row in rows]
 
+    def get_all_trades(self) -> list[Trade]:
+        """Return every trade, newest first (uncapped, for analytics)."""
+        rows = self.conn.execute("SELECT * FROM trades ORDER BY id DESC").fetchall()
+        return [_row_to_trade(row) for row in rows]
+
     # ------------------------------------------------------------------
     # Positions
     # ------------------------------------------------------------------

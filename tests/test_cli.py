@@ -10,6 +10,8 @@ import click.testing
 import pytest
 
 from pm_trader.cli import main
+from pm_trader.engine import Engine
+from tests.conftest import seed_trades
 from pm_trader.models import (
     Market,
     OrderBook,
@@ -402,6 +404,14 @@ class TestStatsCommand:
         data = _parse(result)
         assert data["ok"] is True
         assert data["data"]["total_trades"] == 0
+
+    def test_stats_counts_more_than_10k_trades(self, runner, data_dir):
+        _invoke(runner, ["init"], data_dir)
+        engine = Engine(data_dir / "default")
+        seed_trades(engine.db, 10_005)
+        engine.close()
+        data = _parse(_invoke(runner, ["stats"], data_dir))
+        assert data["data"]["total_trades"] == 10_005
 
     def test_stats_not_initialized(self, runner, data_dir):
         result = _invoke(runner, ["stats"], data_dir)
