@@ -4,6 +4,41 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- **Resolution follows the settlement contract**: when Gamma reports
+  `umaResolutionStatus`, a market pays out only once it is `"resolved"` with
+  exact 0/1 prices; a `"proposed"` or disputed market raises
+  `AmbiguousResolutionError` instead of paying on a 0.99 closing price.
+- **Limit fills settle atomically**: the fill (cash, trade, position) and the
+  order's status/remaining amount commit in one transaction, so a crash can
+  no longer re-fill an order whose trade already posted.
+- **Resolution cancels resting orders** on the resolved market (releasing
+  their cash reservation), in the same transaction as the payouts.
+- **MCP errors** from the market/order-book/init tools go through the shared
+  sanitizer: non-domain exceptions return "Internal error" instead of raw text.
+- **`search_markets`** honours `limit` when events expand to several markets.
+- **Analytics read the full history**: stats, leaderboard, cards, benchmark
+  and compare no longer truncate at 10,000 trades.
+- **Backtest** values open positions at the last snapshot price in P&L and
+  ROI, and reports strategy errors (`strategy_errors`, `last_error`) instead
+  of silently returning zero trades.
+- **Benchmark**: the YES price is located by outcome label; agent-stats
+  failures are recorded (`agent_stats_error`) and agent stats survive
+  `score`/`backfill` round trips (older reports fall back to their scored
+  values).
+- **Arena**: `price_ts` is stamped after the price fetch; the backup run
+  retries markets an entrant only skipped earlier the same day.
+- **Leaderboard server**: trades and limit fills are atomic under a
+  connection lock with conditional cash updates (no double spend), position
+  resolution is one transaction, registration conflicts are narrowed to the
+  unique-name case, names are length-capped, and a missing API key is 401.
+- **Leaderboard client**: a failed account creation after registration
+  keeps the API key on the error and retries with find-or-create.
+- **CI**: the arena run fails honestly when predict errors or every attempted
+  forecast was skipped (deploy still runs); its push token is no longer stored
+  in the data clone's git config; the MCP registry job requires the version
+  to be on PyPI first.
+
 ## [0.4.3] - 2026-09-30
 
 ### Security
