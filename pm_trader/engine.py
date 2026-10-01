@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
+from pm_trader.analytics import Resolution, build_resolutions
 from pm_trader.api import PolymarketClient
 from pm_trader.db import Database
 from pm_trader.models import (
@@ -496,6 +497,12 @@ class Engine:
     def _available_cash(self) -> float:
         """Cash not reserved by open buy limit orders (clamped at 0)."""
         return max(0.0, self._require_account().cash - self._reserved_buy_notional())
+
+    def get_resolutions(self) -> list[Resolution]:
+        """Resolution events for analytics (resolve_market writes no trade)."""
+        return build_resolutions(
+            self.db.get_resolved_positions(), self.db.get_all_trades(),
+        )
 
     def get_balance(self) -> dict:
         """Return cash, reserved/available cash, positions value, and total.

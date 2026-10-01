@@ -419,7 +419,9 @@ def stats(ctx: click.Context, card: bool, plain: bool, tweet: bool) -> None:
         trades = engine.get_all_trades()
         portfolio = engine.get_portfolio()
         positions_value = sum(p["current_value"] for p in portfolio)
-        result = compute_stats(trades, account, positions_value)
+        result = compute_stats(
+            trades, account, positions_value, resolutions=engine.get_resolutions(),
+        )
         if tweet or card or plain:
             from pm_trader.card import generate_card, generate_card_plain, generate_tweet
             account_name = ctx.obj["account"]
@@ -450,7 +452,9 @@ def leaderboard(ctx: click.Context) -> None:
         trades = engine.get_all_trades()
         portfolio = engine.get_portfolio()
         positions_value = sum(p["current_value"] for p in portfolio)
-        result = compute_stats(trades, account, positions_value)
+        result = compute_stats(
+            trades, account, positions_value, resolutions=engine.get_resolutions(),
+        )
 
         first_trade = trades[-1].created_at if trades else None
         last_trade = trades[0].created_at if trades else None
@@ -500,7 +504,9 @@ def pk(ctx: click.Context, account_a: str, account_b: str) -> None:
                 trades = engine.get_all_trades()
                 portfolio = engine.get_portfolio()
                 positions_value = sum(p["current_value"] for p in portfolio)
-                results[name] = compute_stats(trades, account, positions_value)
+                results[name] = compute_stats(
+                    trades, account, positions_value, resolutions=engine.get_resolutions(),
+                )
             finally:
                 engine.close()
 
