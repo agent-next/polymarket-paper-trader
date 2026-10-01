@@ -15,10 +15,15 @@ def count_rows(data_dir: Path) -> tuple[int, int]:
     total = ok = 0
     for path in sorted((data_dir / "forecasts").glob("*.jsonl")):
         for line in path.read_text().splitlines():
-            if not line.strip():
+            # Skip blank, torn and non-object lines, as arena.load_forecasts does.
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(row, dict):
                 continue
             total += 1
-            if json.loads(line).get("status") == "ok":
+            if row.get("status") == "ok":
                 ok += 1
     return total, ok
 
