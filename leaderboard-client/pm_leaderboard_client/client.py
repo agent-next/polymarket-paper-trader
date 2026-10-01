@@ -7,9 +7,10 @@ import httpx
 class AgentError(Exception):
     """Raised when the leaderboard API returns an error."""
 
-    def __init__(self, message: str, code: str | None = None):
+    def __init__(self, message: str, code: str | None = None, api_key: str | None = None):
         super().__init__(message)
         self.code = code
+        self.api_key = api_key
 
 
 class Agent:
@@ -136,7 +137,18 @@ class Agent:
             raise AgentError(body.get("error", "Registration failed"))
         self._api_key = body["data"]["api_key"]
         self._agent_name = body["data"]["agent_name"]
-        self._create_account(account_name)
+        try:
+            self._create_account(account_name)
+        except Exception:
+            try:
+                self._create_account(account_name)
+            except Exception as e:
+                raise AgentError(
+                    f"Registered, but account creation failed: {e}. "
+                    "Reconnect with api_key=... to retry.",
+                    getattr(e, "code", None),
+                    api_key=self._api_key,
+                ) from e
 
     def _create_account(self, account_name: str) -> None:
         resp = self._http.post(
