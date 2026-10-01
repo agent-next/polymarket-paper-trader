@@ -4,13 +4,23 @@ Multi-tenant: every query scoped by user_id or account_id.
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
+import re
 import secrets
 import sqlite3
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+
+
+_SHA256_HEX = re.compile(r"[0-9a-f]{64}")
+
+
+def hash_api_key(api_key: str) -> str:
+    return hashlib.sha256(api_key.encode()).hexdigest()
 
 
 class _Rows:
@@ -50,6 +60,17 @@ class DB:
             if stmt:
                 self._conn.execute(stmt)
         self._conn.commit()
+        self._hash_legacy_api_keys()
+
+    def _hash_legacy_api_keys(self) -> None:
+        """Convert plaintext api_key rows to their sha256 digest (idempotent)."""
+        with self.transaction():
+            for row in self._execute("SELECT id, api_key FROM users").fetchall():
+                if not _SHA256_HEX.fullmatch(row["api_key"]):
+                    self._execute(
+                        "UPDATE users SET api_key = ? WHERE id = ?",
+                        (hash_api_key(row["api_key"]), row["id"]),
+                    )
 
     def _execute(self, sql: str, params: tuple = ()) -> _Rows:
         # One shared connection: every statement runs under the process lock.
@@ -94,11 +115,12 @@ class DB:
         api_key = f"lb_sk_{secrets.token_urlsafe(32)}"
         cur = self._execute(
             "INSERT INTO users (agent_name, api_key, model) VALUES (?, ?, ?) RETURNING *",
-            (agent_name, api_key, model),
+            (agent_name, hash_api_key(api_key), model),
         )
         row = cur.fetchone()
         self._commit()
-        return dict(row)
+        # The plaintext key is returned once, here; only its hash is stored.
+        return {**dict(row), "api_key": api_key}
 
     def update_model(self, user_id: int, model: str) -> dict:
         cur = self._execute(
@@ -110,9 +132,12 @@ class DB:
         return dict(row)
 
     def get_user_by_api_key(self, api_key: str) -> dict | None:
-        cur = self._execute("SELECT * FROM users WHERE api_key = ?", (api_key,))
+        digest = hash_api_key(api_key)
+        cur = self._execute("SELECT * FROM users WHERE api_key = ?", (digest,))
         row = cur.fetchone()
-        return dict(row) if row else None
+        if row is None or not hmac.compare_digest(row["api_key"], digest):
+            return None
+        return dict(row)
 
     def get_user_by_name(self, agent_name: str) -> dict | None:
         cur = self._execute("SELECT * FROM users WHERE agent_name = ?", (agent_name,))

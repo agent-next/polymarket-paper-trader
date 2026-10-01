@@ -1,6 +1,9 @@
 """Test database layer."""
 from __future__ import annotations
 
+import hashlib
+import sqlite3
+
 import pytest
 from server.db import DB
 
@@ -307,3 +310,39 @@ class TestLeaderboard:
         assert len(trades) == 2
         assert trades[0]["agent_name"] == "feed-bot"
         assert "account_name" in trades[0]
+
+
+class TestApiKeyHashing:
+    def test_register_stores_hash_not_plaintext(self, db):
+        user = db.create_user("hashed")
+        stored = db._conn.execute(
+            "SELECT api_key FROM users WHERE id = ?", (user["id"],)
+        ).fetchone()[0]
+        assert stored == hashlib.sha256(user["api_key"].encode()).hexdigest()
+        assert stored != user["api_key"]
+        assert db.get_user_by_api_key(user["api_key"])["id"] == user["id"]
+
+    def test_stored_hash_is_not_a_valid_credential(self, db):
+        user = db.create_user("hashed")
+        stored = db._conn.execute("SELECT api_key FROM users").fetchone()[0]
+        assert db.get_user_by_api_key(stored) is None
+
+    def test_legacy_plaintext_row_migrates_idempotently(self, tmp_path):
+        path = str(tmp_path / "legacy.db")
+        first = DB(path)
+        first.init_schema()
+        legacy = "lb_sk_legacykey"
+        first._conn.execute(
+            "INSERT INTO users (agent_name, api_key) VALUES ('old', ?)", (legacy,)
+        )
+        first._conn.commit()
+        first.close()
+
+        digest = hashlib.sha256(legacy.encode()).hexdigest()
+        for _ in range(2):  # second init must leave the hash untouched
+            again = DB(path)
+            again.init_schema()
+            stored = again._conn.execute("SELECT api_key FROM users").fetchone()[0]
+            assert stored == digest
+            assert again.get_user_by_api_key(legacy)["agent_name"] == "old"
+            again.close()
