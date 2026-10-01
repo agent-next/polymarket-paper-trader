@@ -18,6 +18,8 @@ from datetime import datetime, timezone
 from html import escape
 from typing import Any
 
+from pm_benchmark.arena import MIN_RANKED_N
+
 SITE_TITLE = "Forecast Arena"
 PAGE_TITLE = "Forecast Arena (Unofficial)"
 EYEBROW = "Same questions. Different minds. Real outcomes."
@@ -1390,8 +1392,13 @@ def _ghost_row(index: int, entrants: dict[str, dict], order: dict, eid: str) -> 
     )
 
 
+def _rank_text(rank: Any) -> str:
+    """The rank cell text; unranked entrants (``None``) show an em dash."""
+    return _EM_DASH if rank is None else str(rank)
+
+
 def _lb_card(
-    index: int,
+    index: Any,
     row: dict | None,
     entrants: dict[str, dict],
     order: dict,
@@ -1418,7 +1425,7 @@ def _lb_card(
         since = _fmt_date(row.get("since"))
     return (
         f'<article class="lcard"><p class="lcard-head">'
-        f'<span class="lno">{index}</span>'
+        f'<span class="lno">{_rank_text(index)}</span>'
         f'{_kdot(cls)}{_entrant_label(entrants, eid)}{chip}</p>'
         f"{_entrant_meta(info)}"
         f'<p class="lc-alpha">Alpha vs crowd {alpha}</p>'
@@ -1456,7 +1463,8 @@ def _leaderboard_section(board: dict, entrants: dict[str, dict], order: dict) ->
     head = (
         '<section id="leaderboard"><div class="sec-head">'
         "<h2>Leaderboard</h2>"
-        '<p class="sec-note">Ranked by Brier score — lower is better · '
+        '<p class="sec-note">Ranked by Brier score — lower is better; '
+        f"{MIN_RANKED_N}+ scored forecasts to be ranked · "
         "alpha vs crowd is the headline, negative beats the crowd</p>"
         "</div>"
     )
@@ -1500,8 +1508,9 @@ def _leaderboard_section(board: dict, entrants: dict[str, dict], order: dict) ->
             else _EM_DASH
         )
         tr = ' class="baseline"' if kind == "baseline" else ""
+        shown = row["rank"] if "rank" in row else i
         body.append(
-            f"<tr{tr}><td class=\"num\">{i}</td>"
+            f"<tr{tr}><td class=\"num\">{_rank_text(shown)}</td>"
             f'<td class="who">{_kdot(cls)}{label}{_entrant_meta(info)}</td>'
             f"<td>{chip}</td>"
             f'<td class="acell">{_alpha_cell(row, cls)}</td>'
@@ -1511,7 +1520,7 @@ def _leaderboard_section(board: dict, entrants: dict[str, dict], order: dict) ->
             f'<td class="num">{_fmt_prob(row.get("coverage"))}</td>'
             f'<td class="hide-sm">{_fmt_date(row.get("since"))}</td></tr>'
         )
-        cards.append(_lb_card(i, row, entrants, order, eid))
+        cards.append(_lb_card(shown, row, entrants, order, eid))
     return head + (
         '<div class="panel">' + _lb_table_inner("".join(body))
         + f'<div class="lcards">{"".join(cards)}</div>'

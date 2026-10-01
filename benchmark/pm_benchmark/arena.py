@@ -77,6 +77,7 @@ PRIORITY_DAYS = 3    # markets ending within this many days rank first
 BOOTSTRAP_RESAMPLES = 1000
 BOOTSTRAP_SEED = 0
 SIG_MIN_MARKETS = 30      # `significant` is null below this many resolved events
+MIN_RANKED_N = 20         # fewer scored forecasts than this: listed but unranked
 ECE_MIN_N = 100           # ECE is null below this many resolved forecasts
 DUELS_LIMIT = 10
 HALL_OF_WRONG_LIMIT = 20
@@ -873,7 +874,14 @@ def _leaderboard(
                 "significant": significant,
             }
         )
-    rows.sort(key=lambda r: (r["brier"], r["entrant"]))
+    rows.sort(key=lambda r: (r["n"] < MIN_RANKED_N, r["brier"], r["entrant"]))
+    rank = 0
+    for row in rows:
+        if row["n"] >= MIN_RANKED_N:
+            rank += 1
+            row["rank"] = rank
+        else:
+            row["rank"] = None
     return rows
 
 
@@ -1066,8 +1074,10 @@ def build_board(
     }
 
 
-def _badge_color(rank: int) -> str:
+def _badge_color(rank: int | None) -> str:
     """Shields.io named color for a leaderboard rank."""
+    if rank is None:
+        return "lightgrey"
     if rank == 1:
         return "brightgreen"
     if rank <= 3:
@@ -1078,7 +1088,7 @@ def _badge_color(rank: int) -> str:
 
 
 def _badge_payloads(board: dict) -> list[tuple[str, dict]]:
-    """One Shields.io endpoint-schema payload per ranked entrant.
+    """One Shields.io endpoint-schema payload per leaderboard entrant.
 
     ``run_build`` writes them to ``badges/<entrant-id>.json`` so entrants
     can embed a live rank badge in their own README via
@@ -1086,15 +1096,17 @@ def _badge_payloads(board: dict) -> list[tuple[str, dict]]:
     Entrant ids are curated in ``arena.yaml`` and must stay filename-safe.
     """
     payloads: list[tuple[str, dict]] = []
-    for rank, row in enumerate(board["leaderboard"], start=1):
+    for row in board["leaderboard"]:
         if not ENTRANT_ID_RE.fullmatch(str(row["entrant"])):
             continue
+        rank = row.get("rank")
         brier = row.get("brier")
-        message = (
-            f"#{rank} · Brier {brier:.3f}"
-            if isinstance(brier, (int, float))
-            else f"#{rank}"
-        )
+        if rank is None:
+            message = f"unranked · n={row.get('n')}"
+        elif isinstance(brier, (int, float)):
+            message = f"#{rank} · Brier {brier:.3f}"
+        else:
+            message = f"#{rank}"
         payloads.append(
             (
                 str(row["entrant"]),

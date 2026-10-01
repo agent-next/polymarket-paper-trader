@@ -1472,7 +1472,7 @@ class TestBoard:
         board = self._board(rows, res, entrants=[_entrant("gpt")])
         assert set(board["leaderboard"][0]) == {
             "entrant", "n", "n_markets", "coverage", "since",
-            "brier", "ece", "alpha", "alpha_ci", "significant",
+            "brier", "ece", "alpha", "alpha_ci", "significant", "rank",
         }
 
     def test_entrant_rows_shape(self):
@@ -1694,12 +1694,17 @@ class TestRunBuild:
         _write_forecasts(
             data_dir, "2026-09-25",
             [
-                _forecast_row("a", "gpt", 0.9, ts="2026-09-25T01:00:00Z"),
-                _forecast_row("a", "crowd", 0.5, ts="2026-09-25T01:00:00Z"),
+                _forecast_row(f"a{i}", e, p, ts="2026-09-25T01:00:00Z")
+                for i in range(arena.MIN_RANKED_N)
+                for e, p in (("gpt", 0.9), ("crowd", 0.5))
             ],
         )
         arena.save_resolutions(
-            data_dir, {"a": {"outcome": 1, "resolved_at": "2026-09-26T00:00:00Z"}}
+            data_dir,
+            {
+                f"a{i}": {"outcome": 1, "resolved_at": "2026-09-26T00:00:00Z"}
+                for i in range(arena.MIN_RANKED_N)
+            },
         )
         config = _write_config(
             tmp_path / "arena.yaml",
@@ -1856,6 +1861,63 @@ class TestCli:
         assert json.loads(result.output)["ok"] is False
 
 
+class TestRanking:
+    def _rows(self, counts):
+        """One entrant per (id, n_scored); every forecast scores on its own slug."""
+        n_max = max(n for n, _ in counts.values())
+        rows = [
+            _forecast_row(f"s{k}", eid, prob, ts="t")
+            for eid, (n, prob) in counts.items()
+            for k in range(n)
+        ]
+        res = {f"s{k}": {"outcome": 1, "resolved_at": "r"} for k in range(n_max)}
+        entrants = [_entrant(eid) for eid in counts]
+        return build_board(rows, res, entrants, now=NOW), n_max
+
+    def test_threshold_boundary(self):
+        lo, hi = arena.MIN_RANKED_N - 1, arena.MIN_RANKED_N
+        board, _ = self._rows({"lo": (lo, 0.99), "hi": (hi, 0.6)})
+        lb = {r["entrant"]: r for r in board["leaderboard"]}
+        assert lb["lo"]["n"] == lo and lb["lo"]["rank"] is None
+        assert lb["hi"]["n"] == hi and lb["hi"]["rank"] == 1
+
+    def test_unranked_sorted_after_ranked_despite_better_brier(self):
+        n = arena.MIN_RANKED_N
+        board, _ = self._rows({
+            "tiny": (2, 0.99), "b": (n, 0.7), "a": (n, 0.9), "tiny2": (3, 0.95),
+        })
+        assert [(r["entrant"], r["rank"]) for r in board["leaderboard"]] == [
+            ("a", 1), ("b", 2), ("tiny", None), ("tiny2", None),
+        ]
+
+    def test_badge_payloads(self):
+        n = arena.MIN_RANKED_N
+        board, _ = self._rows({"a": (n, 0.9), "tiny": (3, 0.99)})
+        badges = dict(arena._badge_payloads(board))
+        assert badges["a"]["message"].startswith("#1 · Brier ")
+        assert badges["a"]["color"] == "brightgreen"
+        assert badges["tiny"] == {
+            "schemaVersion": 1,
+            "label": "forecast arena",
+            "message": "unranked · n=3",
+            "color": "lightgrey",
+        }
+
+    def test_rank_without_brier_badge(self):
+        board = {"leaderboard": [{"entrant": "x", "rank": 2, "n": 30}]}
+        assert dict(arena._badge_payloads(board))["x"]["message"] == "#2"
+
+    def test_site_renders_unranked_as_dash(self, tmp_path):
+        n = arena.MIN_RANKED_N
+        board, _ = self._rows({"a": (n, 0.9), "tiny": (3, 0.99)})
+        from pm_benchmark.arena_site import render_site
+        html = render_site(board)
+        assert '<td class="num">1</td><td class="who">' in html
+        assert '<td class="num">—</td><td class="who">' in html
+        assert '<span class="lno">—</span>' in html
+        assert f"{n}+ scored forecasts" in html
+
+
 class TestBadges:
     def test_unsafe_historical_id_gets_no_badge(self, tmp_path):
         board = {"leaderboard": [
@@ -1875,13 +1937,21 @@ class TestBadges:
             data_dir,
             "2026-09-25",
             [
-                _forecast_row("a", f"m{i}", 0.9 - i * 0.1, ts="2026-09-25T01:00:00Z")
+                _forecast_row(f"a{k}", f"m{i}", 0.9 - i * 0.1, ts="2026-09-25T01:00:00Z")
                 for i in range(7)
+                for k in range(arena.MIN_RANKED_N)
             ]
-            + [_forecast_row("a", "crowd", 0.1, ts="2026-09-25T01:00:00Z")],
+            + [
+                _forecast_row(f"a{k}", "crowd", 0.1, ts="2026-09-25T01:00:00Z")
+                for k in range(arena.MIN_RANKED_N)
+            ],
         )
         arena.save_resolutions(
-            data_dir, {"a": {"outcome": 1, "resolved_at": "2026-09-26T00:00:00Z"}}
+            data_dir,
+            {
+                f"a{k}": {"outcome": 1, "resolved_at": "2026-09-26T00:00:00Z"}
+                for k in range(arena.MIN_RANKED_N)
+            },
         )
         out = tmp_path / "site"
         run_build(data_dir, config, out, now=NOW)
