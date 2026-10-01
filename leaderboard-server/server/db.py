@@ -55,7 +55,11 @@ class DB:
         # One shared connection: every statement runs under the process lock.
         with self._lock:
             cur = self._conn.execute(sql, params)
-            return _Rows(cur.fetchall(), cur.rowcount)
+            rows = _Rows(cur.fetchall(), cur.rowcount)
+            # Commit under the same lock hold so another thread's rollback cannot discard this write.
+            if not self._in_tx:
+                self._conn.commit()
+            return rows
 
     def _commit(self) -> None:
         # Blocks while another thread holds a transaction; a no-op inside one.

@@ -1,6 +1,7 @@
 """Concurrency: one account's trades must never double-spend or double-sell."""
 from __future__ import annotations
 
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
@@ -169,3 +170,42 @@ class TestDbAtomics:
         cancelled = db.get_pending_orders(account["id"])[0]
         db.cancel_order(cancelled["id"], account["id"])
         assert db.fill_order(cancelled["id"]) is None
+
+    def test_failing_transaction_cannot_discard_other_threads_write(self, db):
+        executed, resume, b_done = threading.Event(), threading.Event(), threading.Event()
+        real = db._conn
+
+        class _PausingConn:
+            def execute(self, sql, params=()):
+                cur = real.execute(sql, params)
+                if sql.startswith("INSERT INTO users") and threading.current_thread().name == "writer":
+                    executed.set()
+                    resume.wait(5)
+                return cur
+
+            def __getattr__(self, name):
+                return getattr(real, name)
+
+        db._conn = _PausingConn()
+        created = {}
+
+        def writer():
+            created["user"] = db.create_user("racer")
+
+        def failing_tx():
+            with pytest.raises(RuntimeError):
+                with db.transaction():
+                    raise RuntimeError("boom")
+            b_done.set()
+
+        a = threading.Thread(target=writer, name="writer")
+        a.start()
+        assert executed.wait(5)
+        b = threading.Thread(target=failing_tx)
+        b.start()
+        b_done.wait(0.5)  # a correct DB keeps B blocked behind A's write
+        resume.set()
+        a.join(5)
+        b.join(5)
+        db._conn = real
+        assert db.get_user_by_name("racer") is not None
