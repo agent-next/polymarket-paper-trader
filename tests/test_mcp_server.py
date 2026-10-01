@@ -655,6 +655,30 @@ class TestGetOrderBook:
         assert result["ok"] is False
 
 
+class TestInternalErrorsSanitized:
+    @pytest.mark.parametrize("tool,args,code", [
+        (get_balance, (), "not_initialized"),
+        (get_market, ("x",), "market_not_found"),
+        (get_order_book, ("x", "yes"), "order_book_error"),
+    ])
+    def test_unexpected_error_not_leaked(self, tool, args, code):
+        init_account()
+        from pm_trader.mcp_server import _get_engine
+        engine = _get_engine()
+        engine.get_balance = MagicMock(side_effect=RuntimeError("/home/x/secret"))
+        engine.api.get_market = MagicMock(side_effect=RuntimeError("/home/x/secret"))
+        result = _parse(tool(*args))
+        assert result == {"ok": False, "error": "Internal error", "code": "internal_error"}
+
+    def test_exposed_error_keeps_tool_code(self):
+        init_account()
+        from pm_trader.mcp_server import _get_engine
+        _get_engine().api.get_market = MagicMock(side_effect=ValueError("bad slug"))
+        result = _parse(get_market("x"))
+        assert result["error"] == "bad slug"
+        assert result["code"] == "market_not_found"
+
+
 class TestWatchPrices:
     def test_watch(self):
         init_account()
