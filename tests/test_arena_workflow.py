@@ -73,6 +73,12 @@ class TestArenaRows:
         _write(tmp_path, "b.jsonl", ["ok"])
         assert arena_rows.count_rows(tmp_path) == (3, 2)
 
+    def test_count_skips_torn_and_non_object_lines(self, tmp_path: Path) -> None:
+        _write(tmp_path, "a.jsonl", ["ok"])
+        with (tmp_path / "forecasts" / "a.jsonl").open("a") as f:
+            f.write('[1, 2]\n{"status": "o')
+        assert arena_rows.count_rows(tmp_path) == (1, 1)
+
     def test_all_skip_run_is_red(self) -> None:
         assert arena_rows.verdict(5, 3, 9, 3, 0) is not None
 
