@@ -23,7 +23,9 @@ def generate_json_report(eval_run: EvalRun, scores: BenchmarkScores) -> str:
             "errors": eval_run.error_count,
             "skipped": eval_run.skipped_count,
             "total_latency_seconds": round(eval_run.total_latency_seconds, 2),
+            "agent_stats_error": eval_run.agent_stats_error,
         },
+        "agent_stats": eval_run.agent_stats,
         "market_results": [asdict(r) for r in eval_run.market_results],
     }
     return json.dumps(report, indent=2)
@@ -59,6 +61,13 @@ def generate_markdown_report(eval_run: EvalRun, scores: BenchmarkScores) -> str:
         f"- **Errors:** {eval_run.error_count}",
         f"- **Skipped:** {eval_run.skipped_count}",
         f"- **Total Latency:** {eval_run.total_latency_seconds:.1f}s",
+    ]
+    if eval_run.agent_stats_error:
+        lines.append(
+            f"- **Agent stats unavailable:** {eval_run.agent_stats_error} "
+            "(ROI/Sharpe/win rate/drawdown scored as 0)"
+        )
+    lines += [
         "",
         "## Market Details",
         "",

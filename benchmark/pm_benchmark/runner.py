@@ -59,6 +59,7 @@ class EvalRun:
     market_results: list[MarketResult] = field(default_factory=list)
     rounds: list[RoundResult] = field(default_factory=list)
     agent_stats: dict = field(default_factory=dict)
+    agent_stats_error: str | None = None
     total_latency_seconds: float = 0.0
     timestamp: str = ""
 
@@ -140,8 +141,8 @@ class Runner:
         if self._agent is not None:
             try:
                 eval_run.agent_stats = self._agent.stats()
-            except Exception:
-                pass
+            except Exception as e:
+                eval_run.agent_stats_error = f"{type(e).__name__}: {e}"
 
         return eval_run
 
