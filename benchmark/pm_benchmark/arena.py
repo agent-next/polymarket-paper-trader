@@ -429,8 +429,9 @@ def forecast_market(
 
     The market YES price is fetched immediately *before* the model call so
     the recorded crowd reference predates the answer (``price_ts`` marks the
-    snapshot). Raises ArenaError when the market's end date has already
-    passed; other failures propagate for the caller to record as skip rows.
+    snapshot, stamped right after the fetch while ``ts`` is the run start).
+    Raises ArenaError when the market's end date has already passed, checked
+    again after the fetch; other failures propagate for the caller to record as skip rows.
     """
     end = _parse_ts(market.end_date)
     if end is not None and end <= now:
@@ -442,6 +443,11 @@ def forecast_market(
         lambda m: _fetch_market_prob(m, http_client=http_client)
     )
     market_prob = fetch(market)
+    fetched_at = _utc_now()
+    if end is not None and end <= fetched_at:
+        raise ArenaError(
+            f"Market '{market.slug}' already ended at {market.end_date}"
+        )
 
     if entrant.kind == "baseline":
         prob = _baseline_prob(entrant.id, market_prob)
@@ -459,7 +465,7 @@ def forecast_market(
         "end_date": market.end_date,
         "closed": market.closed,
         "market_prob": market_prob,
-        "price_ts": _iso(now),
+        "price_ts": _iso(fetched_at),
         "url": MARKET_URL.format(slug=market.slug),
         "entrant": entrant.id,
         "model": entrant.model,
@@ -578,9 +584,9 @@ def run_predict(
     """Select markets and record one forecast per (entrant, market).
 
     Idempotent: slugs forecast on earlier days or already resolved are
-    excluded from selection, an entrant already present in today's file is
-    skipped entirely (a same-day re-run never re-queries it), and existing
-    (entrant, slug) pairs are never rewritten — so a re-run appends nothing.
+    excluded from selection, an entrant with a forecast today is only
+    re-queried for markets it has skip rows for, and existing (entrant, slug)
+    forecasts are never rewritten — so a clean re-run appends nothing.
 
     Failures are recorded as skip rows (prob null), never as a 0.5 forecast;
     after ``max_entrant_failures`` an entrant's remaining markets are skipped
@@ -601,14 +607,22 @@ def run_predict(
         and r["ts"][:10] < today
         and r.get("prob") is not None
     } | resolved_slugs
-    # An entrant whose every row today is a skip (e.g. its API was down)
-    # runs again on a same-day re-run.
+    # An entrant with an ok row today is not re-queried on a same-day re-run,
+    # except for the markets it only has skip rows for (e.g. its API went
+    # down mid-run); an entrant with no ok row today runs again in full.
     done_today = {
         r.get("entrant")
         for r in existing
         if isinstance(r.get("ts"), str)
         and r["ts"][:10] == today
         and r.get("prob") is not None
+    }
+    skipped_today = {
+        (r.get("entrant"), r.get("slug"))
+        for r in existing
+        if isinstance(r.get("ts"), str)
+        and r["ts"][:10] == today
+        and r.get("prob") is None
     }
     taken_pairs = {
         (r.get("entrant"), r.get("slug"))
@@ -637,11 +651,14 @@ def run_predict(
 
     rows: list[dict] = []
     for entrant in entrants:
-        if entrant.id in done_today:
-            continue
         failures = 0
         for market in selected:
             if (entrant.id, market.slug) in taken_pairs:
+                continue
+            if (
+                entrant.id in done_today
+                and (entrant.id, market.slug) not in skipped_today
+            ):
                 continue
             if failures >= max_entrant_failures:
                 row = _skip_row(
