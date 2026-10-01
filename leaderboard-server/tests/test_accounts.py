@@ -33,7 +33,7 @@ class TestCreateAccount:
 
     def test_unauthorized(self, client):
         resp = client.post("/accounts", json={"name": "default"})
-        assert resp.status_code == 422  # missing header
+        assert resp.status_code == 401  # missing header
 
     def test_bad_api_key(self, client):
         resp = client.post("/accounts", json={"name": "default"},

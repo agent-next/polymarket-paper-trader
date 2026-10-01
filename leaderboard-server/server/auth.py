@@ -10,7 +10,9 @@ def get_db(request: Request) -> DB:
     return request.app.state.db
 
 
-def get_current_user(authorization: str = Header(...), db: DB = Depends(get_db)) -> dict:
+def get_current_user(authorization: str | None = Header(default=None), db: DB = Depends(get_db)) -> dict:
+    if authorization is None:
+        raise HTTPException(401, detail="Missing authorization header")
     if not authorization.startswith("Bearer "):
         raise HTTPException(401, detail="Invalid authorization header")
     api_key = authorization[7:]
