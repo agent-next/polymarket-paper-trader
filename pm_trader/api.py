@@ -657,6 +657,10 @@ def _parse_market(data: dict) -> Market:
         taker_base_fee_bps=int(
             data.get("takerBaseFee", data.get("taker_base_fee_bps", 0)) or 0
         ),
+        uma_resolution_status=(
+            str(data["umaResolutionStatus"])
+            if data.get("umaResolutionStatus") else None
+        ),
     )
 
 

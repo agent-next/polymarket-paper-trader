@@ -157,6 +157,7 @@ class Market:
     min_order_size: float = 0.0
     maker_base_fee_bps: int = 0
     taker_base_fee_bps: int = 0
+    uma_resolution_status: str | None = None
 
     def get_token_id(self, outcome: str) -> str:
         """Token ID for any outcome (case-insensitive)."""
