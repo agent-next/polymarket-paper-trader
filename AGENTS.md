@@ -184,9 +184,10 @@ docs example was wrong.
   a green local run proves the mocks, not the wire.
 - The eval harness still requires a separate editable install (`polymarket-benchmark`)
   instead of a `pm-trader` subcommand/extra (see Open items).
-- A release means touching version pins in 6+ places (`pyproject.toml`, `server.json` x2,
-  `.claude-plugin/plugin.json`, `gemini-extension.json`, both `SKILL.md` copies);
-  `test_meta` enforces only the SKILL.md pair — the rest ride on discipline.
+- A release means hand-bumping version pins in 6+ places (`pyproject.toml`,
+  `server.json` x2, `.claude-plugin/plugin.json`, `gemini-extension.json`, both
+  `SKILL.md` copies); `test_meta` pins all of them against each other, but the
+  guards only fire when the test suite runs.
 - The 100% coverage gate runs on Python 3.13 locally; the 3.10-3.12 matrix is CI-only
   (`.github/workflows/test.yml`) — a local green does not prove the full matrix.
 
