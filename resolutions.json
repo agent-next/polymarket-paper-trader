@@ -4,6 +4,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-01T17:08:13Z"
   },
+  "bitcoin-above-82k-on-october-2-2026": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-02T16:21:55Z"
+  },
   "bitcoin-above-82k-on-september-30-2026": {
     "outcome": 1,
     "resolution_source": "uma",
@@ -19,10 +24,20 @@
     "resolution_source": "uma",
     "resolved_at": "2026-09-30T16:30:26Z"
   },
+  "bitcoin-above-86k-on-october-2-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-02T16:21:55Z"
+  },
   "bitcoin-above-86k-on-september-30-2026": {
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-09-30T16:30:26Z"
+  },
+  "bitcoin-above-88k-on-october-2-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-02T16:21:55Z"
   },
   "elon-musk-of-tweets-september-22-september-29-2026-160-179": {
     "outcome": 0,
@@ -59,10 +74,25 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-01T13:29:09Z"
   },
+  "ethereum-above-2600-on-october-2-2026": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-02T16:21:55Z"
+  },
+  "ethereum-above-2800-on-october-2-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-02T16:21:55Z"
+  },
   "ethereum-above-2800-on-september-30-2026": {
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-09-30T16:30:26Z"
+  },
+  "fif-bol-gam-2026-10-04-draw": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-02T16:21:55Z"
   },
   "fif-chn-tkm-2026-10-02-chn": {
     "outcome": 0,
