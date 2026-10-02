@@ -35,7 +35,7 @@ cli.py → engine.py → api.py (Polymarket HTTP)
                    → orderbook.py (fill simulation)
                    → orders.py (limit order state machine)
 
-mcp_server.py → engine.py (trading tools, 30 MCP tools)
+mcp_server.py → engine.py (trading tools; live count = the @_tool functions in mcp_server.py)
               → analytics.py, card.py, benchmark.py, backtest.py (lazy imports)
 ```
 
