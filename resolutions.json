@@ -34,6 +34,16 @@
     "resolution_source": "uma",
     "resolved_at": "2026-09-30T12:44:56Z"
   },
+  "elon-musk-of-tweets-september-25-october-2-2026-180-199": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-02T12:47:39Z"
+  },
+  "elon-musk-of-tweets-september-25-october-2-2026-200-219": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-02T12:47:39Z"
+  },
   "elon-musk-of-tweets-september-28-september-30-2026-0-39": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -63,6 +73,11 @@
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "fif-mdv-lib-2026-10-01-lib": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-02T12:47:39Z"
   },
   "fif-sey-sri-2026-09-30-sri": {
     "outcome": 1,
@@ -124,6 +139,56 @@
     "resolution_source": "uma",
     "resolved_at": "2026-09-28T23:31:07Z"
   },
+  "unl-den-prt-2026-10-01-den": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-02T12:47:39Z"
+  },
+  "unl-den-prt-2026-10-01-prt": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-02T12:47:39Z"
+  },
+  "unl-ger-ser-2026-10-01-ger": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-02T12:47:39Z"
+  },
+  "unl-ger-ser-2026-10-01-ser": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-02T12:47:39Z"
+  },
+  "unl-grc-nld-2026-10-01-nld": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-02T12:47:39Z"
+  },
+  "unl-ire-aut-2026-10-01-aut": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-02T12:47:39Z"
+  },
+  "unl-isr-kvx-2026-10-01-kvx": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-02T12:47:39Z"
+  },
+  "unl-wal-nor-2026-10-01-draw": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-02T12:47:39Z"
+  },
+  "unl-wal-nor-2026-10-01-nor": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-02T12:47:39Z"
+  },
+  "unl-wal-nor-2026-10-01-wal": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-02T12:47:39Z"
+  },
   "us-announces-end-of-iranian-blockade-by-september-30-2026-20260727171615364-722-649-646-561-213-644-414-831": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -178,6 +243,11 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-drew-campbell-win-big-brother-season-28-20260708173711848": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-02T12:47:39Z"
   },
   "will-elon-tweet-800-839-times-in-september-2026": {
     "outcome": 0,
@@ -234,10 +304,20 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-01T13:29:09Z"
   },
+  "will-rick-devens-win-big-brother-season-28-20260712164630746": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-02T12:47:39Z"
+  },
   "will-russia-and-ukraine-hold-any-diplomatic-meeting-by-september-30-2026-20260819-521": {
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-russia-enter-mykolaivka-by-september-30-2026-20260805154948090": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-02T12:47:39Z"
   },
   "will-solana-dip-to-110-in-september-2026-from-september-21": {
     "outcome": 0,
