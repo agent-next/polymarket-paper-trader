@@ -59,6 +59,16 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-02T12:47:39Z"
   },
+  "elon-musk-of-tweets-september-25-october-2-2026-220-239": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-03T11:47:56Z"
+  },
+  "elon-musk-of-tweets-september-25-october-2-2026-240-259": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-03T11:47:56Z"
+  },
   "elon-musk-of-tweets-september-28-september-30-2026-0-39": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -169,6 +179,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-09-28T23:31:07Z"
   },
+  "unl-bel-tur-2026-10-02-bel": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-03T11:47:56Z"
+  },
   "unl-den-prt-2026-10-01-den": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -178,6 +193,11 @@
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-10-02T12:47:39Z"
+  },
+  "unl-fra-ita-2026-10-02-fra": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-03T11:47:56Z"
   },
   "unl-ger-ser-2026-10-01-ger": {
     "outcome": 1,
