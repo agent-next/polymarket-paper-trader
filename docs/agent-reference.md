@@ -1,6 +1,9 @@
 # Agent reference
 
-Moved verbatim from AGENTS.md to keep it within the 90-line baseline; AGENTS.md links here.
+Moved out of AGENTS.md to keep it within the 90-line baseline, then edited: the CHANGELOG link now
+points at `../CHANGELOG.md`, the hardcoded tool count was dropped, and the Python 3.13 coverage
+sentence was corrected. Interfaces, Live surfaces, Operating rules and Known gaps were added
+in this change. AGENTS.md links here.
 
 ## Interfaces
 
@@ -8,7 +11,7 @@ EXPOSES:
 
 - `pm-trader` CLI (Click, `pm_trader/cli.py`) and the MCP server (`pm_trader/mcp_server.py`;
   stdio + streamable-HTTP transport, manifest `server.json`). The tool count lives in that
-  file (the `@_tool` functions — 30 at v0.4.5); never hardcode it elsewhere.
+  file (the `@_tool` functions); never hardcode it elsewhere.
 - pip package `polymarket-paper-trader` on PyPI + ClawHub; official MCP Registry listing
   (`io.github.agent-next/*`, published from `server.json` by `mcp-registry.yml`, called by
   `publish.yml`); skill/plugin artifacts: `skill/polymarket-paper-trader/SKILL.md`,
@@ -49,7 +52,7 @@ Live e2e tests run weekly on CI (`live.yml`) and include bias assertions: simula
 must land inside the band the market actually quoted, and fees must equal the official
 curve — the simulator's fidelity is tested, not assumed.
 
-Recent history (details in [CHANGELOG.md](CHANGELOG.md)): v0.3.0 official fee curve ·
+Recent history (details in [CHANGELOG.md](../CHANGELOG.md)): v0.3.0 official fee curve ·
 v0.3.1 tradability gates + partial-fill lifecycle · v0.3.2 cash reservation + per-level
 fees · v0.3.3 keyset pagination · v0.3.4 Data API v2 `get_price_history` + bias tests
 (closes #16) · README purpose-first rewrite · v0.4.0 MCP SDK 2.x (serialized tool calls,
@@ -133,8 +136,9 @@ docs example was wrong.
   `server.json` x2, `.claude-plugin/plugin.json`, `gemini-extension.json`, both
   `SKILL.md` copies); `test_meta` pins all of them against each other, but the
   guards only fire when the test suite runs.
-- The 100% coverage gate runs on Python 3.13 locally; the 3.10-3.12 matrix is CI-only
-  (`.github/workflows/test.yml`) — a local green does not prove the full matrix.
+- Local `make check` uses the venv's Python (no version pin). CI runs the coverage gate on
+  Python 3.13 and the 3.10-3.12 matrix without coverage (`.github/workflows/test.yml`) —
+  a local green does not prove the full matrix.
 
 ## Open items (product backlog, uncontroversial starts)
 

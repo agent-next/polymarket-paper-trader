@@ -1,6 +1,9 @@
 # Architecture and conventions
 
-Moved verbatim from CLAUDE.md (module map, conventions, testing rules); AGENTS.md links here.
+Moved from CLAUDE.md (module map, conventions, testing rules) and edited: the hardcoded
+"30 MCP tools" in the diagram was replaced by a non-numeric pointer. The must-follow
+conventions and testing rules are also condensed into AGENTS.md; this file keeps the full
+reference and module map.
 
 # polymarket-paper-trader
 
