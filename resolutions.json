@@ -39,6 +39,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-05T14:53:52Z"
   },
+  "bitcoin-above-86k-on-october-5-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-05T19:23:51Z"
+  },
   "bitcoin-above-86k-on-september-30-2026": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -48,6 +53,11 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-02T16:21:55Z"
+  },
+  "bitcoin-above-88k-on-october-5-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-05T19:23:51Z"
   },
   "brazil-first-round-vote-share-flavio-bolsonaro-39-plus": {
     "outcome": 1,
@@ -123,6 +133,11 @@
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-10-02T16:21:55Z"
+  },
+  "ethereum-above-2700-on-october-5-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-05T19:23:51Z"
   },
   "ethereum-above-2800-on-october-2-2026": {
     "outcome": 0,
@@ -508,6 +523,11 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-05T14:53:52Z"
+  },
+  "will-lula-win-the-most-votes-in-the-next-brazil-presidential-election-from-minas-gerais": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-05T19:23:51Z"
   },
   "will-maria-corina-machado-enter-venezuela-by-september-30-20260728195821515": {
     "outcome": 0,
