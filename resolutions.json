@@ -1,4 +1,9 @@
 {
+  "0-ships-transit-hormuz-on-any-date-by-september-30": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-06T16:55:43Z"
+  },
   "bitcoin-above-82k-on-october-1-2026": {
     "outcome": 1,
     "resolution_source": "uma",
@@ -24,6 +29,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-04T12:30:20Z"
   },
+  "bitcoin-above-84k-on-october-6-2026": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-06T16:55:43Z"
+  },
   "bitcoin-above-84k-on-september-30-2026": {
     "outcome": 1,
     "resolution_source": "uma",
@@ -44,6 +54,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-05T19:23:51Z"
   },
+  "bitcoin-above-86k-on-october-6-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-06T16:55:43Z"
+  },
   "bitcoin-above-86k-on-september-30-2026": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -58,6 +73,11 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-05T19:23:51Z"
+  },
+  "bitcoin-above-88k-on-october-6-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-06T16:55:43Z"
   },
   "brazil-first-round-vote-share-flavio-bolsonaro-39-plus": {
     "outcome": 1,
@@ -409,6 +429,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-01T13:29:09Z"
   },
+  "will-30-ships-transit-the-strait-of-hormuz-on-any-day-by-september-30-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-06T16:55:43Z"
+  },
   "will-acm-neto-win-the-2026-bahia-gubernatorial-election": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -744,6 +769,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-04T12:30:20Z"
   },
+  "will-sergio-moro-win-the-governor-of-parana-election-20260608205122817": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-06T16:55:43Z"
+  },
   "will-solana-dip-to-110-in-september-2026-from-september-21": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -768,6 +798,16 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-there-be-between-0-and-5-average-daily-transits-of-the-strait-of-hormuz-on-september-30": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-06T16:55:43Z"
+  },
+  "will-there-be-fewer-than-25-average-daily-transits-of-the-bab-el-mandeb-strait-on-september-30": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-06T16:55:43Z"
   },
   "will-there-be-no-next-google-gemini-pro-model-release-by-september-30-2026": {
     "outcome": 1,
