@@ -144,6 +144,26 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-01T13:29:09Z"
   },
+  "elon-musk-of-tweets-september-29-october-6-2026-200-219": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
+  },
+  "elon-musk-of-tweets-september-29-october-6-2026-220-239": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
+  },
+  "elon-musk-of-tweets-september-29-october-6-2026-240-259": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
+  },
+  "elon-musk-of-tweets-september-29-october-6-2026-260-279": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
+  },
   "es2-alb-eib-2026-10-03-eib": {
     "outcome": 1,
     "resolution_source": "uma",
@@ -168,6 +188,11 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-09-30T16:30:26Z"
+  },
+  "fif-arg-ben-2026-10-06-btts": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
   },
   "fif-arg-bur-2026-10-03-arg": {
     "outcome": 1,
@@ -194,15 +219,35 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-01T13:29:09Z"
   },
+  "fif-ind-ury-2026-10-06-ury": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
+  },
+  "fif-jor-ven-2026-10-06-ven": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
+  },
   "fif-mdv-lib-2026-10-01-lib": {
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-10-02T12:47:39Z"
   },
+  "fif-mex-chl-2026-10-05-mex": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
+  },
   "fif-sey-sri-2026-09-30-sri": {
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "fif-usa-can-2026-10-06-usa": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
   },
   "gemini-4pt0-released-by-september-30-2026": {
     "outcome": 0,
@@ -239,6 +284,26 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-06T13:25:11Z"
   },
+  "mls-chi-vwh-2026-07-16-btts": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
+  },
+  "mls-chi-vwh-2026-07-16-chi": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
+  },
+  "mls-chi-vwh-2026-07-16-draw": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
+  },
+  "mls-chi-vwh-2026-07-16-vwh": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
+  },
   "next-white-house-press-secretary-announced-by-september-30-2026": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -258,6 +323,21 @@
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-09-30T12:44:56Z"
+  },
+  "unl-alb-smr-2026-10-06-alb": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
+  },
+  "unl-alb-smr-2026-10-06-btts": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
+  },
+  "unl-alb-smr-2026-10-06-exact-score-3-1": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
   },
   "unl-bel-fra-2026-09-28-fra": {
     "outcome": 1,
@@ -279,6 +359,16 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-06T13:25:11Z"
   },
+  "unl-che-mac-2026-10-06-btts": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
+  },
+  "unl-che-mac-2026-10-06-che": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
+  },
   "unl-cyp-lat-2026-10-05-cyp": {
     "outcome": 1,
     "resolution_source": "uma",
@@ -294,10 +384,25 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-02T12:47:39Z"
   },
+  "unl-eng-cze-2026-10-06-cze": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
+  },
+  "unl-eng-cze-2026-10-06-eng": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
+  },
   "unl-esp-cze-2026-10-03-esp": {
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-10-04T12:30:20Z"
+  },
+  "unl-est-isl-2026-10-06-isl": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
   },
   "unl-fra-bel-2026-10-05-fra": {
     "outcome": 1,
@@ -334,6 +439,21 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-04T12:30:20Z"
   },
+  "unl-hrv-esp-2026-10-06-draw": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
+  },
+  "unl-hrv-esp-2026-10-06-esp": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
+  },
+  "unl-hrv-esp-2026-10-06-hrv": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
+  },
   "unl-ire-aut-2026-10-01-aut": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -359,6 +479,21 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-06T13:25:11Z"
   },
+  "unl-kaz-far-2026-10-06-btts": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
+  },
+  "unl-kaz-far-2026-10-06-far": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
+  },
+  "unl-lux-bul-2026-10-06-lux": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
+  },
   "unl-mac-sco-2026-10-03-sco": {
     "outcome": 1,
     "resolution_source": "uma",
@@ -378,6 +513,11 @@
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-10-06T13:25:11Z"
+  },
+  "unl-sco-slv-2026-10-06-sco": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
   },
   "unl-ukr-hun-2026-10-05-hun": {
     "outcome": 1,
@@ -478,6 +618,11 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-06T13:25:11Z"
+  },
+  "will-bitcoin-dip-to-84k-on-october-6-2026": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-07T13:34:50Z"
   },
   "will-bitcoin-reach-85k-in-september-2026-from-september-27": {
     "outcome": 1,
