@@ -149,6 +149,16 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-05T14:53:52Z"
   },
+  "bun-dor-wer-2026-10-09-dor": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-10T12:41:42Z"
+  },
+  "bun-dor-wer-2026-10-09-wer": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-10T12:41:42Z"
+  },
   "elon-musk-of-tweets-october-2-october-9-2026-140-159": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -178,6 +188,16 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-09T13:26:06Z"
+  },
+  "elon-musk-of-tweets-october-2-october-9-2026-320-339": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-10T12:41:42Z"
+  },
+  "elon-musk-of-tweets-october-2-october-9-2026-340-359": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-10T12:41:42Z"
   },
   "elon-musk-of-tweets-october-5-october-7-2026-0-39": {
     "outcome": 0,
@@ -364,6 +384,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-07T13:34:50Z"
   },
+  "fr2-asn-gui-2026-10-09-asn": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-10T12:41:42Z"
+  },
   "gemini-4pt0-released-by-september-30-2026": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -423,6 +448,11 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "por-scb-spo-2026-10-09-spo": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-10T12:41:42Z"
   },
   "russia-ukraine-peace-talks-by-september-30-2026-20260609012542188": {
     "outcome": 0,
@@ -669,6 +699,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-09T13:26:06Z"
   },
+  "us-x-iran-ceasefire-continues-through-october-9": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-10T12:41:42Z"
+  },
   "us-x-iran-ceasefire-continues-through-september-30-20260917": {
     "outcome": 1,
     "resolution_source": "uma",
@@ -723,6 +758,11 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-bitcoin-dip-to-80k-on-october-9-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-10T12:41:42Z"
   },
   "will-bitcoin-dip-to-81k-on-october-7-2026": {
     "outcome": 0,
@@ -1144,6 +1184,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-04T12:30:20Z"
   },
+  "will-ukraine-target-moscow-on-october-10-2026": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-10T12:41:42Z"
+  },
   "will-wti-dip-to-85-in-september-2026": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -1178,5 +1223,10 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "wwcquefa-cro-ice-2026-10-09-cro": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-10T12:41:42Z"
   }
 }
