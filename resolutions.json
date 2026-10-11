@@ -24,6 +24,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-01T17:08:13Z"
   },
+  "bitcoin-above-82k-on-october-11-2026": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-11T16:25:16Z"
+  },
   "bitcoin-above-82k-on-october-2-2026": {
     "outcome": 1,
     "resolution_source": "uma",
@@ -168,6 +173,11 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-10T12:41:42Z"
+  },
+  "bun-koe-moe-2026-10-11-koe": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-11T16:25:16Z"
   },
   "elc-bbr-car-2026-10-10-car": {
     "outcome": 0,
@@ -324,6 +334,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-11T13:02:47Z"
   },
+  "epl-hul-eve-2026-10-11-eve": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-11T16:25:16Z"
+  },
   "epl-ips-ful-2026-10-10-ips": {
     "outcome": 1,
     "resolution_source": "uma",
@@ -348,6 +363,11 @@
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-10-09T17:10:47Z"
+  },
+  "ethereum-above-2500-on-october-11-2026": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-11T16:25:16Z"
   },
   "ethereum-above-2500-on-october-7-2026": {
     "outcome": 1,
@@ -928,6 +948,11 @@
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-10-07T13:34:50Z"
+  },
+  "will-bitcoin-reach-84k-october-5-11-2026": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-11T16:25:16Z"
   },
   "will-bitcoin-reach-85k-in-september-2026-from-september-27": {
     "outcome": 1,
