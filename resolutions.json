@@ -139,6 +139,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-08T13:40:11Z"
   },
+  "bra-gre-int-2026-10-11-int": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-12T15:40:29Z"
+  },
   "brazil-first-round-vote-share-flavio-bolsonaro-39-plus": {
     "outcome": 1,
     "resolution_source": "uma",
@@ -173,6 +178,11 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-10T12:41:42Z"
+  },
+  "bun-fre-s04-2026-10-11-fre": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-12T15:40:29Z"
   },
   "bun-koe-moe-2026-10-11-koe": {
     "outcome": 1,
@@ -343,6 +353,21 @@
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-10-11T13:02:47Z"
+  },
+  "epl-liv-mac-2026-10-11-draw": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-12T15:40:29Z"
+  },
+  "epl-liv-mac-2026-10-11-liv": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-12T15:40:29Z"
+  },
+  "epl-liv-mac-2026-10-11-mac": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-12T15:40:29Z"
   },
   "epl-mun-tot-2026-10-10-mun": {
     "outcome": 0,
@@ -534,10 +559,20 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-11T13:02:47Z"
   },
+  "lal-bet-osa-2026-10-11-bet": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-12T15:40:29Z"
+  },
   "lal-rea-vil-2026-10-10-rea": {
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-10-11T13:02:47Z"
+  },
+  "lal-rrc-val-2026-10-11-rrc": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-12T15:40:29Z"
   },
   "mlb-cws-cle-2026-10-05-inning-1-winner-draw": {
     "outcome": 0,
@@ -579,6 +614,21 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-01T13:29:09Z"
   },
+  "nor-lil-mol-2026-10-11-lil": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-12T15:40:29Z"
+  },
+  "por-ben-gui-2026-10-11-ben": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-12T15:40:29Z"
+  },
+  "por-ben-gui-2026-10-11-gui": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-12T15:40:29Z"
+  },
   "por-csm-por-2026-10-10-por": {
     "outcome": 1,
     "resolution_source": "uma",
@@ -598,6 +648,16 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "sea-cag-juv-2026-10-11-cag": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-12T15:40:29Z"
+  },
+  "sea-cag-juv-2026-10-11-draw": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-12T15:40:29Z"
   },
   "swe-gais-sir-2026-10-10-gais": {
     "outcome": 0,
@@ -909,10 +969,20 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-01T13:29:09Z"
   },
+  "will-bitcoin-dip-to-78k-october-5-11-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-12T15:40:29Z"
+  },
   "will-bitcoin-dip-to-80k-in-september-2026-from-september-18": {
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-bitcoin-dip-to-80k-october-5-11-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-12T15:40:29Z"
   },
   "will-bitcoin-dip-to-80k-on-october-9-2026": {
     "outcome": 0,
@@ -923,6 +993,11 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-08T13:40:11Z"
+  },
+  "will-bitcoin-dip-to-82k-october-5-11-2026-from-october-9": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-12T15:40:29Z"
   },
   "will-bitcoin-dip-to-82k-on-october-7-2026": {
     "outcome": 0,
@@ -958,6 +1033,11 @@
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-09-30T16:30:26Z"
+  },
+  "will-bitcoin-reach-86k-october-5-11-2026-from-october-6": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-12T15:40:29Z"
   },
   "will-bitcoin-reach-87pt5k-in-september-2026": {
     "outcome": 0,
@@ -1039,6 +1119,16 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-01T13:29:09Z"
   },
+  "will-ethereum-dip-to-2300-october-5-11-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-12T15:40:29Z"
+  },
+  "will-ethereum-dip-to-2400-october-5-11-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-12T15:40:29Z"
+  },
   "will-ethereum-dip-to-2500-in-september-2026-from-september-18": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -1053,6 +1143,16 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-05T14:53:52Z"
+  },
+  "will-ethereum-reach-2600-october-5-11-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-12T15:40:29Z"
+  },
+  "will-ethereum-reach-2600-on-october-11-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-12T15:40:29Z"
   },
   "will-ethereum-reach-2800-in-september-2026-from-september-22": {
     "outcome": 0,
@@ -1239,6 +1339,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-05T14:53:52Z"
   },
+  "will-raphael-glucksman-win-the-socialist-party-nomination-to-contest-the-2027-french-presidential-elections-20260710182042071": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-12T15:40:29Z"
+  },
   "will-raquel-lyra-win-the-pernambuco-governor-election-20260709143134927": {
     "outcome": 1,
     "resolution_source": "uma",
@@ -1274,6 +1379,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-02T12:47:39Z"
   },
+  "will-russia-target-kyiv-on-october-12-2026": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-12T15:40:29Z"
+  },
   "will-russia-target-kyiv-on-october-4-2026": {
     "outcome": 1,
     "resolution_source": "uma",
@@ -1308,6 +1418,11 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-09T13:26:06Z"
+  },
+  "will-team-yandex-win-blast-slam-viii": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-12T15:40:29Z"
   },
   "will-the-next-google-gemini-pro-model-be-released-by-september-30-2026": {
     "outcome": 0,
