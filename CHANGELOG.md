@@ -4,6 +4,15 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+### Added
+- **MCPB bundle**: the MCP server now ships as an MCP Bundle (`.mcpb`) for
+  one-click install in Claude Desktop and other MCPB hosts. `mcpb/manifest.json`
+  declares the spec's `uv` runtime pointing at the published
+  `polymarket-paper-trader` package; `make mcpb` packs
+  `dist/polymarket-paper-trader-<version>.mcpb`, and a new `publish-mcpb` job
+  attaches the bundle to each GitHub Release. `test_meta` pins the manifest
+  version and tool list to the package.
+
 ## [0.4.9] - 2026-10-14
 
 ### Added

@@ -32,6 +32,16 @@ Used, verbatim or under a different root key, by: **Cline** (`cline_mcp_settings
 {"type": "local", "command": ["uvx", "--from", "polymarket-paper-trader", "pm-trader-mcp"],
 "enabled": true}}}`.
 
+## Claude Desktop / MCPB
+
+Claude Desktop and other hosts that support [MCP Bundles](https://github.com/modelcontextprotocol/mcpb)
+(`.mcpb`) install the server in one click. Download
+`polymarket-paper-trader-<version>.mcpb` from the
+[latest release](https://github.com/agent-next/polymarket-paper-trader/releases/latest)
+and open the file: the host reads the bundled `manifest.json` and adds
+`pm-trader-mcp` as a local stdio server. No API keys or account setup — every
+dollar is paper money.
+
 ## Claude Code
 
 Plugin (skill + MCP server together):
@@ -227,3 +237,4 @@ npx skills add agent-next/polymarket-paper-trader
 - [Agent Skills — Specification](https://agentskills.io/specification.md)
 - [MCP Apps — Specification](https://modelcontextprotocol.io/extensions/apps/overview)
   (`ui://` resources, `_meta.ui.resourceUri`, the postMessage JSON-RPC bridge)
+- [MCP Bundles — Specification and CLI](https://github.com/modelcontextprotocol/mcpb)
