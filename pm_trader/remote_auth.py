@@ -45,6 +45,8 @@ ALLOWED_ALGS: tuple[str, ...] = (
 JWKS_CACHE_SECONDS = 300.0
 # After a failed JWKS fetch, wait this long before asking the issuer again.
 JWKS_RETRY_SECONDS = 30.0
+# Never trust a key set this old, issuer outage or not: rotated keys must expire.
+JWKS_MAX_STALE_SECONDS = 3600.0
 _FETCH_TIMEOUT = httpx.Timeout(10.0)
 
 # Directory under ~/.pm-trader/ that holds one hashed directory per remote user.
@@ -166,17 +168,20 @@ class RemoteTokenVerifier(TokenVerifier):
     async def _jwks(self) -> list[dict[str, Any]] | None:
         """Return the issuer's JWKS, cached for `jwks_ttl` seconds.
 
-        When a fetch fails, the last good key set (``None`` if there never was
-        one, so the token is rejected rather than trusted) is used for the next
+        When a fetch fails, the last good key set is used for the next
         `JWKS_RETRY_SECONDS`: an issuer outage costs one fetch per window, not
         one timed-out fetch per request, and a failed refresh does not lock out
-        users whose keys are already known.
+        users whose keys are already known. A key set older than
+        `JWKS_MAX_STALE_SECONDS`, or none at all, gives ``None`` instead, so the
+        token is rejected rather than trusted.
         """
         if self._fresh():
             return self._keys
         async with self._lock:
-            if self._fresh() or time.monotonic() - self._failed_at < JWKS_RETRY_SECONDS:
+            if self._fresh():
                 return self._keys
+            if time.monotonic() - self._failed_at < JWKS_RETRY_SECONDS:
+                return self._stale_keys()
             try:
                 async with httpx.AsyncClient(timeout=_FETCH_TIMEOUT) as client:
                     discovery = await client.get(
@@ -191,10 +196,16 @@ class RemoteTokenVerifier(TokenVerifier):
                     raise TypeError("JWKS 'keys' is not a list")
             except (httpx.HTTPError, ValueError, KeyError, TypeError):
                 self._failed_at = time.monotonic()
-                return self._keys
+                return self._stale_keys()
             self._keys = keys
             self._fetched_at = time.monotonic()
             return self._keys
+
+    def _stale_keys(self) -> list[dict[str, Any]] | None:
+        """The last good key set, unless it is older than `JWKS_MAX_STALE_SECONDS`."""
+        if time.monotonic() - self._fetched_at < JWKS_MAX_STALE_SECONDS:
+            return self._keys
+        return None
 
     def _fresh(self) -> bool:
         """True while the cached JWKS is still within its TTL."""
