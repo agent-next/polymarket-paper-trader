@@ -419,17 +419,34 @@ class TestTokenVerifierRejects:
         assert results == [None, None]
         assert len(httpx_mock.get_requests()) == fetches
 
-    def test_failed_refresh_keeps_the_last_good_keys(self, key, httpx_mock):
+    @pytest.mark.httpx_mock(can_send_already_matched_responses=True)
+    def test_failed_refresh_keeps_the_last_good_keys(
+        self, key, other_key, httpx_mock
+    ):
         _serve_issuer(httpx_mock, key)
         httpx_mock.add_response(url=DISCOVERY_URL, status_code=500)
         verifier = RemoteTokenVerifier(ISSUER, AUDIENCE, jwks_ttl=0.0)
 
-        results = _verify(verifier, _token(key), _token(key))
+        results = _verify(verifier, _token(key), _token(key), _token(other_key))
 
-        assert [r is not None for r in results] == [True, True]
+        # The stale keys still check signatures: a foreign key is refused.
+        assert [r is not None for r in results] == [True, True, False]
         assert [str(r.url) for r in httpx_mock.get_requests()] == [
             DISCOVERY_URL, JWKS_URL, DISCOVERY_URL,
         ]
+
+    @pytest.mark.httpx_mock(can_send_already_matched_responses=True)
+    def test_keys_older_than_the_stale_limit_are_dropped(
+        self, key, httpx_mock, monkeypatch
+    ):
+        monkeypatch.setattr("pm_trader.remote_auth.JWKS_MAX_STALE_SECONDS", 0.0)
+        _serve_issuer(httpx_mock, key)
+        httpx_mock.add_response(url=DISCOVERY_URL, status_code=500)
+        verifier = RemoteTokenVerifier(ISSUER, AUDIENCE, jwks_ttl=0.0)
+
+        results = _verify(verifier, _token(key), _token(key), _token(key))
+
+        assert [r is not None for r in results] == [True, False, False]
 
     def test_discovery_without_jwks_uri_is_refused(self, key, httpx_mock):
         httpx_mock.add_response(url=DISCOVERY_URL, json={"issuer": ISSUER})
