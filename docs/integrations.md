@@ -125,6 +125,37 @@ expose it through an authenticating reverse proxy or tunnel and register that pu
 `/mcp` URL as a remote MCP tool. The transport has no authentication of its own, so never
 bind it directly to a public interface.
 
+## MCP Apps (interactive UI)
+
+`pm-trader-mcp` ships one [MCP Apps](https://modelcontextprotocol.io/docs/extensions/apps)
+view: the `portfolio` and `stats` tools return the same JSON envelope as text as
+always, and additionally point at a self-contained dashboard
+(`ui://pm-trader/portfolio`, `text/html;profile=mcp-app`) through
+`_meta.ui.resourceUri` (ChatGPT also reads the `openai/outputTemplate` alias).
+
+Hosts that implement MCP Apps render the dashboard inline instead of the text
+result: cash, total value, P&L and ROI, a positions table (market, outcome,
+shares, average price, live price, unrealized P&L), and for `stats` win rate,
+Sharpe, max drawdown, trade count and fees. The view asks the server for the
+totals through the bridge's `tools/call` when the host can proxy tool calls
+(`hostCapabilities.serverTools`); hosts that cannot simply get the positions it
+already has. Errors from the tool (`{"ok": false, ...}`) and an empty
+portfolio both render as a message instead of a table.
+
+The document is one HTML file with inline CSS and vanilla JS — no external
+scripts, fonts, images or network calls — and declares no CSP domains, so it
+runs under the spec's restrictive default CSP. Light and dark follow the host's
+`hostContext.theme` and theme variables, falling back to
+`prefers-color-scheme`.
+
+Every other runtime listed above (and any host without MCP Apps support) keeps
+getting exactly the same text result it gets today: no configuration change, no
+behavior change.
+
+![pm-trader portfolio view in a light host](img/mcp-apps-portfolio.png)
+
+![pm-trader portfolio view in a dark host](img/mcp-apps-portfolio-dark.png)
+
 ## Agent Skills
 
 The skill at `skill/polymarket-paper-trader/SKILL.md` (mirrored at
@@ -160,3 +191,5 @@ npx skills add agent-next/polymarket-paper-trader
 - [OpenAI Agents SDK — MCP](https://openai.github.io/openai-agents-python/mcp/)
 - [CrewAI Docs — Stdio Transport](https://docs.crewai.com/v1.15.20/en/mcp/stdio)
 - [Agent Skills — Specification](https://agentskills.io/specification.md)
+- [MCP Apps — Specification](https://modelcontextprotocol.io/docs/extensions/apps)
+  (`ui://` resources, `_meta.ui.resourceUri`, the postMessage JSON-RPC bridge)

@@ -4,6 +4,14 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+### Added
+- **MCP Apps**: `portfolio` and `stats` now advertise the packaged dashboard at
+  `ui://pm-trader/portfolio` (`text/html;profile=mcp-app`) via
+  `_meta.ui.resourceUri`. Hosts with MCP Apps render cash, total value, P&L,
+  the positions table and the performance metrics inline; every other host keeps
+  the same text result. The view is one self-contained HTML file with inline
+  CSS/JS and no external resources, so it runs under the spec's default CSP.
+
 ### Fixed
 - **Contributor opencode**: the PR bot's provider config moved from the repo
   root to `.github/opencode/opencode.json` (the workflow points
