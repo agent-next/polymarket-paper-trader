@@ -315,11 +315,14 @@ jobs:
       github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # pull-requests stays read — a write token would let the model submit
-    # reviews; the comment posts via the issues API, which issues: write covers.
+    # Posting the review comment on a PR (and the action's reaction) needs
+    # pull-requests: write; with read the action 403s before it reviews. The
+    # token still cannot approve: "Allow GitHub Actions to create and approve
+    # pull requests" is off for the repo and the org
+    # (can_approve_pull_request_reviews: false), and contents stays read.
     permissions:
       contents: read
-      pull-requests: read
+      pull-requests: write
       issues: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -340,9 +343,6 @@ jobs:
           umask 077
           printf '%s' "$FREEINFERENCE_API_KEY" > "$HOME/.freeinference-api-key"
       - uses: anomalyco/opencode/github@9b4ec5714d481559990db0a816d5dec19541a814 # v2.0.26
-        # Advisory job: the action's reaction on its own comment needs
-        # pull-requests: write and 403s under the read token (issue #94).
-        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

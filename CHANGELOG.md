@@ -4,6 +4,13 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- **PR bot review**: the review job gets `pull-requests: write`, the
+  permission GitHub requires to comment on a PR; with `read` it failed with a
+  403 before reviewing, and `continue-on-error` reported that as success, so
+  no review was ever posted. Approving stays impossible: Actions approval is
+  off for the repo and org.
+
 ## [0.4.6] - 2026-10-14
 
 ### Added
