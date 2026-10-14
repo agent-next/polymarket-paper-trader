@@ -4,8 +4,9 @@
 # (crowd, coin, favorite). web_access/cutoff are disclosure metadata shown on
 # the public board; cutoffs are the vendors' published values, null when unpublished.
 # OpenAI-compatible entrants use openai/<model-id> with api_base; OpenCode Zen's
-# other free models reject calls from outside OpenCode (HTTP 403, 2026-09-26),
-# and GitHub Models was retired on 2026-07-30.
+# other free models reject calls from outside OpenCode (HTTP 403, 2026-09-26;
+# space-bunny-free followed on 2026-10-11 and was dropped), and GitHub Models
+# was retired on 2026-07-30.
 entrants:
   - id: jev
     label: Jev 1.13 (free)
@@ -13,14 +14,6 @@ entrants:
     model: opencode/jev-1.13-free
     web_access: null        # not documented by TypeSafe
     cutoff: null            # not published
-  - id: space-bunny
-    label: Space Bunny (free, stealth)
-    kind: ai
-    model: openai/space-bunny-free
-    api_base: https://opencode.ai/zen/v1
-    api_key_env: ZEN_API_KEY  # placeholder value in CI: the free tier checks no key
-    web_access: null        # stealth model: provider not disclosed
-    cutoff: null
   - id: crowd
     label: Crowd (market price)
     kind: baseline
