@@ -49,6 +49,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-13T17:47:17Z"
   },
+  "bitcoin-above-82k-on-october-14-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T18:09:41Z"
+  },
   "bitcoin-above-82k-on-october-2-2026": {
     "outcome": 1,
     "resolution_source": "uma",
@@ -113,6 +118,11 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-12T19:59:25Z"
+  },
+  "bitcoin-above-86k-on-october-14-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T18:09:41Z"
   },
   "bitcoin-above-86k-on-october-2-2026": {
     "outcome": 0,
@@ -244,10 +254,20 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-12T19:59:25Z"
   },
+  "elon-musk-of-tweets-october-12-october-14-2026-115-139": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T18:09:41Z"
+  },
   "elon-musk-of-tweets-october-12-october-14-2026-40-64": {
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-14T12:03:36Z"
+  },
+  "elon-musk-of-tweets-october-12-october-14-2026-90-114": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T18:09:41Z"
   },
   "elon-musk-of-tweets-october-2-october-9-2026-140-159": {
     "outcome": 0,
