@@ -109,10 +109,11 @@ docs example was wrong.
 ## Conventions and pitfalls
 
 - Version pins live in `pyproject.toml`, `server.json` (two places),
-  `.claude-plugin/plugin.json`, `gemini-extension.json`, and BOTH
-  `skill/polymarket-paper-trader/SKILL.md` copies (they must be identical — `test_meta`
-  enforces it, and the changelog heading must match the installed version; reinstall with
-  `pip install -e . --no-deps` after a bump so dist-info catches up).
+  `.claude-plugin/plugin.json`, `gemini-extension.json`, `mcpb/manifest.json` and
+  `mcpb/pyproject.toml`, and BOTH `skill/polymarket-paper-trader/SKILL.md` copies
+  (they must be identical — `test_meta` enforces it, and the changelog heading must
+  match the installed version; reinstall with `pip install -e . --no-deps` after a
+  bump so dist-info catches up).
 - Release policy: patch releases are routine; any minor/major bump is an owner decision.
   Releases: bump pins → promote `[Unreleased]` in the CHANGELOG → PR → green CI → tag
   `vX.Y.Z` on the merged main commit → `publish.yml` (tests → tag/version match + outsider
@@ -136,9 +137,10 @@ docs example was wrong.
 - The eval harness still requires a separate editable install (`polymarket-benchmark`)
   instead of a `pm-trader` subcommand/extra (see Open items).
 - A release means hand-bumping version pins in 6+ places (`pyproject.toml`,
-  `server.json` x2, `.claude-plugin/plugin.json`, `gemini-extension.json`, both
-  `SKILL.md` copies); `test_meta` pins all of them against each other, but the
-  guards only fire when the test suite runs.
+  `server.json` x2, `.claude-plugin/plugin.json`, `gemini-extension.json`,
+  `mcpb/manifest.json`, `mcpb/pyproject.toml`, both `SKILL.md` copies);
+  `test_meta` pins all of them against each other, but the guards only fire when
+  the test suite runs.
 - Local `make check` uses the venv's Python (no version pin). CI runs the coverage gate on
   Python 3.13 and the 3.10-3.12 matrix without coverage (`.github/workflows/test.yml`) —
   a local green does not prove the full matrix.
