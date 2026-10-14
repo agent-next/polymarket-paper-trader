@@ -19,6 +19,7 @@ import sys
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Any
 
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
@@ -60,6 +61,30 @@ def _skill_body() -> str:
     return re.sub(r"\A---\n.*?\n---\n", "", text, count=1, flags=re.DOTALL)
 
 
+# MCP Apps (the `io.modelcontextprotocol/ui` extension) renders a tool result by
+# fetching the HTML resource its tool metadata points at, then handing the result
+# to that document over the JSON-RPC postMessage bridge. Hosts without UI support
+# ignore the metadata and read the same text result as before.
+UI_RESOURCE_URI = "ui://pm-trader/portfolio"
+UI_MIME_TYPE = "text/html;profile=mcp-app"
+
+# `_meta.ui.resourceUri` is the standardized field; `openai/outputTemplate` is
+# ChatGPT's documented compatibility alias and `ui/resourceUri` is the spec's
+# deprecated (still served) flat form.
+_UI_TOOL_META = {
+    "ui": {"resourceUri": UI_RESOURCE_URI},
+    "openai/outputTemplate": UI_RESOURCE_URI,
+    "ui/resourceUri": UI_RESOURCE_URI,
+}
+
+
+def _ui_body() -> str:
+    """Return the packaged MCP Apps view HTML."""
+    return importlib.resources.files("pm_trader").joinpath(
+        "ui/portfolio.html"
+    ).read_text(encoding="utf-8")
+
+
 mcp = MCPServer(
     "pm-trader", version=_server_version(), instructions=_SERVER_INSTRUCTIONS
 )
@@ -84,6 +109,20 @@ def trading_playbook() -> str:
 def trading_playbook_resource() -> str:
     """Return the pm-trader SKILL.md playbook body."""
     return _skill_body()
+
+
+@mcp.resource(
+    UI_RESOURCE_URI,
+    name="portfolio",
+    title="pm-trader portfolio dashboard",
+    description="Interactive portfolio dashboard for the portfolio and stats tools.",
+    mime_type=UI_MIME_TYPE,
+    meta={"ui": {"prefersBorder": True}},
+)
+def portfolio_view() -> str:
+    """Return the portfolio dashboard HTML for MCP Apps hosts."""
+    return _ui_body()
+
 
 # MCP SDK 2.x dispatches tools/call concurrently and runs sync tool functions
 # on arbitrary anyio worker threads; the Engine's SQLite connection is bound
@@ -119,12 +158,16 @@ _DESTRUCTIVE_LOCAL_IDEMPOTENT = ToolAnnotations(
 
 
 def _tool(
-    *, title: str, annotations: ToolAnnotations,
+    *,
+    title: str,
+    annotations: ToolAnnotations,
+    meta: dict[str, Any] | None = None,
 ) -> Callable[[Callable[..., str]], Callable[..., str]]:
     """Register the decorated function as an MCP tool.
 
     ``title`` is the human-readable label and ``annotations`` the
-    read-only/destructive/idempotent/open-world hints. The registered callable
+    read-only/destructive/idempotent/open-world hints; ``meta`` carries MCP Apps
+    UI metadata for the tools that render a view. The registered callable
     is an async wrapper that submits the function to the single-worker
     executor; ``functools.wraps`` keeps the name, docstring and signature
     identical so the advertised tool schemas are unchanged. The module
@@ -139,7 +182,7 @@ def _tool(
                 _tool_executor, functools.partial(fn, **kwargs)
             )
 
-        mcp.add_tool(_wrapper, title=title, annotations=annotations)
+        mcp.add_tool(_wrapper, title=title, annotations=annotations, meta=meta)
         return fn
 
     return register
@@ -455,7 +498,7 @@ def sell(
 # ---------------------------------------------------------------------------
 
 
-@_tool(title="Get portfolio", annotations=_READ_ONLY_LIVE)
+@_tool(title="Get portfolio", annotations=_READ_ONLY_LIVE, meta=_UI_TOOL_META)
 def portfolio(account: str = "default") -> str:
     """Get all open positions with live prices and unrealized P&L."""
     try:
@@ -579,7 +622,7 @@ def check_orders(account: str = "default") -> str:
 # ---------------------------------------------------------------------------
 
 
-@_tool(title="Get performance stats", annotations=_READ_ONLY_LIVE)
+@_tool(title="Get performance stats", annotations=_READ_ONLY_LIVE, meta=_UI_TOOL_META)
 def stats(account: str = "default") -> str:
     """Get performance analytics: win rate, ROI, profit, max drawdown."""
     try:
