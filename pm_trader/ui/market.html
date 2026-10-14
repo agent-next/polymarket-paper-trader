@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>pm-trader market</title>
+<style>
+/* MCP Apps view: one self-contained document.
+   No external scripts, styles, fonts or images, so it runs under the spec's
+   default CSP (script-src/style-src 'unsafe-inline', connect-src 'none').
+   Colors prefer the host's standardized --color-* variables and fall back to
+   the light/dark palettes below (prefers-color-scheme, or the host theme). */
+:root {
+  color-scheme: light dark;
+  --pm-font: var(--font-sans, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif);
+  --pm-mono: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  --pm-radius: var(--border-radius-md, 10px);
+}
+:root,
+:root[data-theme="light"] {
+  --pm-bg: var(--color-background-primary, #ffffff);
+  --pm-surface: var(--color-background-secondary, #f5f6f8);
+  --pm-text: var(--color-text-primary, #15171c);
+  --pm-muted: var(--color-text-secondary, #5c6370);
+  --pm-border: var(--color-border-secondary, #e2e5ea);
+  --pm-positive: var(--color-text-success, #157347);
+  --pm-negative: var(--color-text-danger, #b42318);
+  --pm-accent: var(--color-text-info, #2f5bd7);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --pm-bg: #12141a;
+    --pm-surface: #1b1e26;
+    --pm-text: #f2f4f8;
+    --pm-muted: #9aa3b2;
+    --pm-border: #2b303b;
+    --pm-positive: #45d69a;
+    --pm-negative: #ff7b72;
+    --pm-accent: #86a8ff;
+  }
+}
+:root[data-theme="dark"] {
+  --pm-bg: var(--color-background-primary, #12141a);
+  --pm-surface: var(--color-background-secondary, #1b1e26);
+  --pm-text: var(--color-text-primary, #f2f4f8);
+  --pm-muted: var(--color-text-secondary, #9aa3b2);
+  --pm-border: var(--color-border-secondary, #2b303b);
+  --pm-positive: var(--color-text-success, #45d69a);
+  --pm-negative: var(--color-text-danger, #ff7b72);
+  --pm-accent: var(--color-text-info, #86a8ff);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--pm-bg);
+  color: var(--pm-text);
+  font-family: var(--pm-font);
+  font-size: 14px;
+  line-height: 1.45;
+  padding: 16px;
+}
+h1 { font-size: 15px; font-weight: 600; margin: 0; }
+h2 { font-size: 13px; font-weight: 600; margin: 0 0 8px; }
+.wrap { display: flex; flex-direction: column; gap: 14px; }
+
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.brand { display: flex; align-items: baseline; gap: 6px; }
+.badge {
+  border: 1px solid var(--pm-border);
+  border-radius: 999px;
+  color: var(--pm-muted);
+  font-size: 12px;
+  padding: 1px 9px;
+  white-space: nowrap;
+}
+
+.card {
+  background: var(--pm-surface);
+  border: 1px solid var(--pm-border);
+  border-radius: var(--pm-radius);
+  padding: 12px 14px;
+}
+.question { font-size: 15px; font-weight: 600; margin: 0 0 2px; }
+.slug { color: var(--pm-muted); font-family: var(--pm-mono); font-size: 11px; }
+.badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 10px; }
+.chip {
+  background: var(--pm-bg);
+  border: 1px solid var(--pm-border);
+  border-radius: 999px;
+  font-size: 11px;
+  padding: 0 8px;
+  text-transform: uppercase;
+}
+
+.grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); }
+.kpi {
+  border: 1px solid var(--pm-border);
+  border-radius: var(--pm-radius);
+  padding: 8px 10px;
+}
+.kpi-label { color: var(--pm-muted); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+.kpi-value { font-family: var(--pm-mono); font-size: 17px; margin-top: 2px; }
+.kpi-sub { color: var(--pm-muted); font-size: 11px; margin-top: 2px; }
+
+.scroll { overflow-x: auto; margin-bottom: 10px; }
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: 7px 8px; text-align: right; white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+thead th {
+  border-bottom: 1px solid var(--pm-border);
+  color: var(--pm-muted);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+tbody tr + tr td { border-top: 1px solid var(--pm-border); }
+td { font-family: var(--pm-mono); font-size: 13px; }
+
+.ticket { display: flex; flex-direction: column; gap: 10px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field-label {
+  color: var(--pm-muted);
+  font-size: 11px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+select, input {
+  background: var(--pm-bg);
+  border: 1px solid var(--pm-border);
+  border-radius: 8px;
+  color: var(--pm-text);
+  font-family: var(--pm-mono);
+  font-size: 13px;
+  padding: 6px 8px;
+}
+input { width: 120px; }
+button {
+  background: var(--pm-bg);
+  border: 1px solid var(--pm-border);
+  border-radius: 8px;
+  color: var(--pm-text);
+  cursor: pointer;
+  font-family: var(--pm-font);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 7px 14px;
+}
+button.primary { background: var(--pm-accent); border-color: var(--pm-accent); color: var(--pm-bg); }
+button[disabled] { cursor: not-allowed; opacity: .45; }
+
+.hint, .status { color: var(--pm-muted); font-size: 12px; margin: 0; }
+.status.error { color: var(--pm-negative); }
+.receipt {
+  background: var(--pm-bg);
+  border: 1px solid var(--pm-border);
+  border-radius: var(--pm-radius);
+  font-family: var(--pm-mono);
+  font-size: 12px;
+  margin: 0;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+}
+.fallback {
+  background: var(--pm-bg);
+  border: 1px solid var(--pm-border);
+  border-radius: var(--pm-radius);
+  margin: 0;
+  padding: 8px 10px;
+}
+.empty, .error-message { color: var(--pm-muted); margin: 0; padding: 12px 0; }
+.error-message { color: var(--pm-negative); font-family: var(--pm-mono); }
+footer { color: var(--pm-muted); font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand"><h1>pm-trader</h1><span class="badge" id="account">default</span></div>
+    <span class="badge" id="source"></span>
+  </header>
+  <div id="content"><p class="empty">Connecting to the host&hellip;</p></div>
+  <footer>Paper money &middot; live Polymarket prices &middot; nothing trades without your click</footer>
+</div>
+<script>
+(function () {
+  "use strict";
+
+  var PROTOCOL_VERSION = "2025-06-18";
+  var APP_INFO = { name: "pm-trader market", version: "1.0.0" };
+
+  // Server tools this view calls through the bridge. All of them already exist
+  // on pm-trader-mcp; the view adds no trading surface of its own.
+  var MARKET_TOOL = "get_market";
+  var BOOK_TOOL = "get_order_book";
+  var PORTFOLIO_TOOL = "portfolio";
+  var BUY_TOOL = "buy";
+  var SELL_TOOL = "sell";
+  var TRADE_METHOD = "tools/call";
+
+  // get_market takes no account; buy/sell default to this one, so the ticket
+  // states it instead of guessing another account's book.
+  var ACCOUNT = "default";
+  var MIN_ORDER_USD = 1; // engine.MIN_ORDER_USD, the Polymarket minimum order
+
+  var contentEl = document.getElementById("content");
+  var accountEl = document.getElementById("account");
+  var sourceEl = document.getElementById("source");
+
+  var pending = new Map();
+  var nextId = 1;
+  var hostCapabilities = {};
+  var hostReady = false;
+  var toolArguments = null;
+
+  // state.market: the get_market envelope, or null before the first result.
+  // state.books: outcome -> get_order_book envelope data.
+  // state.positions: the portfolio envelope data, or null when not loaded.
+  // state.preview: the exact ticket Confirm will send, set by Preview only.
+  // state.receipt: the trade envelope data returned by the server.
+  var state = {
+    market: null,
+    books: {},
+    positions: null,
+    draft: { outcome: "yes", side: "buy", amount: "" },
+    preview: null,
+    receipt: null,
+    status: null,
+    submitted: false,
+    inFlight: false
+  };
+
+  // ---------------------------------------------------------------- transport
+
+  function sendNotification(method, params) {
+    window.parent.postMessage({ jsonrpc: "2.0", method: method, params: params }, "*");
+  }
+
+  function sendRequest(method, params) {
+    var id = nextId++;
+    window.parent.postMessage({ jsonrpc: "2.0", id: id, method: method, params: params }, "*");
+    return new Promise(function (resolve, reject) {
+      pending.set(id, { resolve: resolve, reject: reject });
+    });
+  }
+
+  function canCallServer() {
+    return hostReady && !!(hostCapabilities && hostCapabilities.serverTools);
+  }
+
+  // ------------------------------------------------------------------ format
+
+  var usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+  var integer = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
+
+  function num(value) { return typeof value === "number" && isFinite(value); }
+  function money(value) { return num(value) ? usd.format(value) : "—"; }
+  function price(value) { return num(value) ? value.toFixed(3) : "—"; }
+  function shares(value) { return num(value) ? value.toFixed(2) : "—"; }
+  function units(value) { return num(value) ? integer.format(value) : "—"; }
+  function cents(value) {
+    return num(value) ? (value * 100).toFixed(1) + "¢" : "—";
+  }
+  function day(value) {
+    if (typeof value !== "string" || value.length < 10) { return "—"; }
+    return value.slice(0, 10);
+  }
+  function upper(value) {
+    return typeof value === "string" && value ? value.toUpperCase() : value;
+  }
+
+  // --------------------------------------------------------------------- DOM
+
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) { node.className = className; }
+    if (text !== undefined && text !== null) { node.textContent = String(text); }
+    return node;
+  }
+
+  function kpi(label, value, sub) {
+    var card = el("div", "kpi");
+    card.appendChild(el("div", "kpi-label", label));
+    card.appendChild(el("div", "kpi-value", value));
+    if (sub) { card.appendChild(el("div", "kpi-sub", sub)); }
+    return card;
+  }
+
+  function option(value, label) {
+    var node = document.createElement("option");
+    node.value = value;
+    node.textContent = label;
+    return node;
+  }
+
+  function selectField(label, node) {
+    var field = el("label", "field");
+    field.appendChild(el("span", "field-label", label));
+    field.appendChild(node);
+    return field;
+  }
+
+  function placeholder(message) {
+    contentEl.replaceChildren(el("p", "empty", message));
+  }
+
+  function renderError(message, code) {
+    var box = el("div", "card");
+    box.appendChild(el("h2", null, "This view could not be loaded"));
+    box.appendChild(el("p", "error-message", message));
+    if (code) { box.appendChild(el("p", "hint", "code: " + code)); }
+    contentEl.replaceChildren(box);
+  }
+
+  // ----------------------------------------------------------------- payload
+
+  function extractText(result) {
+    if (!result || !Array.isArray(result.content)) { return null; }
+    var blocks = result.content;
+    for (var i = 0; i < blocks.length; i++) {
+      var block = blocks[i];
+      if (block && block.type === "text" && typeof block.text === "string") { return block.text; }
+    }
+    return null;
+  }
+
+  function readEnvelope(result) {
+    var text = extractText(result);
+    if (text === null) {
+      return { ok: false, error: "The host sent a tool result with no text content.", code: "" };
+    }
+    var parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (err) {
+      return { ok: false, error: "The tool result was not valid JSON.", code: "" };
+    }
+    if (parsed && parsed.ok === true) { return { ok: true, data: parsed.data }; }
+    return {
+      ok: false,
+      error: (parsed && parsed.error) || "The tool reported an unknown error.",
+      code: (parsed && parsed.code) || ""
+    };
+  }
+
+  function isMarket(data) {
+    return !!data && typeof data === "object" && !Array.isArray(data)
+      && typeof data.question === "string";
+  }
+
+  function outcomeKeys(market) {
+    var names = market && Array.isArray(market.outcomes) ? market.outcomes : [];
+    var keys = [];
+    for (var i = 0; i < names.length; i++) {
+      if (typeof names[i] === "string" && names[i]) { keys.push(names[i].toLowerCase()); }
+    }
+    return keys;
+  }
+
+  function outcomeName(market, key) {
+    var names = market && Array.isArray(market.outcomes) ? market.outcomes : [];
+    for (var i = 0; i < names.length; i++) {
+      if (typeof names[i] === "string" && names[i].toLowerCase() === key) { return names[i]; }
+    }
+    return key;
+  }
+
+  function listedPrice(market, key) {
+    var keys = outcomeKeys(market);
+    var index = keys.indexOf(key);
+    if (index < 0) { return null; }
+    var prices = market.outcome_prices;
+    return Array.isArray(prices) && num(prices[index]) ? prices[index] : null;
+  }
+
+  // ------------------------------------------------------- pure ticket logic
+
+  // Best price on one side of the book: the ask a buy lifts first (lowest) or
+  // the bid a sell hits first (highest).
+  function bestPrice(levels, side) {
+    var best = null;
+    var list = Array.isArray(levels) ? levels : [];
+    for (var i = 0; i < list.length; i++) {
+      var value = list[i] && num(list[i].price) ? list[i].price : null;
+      if (value === null || value <= 0) { continue; }
+      if (best === null || (side === "sell" ? value > best : value < best)) { best = value; }
+    }
+    return best;
+  }
+
+  // Walk the book the way the engine fills: asks ascending for a buy (USD in),
+  // bids descending for a sell (shares in). Pure — no DOM, no bridge.
+  function walkBook(levels, amount, side) {
+    var sorted = (Array.isArray(levels) ? levels : []).slice().sort(function (a, b) {
+      var pa = a && num(a.price) ? a.price : 0;
+      var pb = b && num(b.price) ? b.price : 0;
+      return side === "buy" ? pa - pb : pb - pa;
+    });
+    var remaining = num(amount) && amount > 0 ? amount : 0;
+    var filledShares = 0;
+    var spent = 0;
+    for (var i = 0; i < sorted.length && remaining > 1e-9; i++) {
+      var level = sorted[i];
+      var px = level && num(level.price) ? level.price : 0;
+      var size = level && num(level.size) ? level.size : 0;
+      if (px <= 0 || size <= 0) { continue; }
+      var take = side === "buy"
+        ? Math.min(size, remaining / px)
+        : Math.min(size, remaining);
+      remaining -= side === "buy" ? take * px : take;
+      filledShares += take;
+      spent += take * px;
+    }
+    return {
+      shares: filledShares,
+      cost: spent,
+      avg_price: filledShares > 0 ? spent / filledShares : null,
+      filled: remaining <= 1e-9
+    };
+  }
+
+  // The one message Confirm sends. Pure, so the payload can be pinned in tests.
+  function buildTradeRequest(ticket) {
+    var args = {
+      slug_or_id: ticket.slug,
+      outcome: ticket.outcome,
+      account: ticket.account
+    };
+    if (ticket.side === "buy") {
+      args.amount_usd = ticket.amount;
+    } else {
+      args.shares = ticket.amount;
+    }
+    return {
+      method: TRADE_METHOD,
+      params: {
+        name: ticket.side === "buy" ? BUY_TOOL : SELL_TOOL,
+        arguments: args
+      }
+    };
+  }
+
+  // What the user reads (or types to the agent) when the host will not proxy
+  // tool calls from a view. Pure.
+  function ticketInstructionText(ticket) {
+    var amount = ticket.amount !== null && isFinite(ticket.amount) ? ticket.amount : null;
+    var what = upper(ticket.outcome);
+    if (amount !== null) {
+      what = ticket.side === "buy"
+        ? "$" + amount.toFixed(2) + " of " + what
+        : amount.toFixed(2) + " " + what + " shares";
+    }
+    return "This host will not run tools from a view. Ask the assistant to "
+      + ticket.side + " " + what + " on " + ticket.slug + " (paper trading).";
+  }
+
+  // -------------------------------------------------------------- market card
+
+  function renderCard() {
+    var market = state.market;
+    var box = el("div", "card");
+    box.appendChild(el("h2", "question", market.question));
+    box.appendChild(el("span", "slug", market.slug + " · " + market.condition_id));
+
+    var badges = el("div", "badges");
+    if (market.closed === true) { badges.appendChild(el("span", "chip", "closed")); }
+    if (market.active === false) { badges.appendChild(el("span", "chip", "inactive")); }
+    if (market.accepting_orders === false) { badges.appendChild(el("span", "chip", "book closed")); }
+    if (market.neg_risk === true) { badges.appendChild(el("span", "chip", "neg risk")); }
+    if (badges.childNodes.length > 0) { box.appendChild(badges); }
+
+    box.appendChild(bookTable(market));
+
+    var totals = el("div", "grid");
+    totals.appendChild(kpi("Volume", money(market.volume), "liquidity " + money(market.liquidity)));
+    totals.appendChild(kpi("Ends", day(market.end_date), market.end_date || null));
+    box.appendChild(totals);
+    return box;
+  }
+
+  function bookTable(market) {
+    var wrap = el("div", "scroll");
+    var table = el("table");
+
+    var head = el("thead");
+    var headRow = el("tr");
+    ["Outcome", "Price", "Best bid", "Best ask", "Spread"].forEach(function (label) {
+      headRow.appendChild(el("th", null, label));
+    });
+    head.appendChild(headRow);
+    table.appendChild(head);
+
+    var body = el("tbody");
+    var keys = outcomeKeys(market);
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i];
+      var book = state.books[key];
+      var bid = book ? bestPrice(book.bids, "sell") : null;
+      var ask = book ? bestPrice(book.asks, "buy") : null;
+      var spread = bid !== null && ask !== null ? ask - bid : null;
+
+      var row = el("tr");
+      row.appendChild(el("td", null, outcomeName(market, key)));
+      row.appendChild(el("td", null, price(listedPrice(market, key))));
+      row.appendChild(el("td", null, price(bid)));
+      row.appendChild(el("td", null, price(ask)));
+      row.appendChild(el("td", null, cents(spread)));
+      body.appendChild(row);
+    }
+    table.appendChild(body);
+    wrap.appendChild(table);
+    return wrap;
+  }
+
+  // ------------------------------------------------------------- order ticket
+
+  function readDraft() {
+    var amount = parseFloat(state.draft.amount);
+    return {
+      slug: state.market ? state.market.slug : "",
+      outcome: state.draft.outcome,
+      side: state.draft.side,
+      amount: isFinite(amount) ? amount : null,
+      account: ACCOUNT
+    };
+  }
+
+  // Shares of one outcome of the market on screen, straight from the account's
+  // portfolio. Null when the host will not proxy tool calls (unknown, not zero).
+  function heldShares(outcome) {
+    if (!state.positions || !state.market) { return null; }
+    var held = 0;
+    for (var i = 0; i < state.positions.length; i++) {
+      var position = state.positions[i];
+      if (position.market_slug === state.market.slug && position.outcome === outcome) {
+        held += num(position.shares) ? position.shares : 0;
+      }
+    }
+    return held;
+  }
+
+  function ticketProblem(ticket) {
+    if (ticket.amount === null || !isFinite(ticket.amount) || ticket.amount <= 0) {
+      return "Enter an amount above zero.";
+    }
+    if (ticket.side === "buy" && ticket.amount < MIN_ORDER_USD) {
+      return "The minimum paper order is $" + MIN_ORDER_USD.toFixed(2) + ".";
+    }
+    if (ticket.side === "sell") {
+      var held = heldShares(ticket.outcome);
+      if (held !== null && held <= 0) {
+        return "No open " + upper(ticket.outcome) + " position to sell.";
+      }
+      if (held !== null && ticket.amount > held) {
+        return "You hold " + shares(held) + " " + upper(ticket.outcome) + " shares.";
+      }
+    }
+    return null;
+  }
+
+  function renderTicket() {
+    var ticket = readDraft();
+    var box = el("div", "card");
+    box.appendChild(el("h2", null, "Order ticket"));
+    box.appendChild(el("p", "hint", "Preview prices the order off the live book. "
+      + "Nothing trades until you press Confirm."));
+
+    var held = heldShares(ticket.outcome);
+    if (held !== null) {
+      box.appendChild(el("p", "hint", "Paper account " + ACCOUNT + " holds "
+        + shares(held) + " " + upper(ticket.outcome) + " shares of this market."));
+    }
+
+    if (!canCallServer()) {
+      box.appendChild(el("p", "fallback", ticketInstructionText(ticket)));
+      return box;
+    }
+
+    var panel = el("div", "ticket");
+
+    var row = el("div", "row");
+    var outcomeSelect = document.createElement("select");
+    var keys = outcomeKeys(state.market);
+    for (var i = 0; i < keys.length; i++) {
+      outcomeSelect.appendChild(option(keys[i], outcomeName(state.market, keys[i])));
+    }
+    outcomeSelect.value = ticket.outcome;
+    outcomeSelect.addEventListener("change", function () {
+      editTicket({ outcome: outcomeSelect.value });
+    });
+    row.appendChild(selectField("Outcome", outcomeSelect));
+
+    var sideSelect = document.createElement("select");
+    sideSelect.appendChild(option("buy", "Buy"));
+    sideSelect.appendChild(option("sell", "Sell"));
+    sideSelect.value = ticket.side;
+    sideSelect.addEventListener("change", function () {
+      var side = sideSelect.value;
+      var changes = { side: side };
+      // Selling starts from the shares actually held, so the first ticket a
+      // user writes is one the engine can fill.
+      var held = heldShares(ticket.outcome);
+      if (side === "sell" && !state.draft.amount && held !== null && held > 0) {
+        changes.amount = String(held);
+      }
+      editTicket(changes);
+    });
+    row.appendChild(selectField("Side", sideSelect));
+
+    var amountInput = document.createElement("input");
+    amountInput.type = "number";
+    amountInput.min = "0";
+    amountInput.step = "0.01";
+    amountInput.value = state.draft.amount;
+    amountInput.addEventListener("input", function () {
+      editTicket({ amount: amountInput.value });
+    });
+    row.appendChild(selectField(ticket.side === "buy" ? "Amount (USD)" : "Shares", amountInput));
+
+    var problem = ticketProblem(ticket);
+    var previewButton = document.createElement("button");
+    previewButton.type = "button";
+    previewButton.textContent = "Preview";
+    previewButton.disabled = !!problem || state.inFlight;
+    previewButton.addEventListener("click", preview);
+    row.appendChild(previewButton);
+
+    var confirmButton = document.createElement("button");
+    confirmButton.type = "button";
+    confirmButton.className = "primary";
+    confirmButton.textContent = state.submitted ? "Sent" : "Confirm";
+    // One click sends one tools/call: Preview must have run, and a ticket
+    // already sent (or in flight) is not re-sent by a second click.
+    confirmButton.disabled = !state.preview || state.inFlight || state.submitted;
+    confirmButton.addEventListener("click", confirm);
+    row.appendChild(confirmButton);
+    panel.appendChild(row);
+
+    if (state.preview) { panel.appendChild(previewPanel(state.preview)); }
+    if (state.receipt) { panel.appendChild(el("p", "receipt", receiptText(state.receipt))); }
+
+    var message = problem;
+    var tone = "error";
+    if (!message && state.status) { message = state.status.text; tone = state.status.tone; }
+    if (message) { panel.appendChild(el("p", "status" + (tone === "error" ? " error" : ""), message)); }
+
+    box.appendChild(panel);
+    return box;
+  }
+
+  function previewPanel(preview) {
+    var estimate = preview.estimate;
+    var grid = el("div", "grid");
+    grid.appendChild(kpi("Est. shares", shares(estimate.shares),
+      estimate.filled ? "fills the amount" : "book is thinner than the amount"));
+    grid.appendChild(kpi("Est. avg price", price(estimate.avg_price)));
+    grid.appendChild(kpi(preview.ticket.side === "buy" ? "Est. cost" : "Est. proceeds",
+      money(estimate.cost)));
+    grid.appendChild(kpi("Est. fee", "at fill", "the market's fee schedule"));
+    return grid;
+  }
+
+  function receiptText(receipt) {
+    var trade = receipt && receipt.trade ? receipt.trade : {};
+    var cash = receipt && receipt.account ? receipt.account.cash : null;
+    var lines = [
+      "#" + trade.id + " " + trade.side + " " + upper(trade.outcome) + " on " + trade.market_slug,
+      shares(trade.shares) + " shares at " + price(trade.avg_price) + " avg · "
+        + money(trade.amount_usd),
+      "fee " + money(trade.fee) + " · slippage " + units(trade.slippage_bps) + " bps",
+      "cash " + money(cash)
+    ];
+    return lines.join("\n");
+  }
+
+  // ------------------------------------------------------------------- edits
+
+  function editTicket(changes) {
+    Object.keys(changes).forEach(function (key) { state.draft[key] = changes[key]; });
+    // Any edit invalidates the preview: Confirm always resends a ticket the
+    // user has actually seen priced.
+    state.preview = null;
+    state.status = null;
+    if (changes.side) { state.receipt = null; }
+    render();
+  }
+
+  function preview() {
+    var ticket = readDraft();
+    var problem = ticketProblem(ticket);
+    if (problem) {
+      state.status = { tone: "error", text: problem };
+      render();
+      return;
+    }
+    var book = state.books[ticket.outcome];
+    var levels = ticket.side === "buy"
+      ? (book ? book.asks : null)
+      : (book ? book.bids : null);
+    var estimate = walkBook(levels, ticket.amount, ticket.side);
+    if (!num(estimate.avg_price)) {
+      state.preview = null;
+      state.status = { tone: "error", text: "No price on that side of the book right now." };
+      render();
+      return;
+    }
+    // The engine rejects a sell whose gross proceeds fall under the minimum
+    // order, so a preview that cannot clear it is not worth confirming.
+    if (ticket.side === "sell" && estimate.cost < MIN_ORDER_USD) {
+      state.preview = null;
+      state.status = {
+        tone: "error",
+        text: "That sell is worth " + money(estimate.cost)
+          + " — the minimum order is $" + MIN_ORDER_USD.toFixed(2) + "."
+      };
+      render();
+      return;
+    }
+    state.preview = { ticket: ticket, estimate: estimate, request: buildTradeRequest(ticket) };
+    state.status = null;
+    render();
+  }
+
+  function confirm() {
+    if (!state.preview || state.inFlight || state.submitted) { return; }
+    var request = state.preview.request;
+    state.inFlight = true;
+    state.submitted = true;
+    state.receipt = null;
+    state.status = { tone: "info", text: "Sending " + request.params.name + "…" };
+    render();
+
+    sendRequest(request.method, request.params).then(function (result) {
+      state.inFlight = false;
+      var envelope = readEnvelope(result);
+      if (!envelope.ok) {
+        // The call reached the server and was refused: allow a retry.
+        state.submitted = false;
+        state.status = { tone: "error", text: envelope.error };
+        render();
+        return;
+      }
+      state.receipt = envelope.data;
+      state.status = { tone: "info", text: "Filled — paper only, no real funds moved." };
+      render();
+      loadPositions();
+    }).catch(function (err) {
+      // The host refused or dropped the call (no serverTools, user declined,
+      // disconnected). Nothing was sent: hand the user the text equivalent.
+      state.inFlight = false;
+      state.submitted = false;
+      state.status = {
+        tone: "error",
+        text: "The host did not run the trade (" + (err && err.message ? err.message : "no reply")
+          + "). " + ticketInstructionText(state.preview ? state.preview.ticket : readDraft())
+      };
+      render();
+    });
+  }
+
+  // ------------------------------------------------------------------ render
+
+  function render() {
+    if (!state.market) { return; }
+    var fragment = document.createDocumentFragment();
+    fragment.appendChild(renderCard());
+    fragment.appendChild(renderTicket());
+    contentEl.replaceChildren(fragment);
+  }
+
+  // ------------------------------------------------------------------ bridge
+
+  function showAccount() {
+    accountEl.textContent = ACCOUNT;
+  }
+
+  function applyHostContext(context) {
+    if (!context) { return; }
+    if (context.theme === "light" || context.theme === "dark") {
+      document.documentElement.setAttribute("data-theme", context.theme);
+      document.documentElement.style.colorScheme = context.theme;
+    }
+    var styles = context.styles;
+    if (styles && styles.variables) {
+      var style = document.documentElement.style;
+      Object.keys(styles.variables).forEach(function (name) {
+        var value = styles.variables[name];
+        if (typeof value === "string") { style.setProperty(name, value); }
+      });
+    }
+    if (styles && styles.css && styles.css.fonts) {
+      var sheet = document.createElement("style");
+      sheet.textContent = styles.css.fonts;
+      document.head.appendChild(sheet);
+    }
+  }
+
+  function applyToolInput(params) {
+    toolArguments = (params && params.arguments) || null;
+    showAccount();
+  }
+
+  function applyToolResult(params) {
+    var envelope = readEnvelope(params);
+    if (!envelope.ok) {
+      state.market = null;
+      renderError(envelope.error, envelope.code);
+      return;
+    }
+    // The host also pushes tool-result for calls this view made (its own buy or
+    // sell). Those are receipts, not markets: the confirm path renders them.
+    if (!isMarket(envelope.data)) { return; }
+    state.market = envelope.data;
+    state.books = {};
+    state.receipt = null;
+    sourceEl.textContent = MARKET_TOOL;
+    render();
+    loadBooks();
+    loadPositions();
+  }
+
+  // Best bid and ask come from the live book, which the market payload does not
+  // carry: ask the server for it through the bridge when the host proxies tool
+  // calls, and keep the listed prices when it does not.
+  function loadBooks() {
+    if (!state.market || !canCallServer()) { return; }
+    var slug = state.market.slug;
+    var keys = outcomeKeys(state.market);
+    for (var i = 0; i < keys.length; i++) {
+      loadBook(keys[i], slug);
+    }
+  }
+
+  function loadBook(outcome, slug) {
+    sendRequest(TRADE_METHOD, { name: BOOK_TOOL, arguments: { slug_or_id: slug, outcome: outcome } })
+      .then(function (result) {
+        var envelope = readEnvelope(result);
+        if (!envelope.ok || !state.market || state.market.slug !== slug) { return; }
+        state.books[outcome] = envelope.data;
+        render();
+      })
+      .catch(function () { /* no book for this outcome: the listed price stays */ });
+  }
+
+  // What the account already holds, so the ticket can price a sell and refuse
+  // one the engine would reject.
+  function loadPositions() {
+    if (!state.market || !canCallServer()) { return; }
+    sendRequest(TRADE_METHOD, { name: PORTFOLIO_TOOL, arguments: { account: ACCOUNT } })
+      .then(function (result) {
+        var envelope = readEnvelope(result);
+        // An account that was never initialized has no portfolio yet; that is
+        // not an error here, it just means nothing is held.
+        state.positions = envelope.ok && Array.isArray(envelope.data) ? envelope.data : [];
+        render();
+      })
+      .catch(function () { state.positions = []; });
+  }
+
+  function initialize() {
+    sendRequest("ui/initialize", {
+      protocolVersion: PROTOCOL_VERSION,
+      appInfo: APP_INFO,
+      appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] }
+    }).then(function (result) {
+      hostCapabilities = (result && result.hostCapabilities) || {};
+      applyHostContext(result && result.hostContext);
+      sendNotification("ui/notifications/initialized", {});
+      hostReady = true;
+      if (!state.market) { placeholder("Waiting for the tool result…"); }
+      loadBooks();
+      loadPositions();
+    }).catch(function () {
+      placeholder("Waiting for a host that supports interactive views…");
+    });
+  }
+
+  window.addEventListener("message", function (event) {
+    if (event.source !== window.parent) { return; }
+    var message = event.data;
+    if (!message || message.jsonrpc !== "2.0") { return; }
+
+    if (message.id !== undefined && message.method === "ui/resource-teardown") {
+      window.parent.postMessage({ jsonrpc: "2.0", id: message.id, result: {} }, "*");
+      return;
+    }
+    if (message.id !== undefined && pending.has(message.id)) {
+      var waiter = pending.get(message.id);
+      pending.delete(message.id);
+      if (message.error) { waiter.reject(new Error(message.error.message || "host error")); }
+      else { waiter.resolve(message.result); }
+      return;
+    }
+
+    switch (message.method) {
+      case "ui/notifications/tool-input":
+        applyToolInput(message.params);
+        break;
+      case "ui/notifications/tool-input-partial":
+        showAccount();
+        break;
+      case "ui/notifications/tool-result":
+        applyToolResult(message.params);
+        break;
+      case "ui/notifications/tool-cancelled":
+        placeholder("The tool call was cancelled before it returned a result.");
+        break;
+      case "ui/notifications/host-context-changed":
+        applyHostContext(message.params);
+        break;
+      default:
+        break;
+    }
+  });
+
+  // Flexible containers size the iframe from the view; report content size.
+  if (typeof ResizeObserver === "function") {
+    var lastWidth = 0;
+    var lastHeight = 0;
+    var sizeTimer = null;
+    var observer = new ResizeObserver(function () {
+      var root = document.documentElement;
+      var width = root.scrollWidth;
+      var height = root.scrollHeight;
+      if (width === lastWidth && height === lastHeight) { return; }
+      lastWidth = width;
+      lastHeight = height;
+      if (sizeTimer) { clearTimeout(sizeTimer); }
+      sizeTimer = setTimeout(function () {
+        sendNotification("ui/notifications/size-changed", { width: width, height: height });
+      }, 120);
+    });
+    observer.observe(document.body);
+  }
+
+  showAccount();
+  initialize();
+}());
+</script>
+</body>
+</html>
