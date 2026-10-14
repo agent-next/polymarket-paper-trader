@@ -136,7 +136,6 @@ directory. Details, threat model and the environment equivalents:
 [remote-mcp.md](remote-mcp.md).
 
 ```bash
-pip install "polymarket-paper-trader[remote]"   # adds the JWT crypto backend
 pm-trader-mcp --transport streamable-http --host 0.0.0.0 --port 8000 \
   --auth-issuer https://login.example.com \
   --auth-audience https://pm.example.com/mcp \

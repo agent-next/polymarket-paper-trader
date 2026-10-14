@@ -160,16 +160,6 @@ class TestRemoteAuthConfig:
         assert verifier.audience == AUDIENCE
         assert verifier.jwks_ttl == JWKS_CACHE_SECONDS
 
-    def test_token_verifier_refuses_without_the_crypto_backend(self, monkeypatch):
-        monkeypatch.setattr(
-            "pm_trader.remote_auth.importlib.util.find_spec", lambda name: None
-        )
-
-        with pytest.raises(
-            RemoteAuthConfigError, match=r"polymarket-paper-trader\[remote\]"
-        ):
-            _config().token_verifier()
-
     @pytest.mark.parametrize(
         "url",
         [

@@ -62,9 +62,8 @@ supplying one without the others, or supplying any of them on stdio, is a
 startup error. `--auth-issuer` must be `https://` (`http://` is accepted only
 for `localhost`/`127.0.0.1`, so tests and local IdPs work).
 
-Requires the optional extra: `pip install "polymarket-paper-trader[remote]"`
-(`PyJWT[crypto]`; the MCP SDK already depends on `PyJWT`, the `crypto` extra adds
-the `cryptography` RSA/EC implementation).
+No extra install: the MCP SDK already depends on `PyJWT[crypto]`, which brings
+the RSA/EC (`cryptography`) backend used to verify issuer signatures.
 
 ### Token validation
 

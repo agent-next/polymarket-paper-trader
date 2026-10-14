@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import importlib.util
 import json
 import time
 from dataclasses import dataclass
@@ -91,11 +90,6 @@ class RemoteAuthConfig:
 
     def token_verifier(self) -> RemoteTokenVerifier:
         """Return the bearer-token verifier for this configuration."""
-        if importlib.util.find_spec("cryptography") is None:
-            raise RemoteAuthConfigError(
-                "remote MCP auth needs the RSA/EC backend: "
-                "pip install 'polymarket-paper-trader[remote]'"
-            )
         return RemoteTokenVerifier(self.issuer, self.audience)
 
 
