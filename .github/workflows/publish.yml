@@ -133,6 +133,32 @@ jobs:
         with:
           generate_release_notes: true
 
+  publish-mcpb:
+    # Ship the MCPB bundle as a release asset after PyPI and the release exist.
+    needs: [publish-pypi, release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "20"
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build the MCPB bundle
+        run: npx -y @anthropic-ai/mcpb@2.1.2 pack mcpb "dist/polymarket-paper-trader-${{ steps.version.outputs.VERSION }}.mcpb"
+
+      - name: Upload the bundle to the GitHub Release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          files: dist/polymarket-paper-trader-${{ steps.version.outputs.VERSION }}.mcpb
+
   verify-pypi:
     # Close the loop: install the released version from PyPI like a new user would.
     needs: publish-pypi
