@@ -4,6 +4,11 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+### Added
+- **MCP tool metadata**: every MCP tool now advertises a human-readable `title`
+  and `ToolAnnotations` (read-only, destructive, idempotent and open-world
+  hints) so directory-listed hosts can display and gate tools correctly.
+
 ### Fixed
 - **Contributor opencode**: the PR bot's provider config moved from the repo
   root to `.github/opencode/opencode.json` (the workflow points

@@ -1309,11 +1309,19 @@ class TestToolDispatch:
         loop_thread = threading.current_thread().name
         seen: list[str] = []
 
+        from mcp.types import ToolAnnotations
+
         def dispatch_probe() -> str:
             seen.append(threading.current_thread().name)
             return "ok"
 
-        mcp_server._tool(dispatch_probe)
+        mcp_server._tool(
+            title="Dispatch probe",
+            annotations=ToolAnnotations(
+                read_only_hint=True, destructive_hint=False,
+                idempotent_hint=True, open_world_hint=False,
+            ),
+        )(dispatch_probe)
         try:
             r1 = await mcp_server.mcp.call_tool("dispatch_probe", {})
             r2 = await mcp_server.mcp.call_tool("dispatch_probe", {})
@@ -1326,6 +1334,64 @@ class TestToolDispatch:
         assert seen[0] == seen[1]
         assert seen[0].startswith("pm-trader-mcp")
         assert seen[0] != loop_thread
+
+
+# ---------------------------------------------------------------------------
+# Tool titles + annotations
+# ---------------------------------------------------------------------------
+
+
+class TestToolMetadata:
+    """Every tool advertises a title and ToolAnnotations for directory hosts."""
+
+    def _tools(self):
+        import anyio
+
+        return anyio.run(mcp_server.mcp.list_tools)
+
+    def _annotations(self, name: str):
+        return {t.name: t for t in self._tools()}[name].annotations
+
+    def test_every_tool_has_title_and_annotations(self):
+        tools = self._tools()
+        assert len(tools) == 30
+        for tool in tools:
+            assert tool.title, f"{tool.name} has no title"
+            assert tool.annotations is not None, f"{tool.name} has no annotations"
+
+    def test_no_read_only_tool_is_destructive(self):
+        for tool in self._tools():
+            ann = tool.annotations
+            assert not (ann.read_only_hint and ann.destructive_hint), tool.name
+
+    def test_reset_account_is_destructive(self):
+        ann = self._annotations("reset_account")
+        assert ann.read_only_hint is False
+        assert ann.destructive_hint is True
+        assert ann.open_world_hint is False
+
+    def test_buy_is_write_non_destructive(self):
+        ann = self._annotations("buy")
+        assert ann.read_only_hint is False
+        assert ann.destructive_hint is False
+        assert ann.idempotent_hint is False
+        assert ann.open_world_hint is True
+
+    def test_get_market_is_read_only_open_world(self):
+        ann = self._annotations("get_market")
+        assert ann.read_only_hint is True
+        assert ann.destructive_hint is False
+        assert ann.open_world_hint is True
+
+    def test_portfolio_is_read_only_open_world(self):
+        ann = self._annotations("portfolio")
+        assert ann.read_only_hint is True
+        assert ann.open_world_hint is True
+
+    def test_local_read_only_tools_are_closed_world(self):
+        for name in ("history", "list_orders"):
+            assert self._annotations(name).read_only_hint is True
+            assert self._annotations(name).open_world_hint is False
 
 
 # ---------------------------------------------------------------------------
