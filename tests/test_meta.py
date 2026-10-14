@@ -119,6 +119,14 @@ class TestVersionConsistency:
             data = json.loads((ROOT / rel).read_text(encoding="utf-8"))
             assert data["version"] == _installed_version(), rel
 
+    def test_mcpb_manifest_matches_installed(self) -> None:
+        data = json.loads((ROOT / "mcpb" / "manifest.json").read_text(encoding="utf-8"))
+        assert data["version"] == _installed_version()
+        assert data["server"]["type"] == "uv"
+        pyproject = (ROOT / "mcpb" / "pyproject.toml").read_text(encoding="utf-8")
+        assert f'version = "{_installed_version()}"' in pyproject
+        assert f"polymarket-paper-trader=={_installed_version()}" in pyproject
+
     def test_skill_frontmatter_matches_installed(self) -> None:
         for rel in ("skill/polymarket-paper-trader/SKILL.md", ".claude/skills/polymarket-paper-trader/SKILL.md"):
             assert _frontmatter_version(ROOT / rel) == _installed_version(), rel
@@ -157,6 +165,10 @@ class TestDocCounts:
         assert commands, "no install commands found in the README 'Works with' table"
         missing = [command for command in commands if command not in integrations]
         assert not missing, f"in README but not docs/integrations.md: {missing}"
+
+    def test_mcpb_manifest_tools_match_registered_tools(self) -> None:
+        data = json.loads((ROOT / "mcpb" / "manifest.json").read_text(encoding="utf-8"))
+        assert sorted(tool["name"] for tool in data["tools"]) == _tool_names()
 
     def test_skill_tools_table_matches_registered_tools(self) -> None:
         """Both SKILL.md copies list exactly the registered MCP tools."""

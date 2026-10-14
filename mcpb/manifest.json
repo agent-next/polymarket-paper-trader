@@ -1,0 +1,64 @@
+{
+  "manifest_version": "0.4",
+  "name": "polymarket-paper-trader",
+  "display_name": "Polymarket Paper Trader",
+  "version": "0.4.9",
+  "description": "Polymarket paper trading for AI agents: $10k paper money, real order books, official fees.",
+  "long_description": "Paper-trading simulator for Polymarket. Real markets, real order books and real prices, but every dollar is fake: no wallet, no API keys, no real money at risk. The server exposes the full trading workflow — discover markets, read live order books, buy and sell (market or resting limit orders), track portfolio and performance — plus a trading playbook prompt.",
+  "author": {
+    "name": "agent-next"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/agent-next/polymarket-paper-trader"
+  },
+  "homepage": "https://github.com/agent-next/polymarket-paper-trader",
+  "license": "MIT",
+  "keywords": ["polymarket", "paper-trading", "prediction-markets", "mcp"],
+  "server": {
+    "type": "uv",
+    "entry_point": "src/server.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": ["run", "--directory", "${__dirname}", "src/server.py"]
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "linux", "win32"],
+    "runtimes": {
+      "python": ">=3.10"
+    }
+  },
+  "tools": [
+    { "name": "backtest" },
+    { "name": "buy" },
+    { "name": "cancel_all_orders" },
+    { "name": "cancel_order" },
+    { "name": "check_orders" },
+    { "name": "get_balance" },
+    { "name": "get_event" },
+    { "name": "get_market" },
+    { "name": "get_markets_by_tag" },
+    { "name": "get_order_book" },
+    { "name": "get_tags" },
+    { "name": "history" },
+    { "name": "init_account" },
+    { "name": "leaderboard_card" },
+    { "name": "leaderboard_entry" },
+    { "name": "list_markets" },
+    { "name": "list_orders" },
+    { "name": "pk_battle" },
+    { "name": "pk_card" },
+    { "name": "place_limit_order" },
+    { "name": "portfolio" },
+    { "name": "reset_account" },
+    { "name": "resolve" },
+    { "name": "resolve_all" },
+    { "name": "search_markets" },
+    { "name": "sell" },
+    { "name": "share_content" },
+    { "name": "stats" },
+    { "name": "stats_card" },
+    { "name": "watch_prices" }
+  ]
+}
