@@ -127,7 +127,7 @@ bind it directly to a public interface.
 
 ## MCP Apps (interactive UI)
 
-`pm-trader-mcp` ships one [MCP Apps](https://modelcontextprotocol.io/docs/extensions/apps)
+`pm-trader-mcp` ships one [MCP Apps](https://modelcontextprotocol.io/extensions/apps/overview)
 view: the `portfolio` and `stats` tools return the same JSON envelope as text as
 always, and additionally point at a self-contained dashboard
 (`ui://pm-trader/portfolio`, `text/html;profile=mcp-app`) through
@@ -151,6 +151,9 @@ runs under the spec's restrictive default CSP. Light and dark follow the host's
 Every other runtime listed above (and any host without MCP Apps support) keeps
 getting exactly the same text result it gets today: no configuration change, no
 behavior change.
+
+The screenshots show a sample account: the real `portfolio`/`stats` output over
+mocked market data, rendered in headless Chromium through the MCP Apps bridge.
 
 ![pm-trader portfolio view in a light host](img/mcp-apps-portfolio.png)
 
@@ -191,5 +194,5 @@ npx skills add agent-next/polymarket-paper-trader
 - [OpenAI Agents SDK — MCP](https://openai.github.io/openai-agents-python/mcp/)
 - [CrewAI Docs — Stdio Transport](https://docs.crewai.com/v1.15.20/en/mcp/stdio)
 - [Agent Skills — Specification](https://agentskills.io/specification.md)
-- [MCP Apps — Specification](https://modelcontextprotocol.io/docs/extensions/apps)
+- [MCP Apps — Specification](https://modelcontextprotocol.io/extensions/apps/overview)
   (`ui://` resources, `_meta.ui.resourceUri`, the postMessage JSON-RPC bridge)
