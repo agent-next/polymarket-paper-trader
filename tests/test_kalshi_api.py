@@ -350,6 +350,18 @@ class TestGetMarket:
         assert exc.value.identifier == "KXNOTAREALTICKER"
         assert exc.value.code == "MARKET_NOT_FOUND"
 
+    @pytest.mark.parametrize(
+        "ticker", ["../series/KXNBAGAME", "KX?status=open", "kx-lower", "", "KX/A"]
+    )
+    def test_non_ticker_never_reaches_the_network(
+        self, client: KalshiClient, httpx_mock, ticker: str
+    ) -> None:
+        with pytest.raises(MarketNotFoundError):
+            client.get_market(ticker)
+        with pytest.raises(MarketNotFoundError):
+            client.get_order_book(ticker)
+        assert httpx_mock.get_requests() == []
+
     def test_http_error_keeps_the_status(self, client: KalshiClient, httpx_mock) -> None:
         httpx_mock.add_response(status_code=500, text="upstream boom")
 
