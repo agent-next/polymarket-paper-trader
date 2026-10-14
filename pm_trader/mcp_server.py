@@ -75,23 +75,33 @@ def _skill_body() -> str:
 # to that document over the JSON-RPC postMessage bridge. Hosts without UI support
 # ignore the metadata and read the same text result as before.
 UI_RESOURCE_URI = "ui://pm-trader/portfolio"
+MARKET_UI_RESOURCE_URI = "ui://pm-trader/market"
 UI_MIME_TYPE = "text/html;profile=mcp-app"
 
-# `_meta.ui.resourceUri` is the standardized field; `openai/outputTemplate` is
-# ChatGPT's documented compatibility alias and `ui/resourceUri` is the spec's
-# deprecated (still served) flat form.
-_UI_TOOL_META = {
-    "ui": {"resourceUri": UI_RESOURCE_URI},
-    "openai/outputTemplate": UI_RESOURCE_URI,
-    "ui/resourceUri": UI_RESOURCE_URI,
-}
+
+def _ui_tool_meta(uri: str) -> dict[str, Any]:
+    """Return the tool `_meta` pointing a tool's result at a packaged view.
+
+    `_meta.ui.resourceUri` is the standardized field; `openai/outputTemplate` is
+    ChatGPT's documented compatibility alias and `ui/resourceUri` is the spec's
+    deprecated (still served) flat form.
+    """
+    return {
+        "ui": {"resourceUri": uri},
+        "openai/outputTemplate": uri,
+        "ui/resourceUri": uri,
+    }
 
 
-def _ui_body() -> str:
+_UI_TOOL_META = _ui_tool_meta(UI_RESOURCE_URI)
+_MARKET_UI_TOOL_META = _ui_tool_meta(MARKET_UI_RESOURCE_URI)
+
+
+def _ui_body(relpath: str = "ui/portfolio.html") -> str:
     """Return the packaged MCP Apps view HTML."""
-    return importlib.resources.files("pm_trader").joinpath(
-        "ui/portfolio.html"
-    ).read_text(encoding="utf-8")
+    return importlib.resources.files("pm_trader").joinpath(relpath).read_text(
+        encoding="utf-8"
+    )
 
 
 mcp = MCPServer(
@@ -131,6 +141,19 @@ def trading_playbook_resource() -> str:
 def portfolio_view() -> str:
     """Return the portfolio dashboard HTML for MCP Apps hosts."""
     return _ui_body()
+
+
+@mcp.resource(
+    MARKET_UI_RESOURCE_URI,
+    name="market",
+    title="pm-trader market card and order ticket",
+    description="Market card with a paper order ticket for the market lookup tool.",
+    mime_type=UI_MIME_TYPE,
+    meta={"ui": {"prefersBorder": True}},
+)
+def market_view() -> str:
+    """Return the market card and order ticket HTML for MCP Apps hosts."""
+    return _ui_body("ui/market.html")
 
 
 # MCP SDK 2.x dispatches tools/call concurrently and runs sync tool functions
@@ -368,7 +391,7 @@ def list_markets(limit: int = 20, sort_by: str = "volume") -> str:
         return _err_from(e)
 
 
-@_tool(title="Get market", annotations=_READ_ONLY_LIVE)
+@_tool(title="Get market", annotations=_READ_ONLY_LIVE, meta=_MARKET_UI_TOOL_META)
 def get_market(slug_or_id: str) -> str:
     """Get detailed info for a specific market by slug or condition ID."""
     try:
