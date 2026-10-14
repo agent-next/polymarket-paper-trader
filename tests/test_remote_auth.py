@@ -15,7 +15,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
-from unittest.mock import call, patch
+from unittest.mock import AsyncMock, call, patch
 
 import jwt
 import httpx
@@ -561,14 +561,18 @@ class TestHttpRequiresAToken:
     def test_token_rejected_before_the_issuer_is_consulted(
         self, case, tmp_path, key, other_key
     ):
-        """No JWKS is published: a header we refuse never triggers a fetch."""
-        with _remote_server(tmp_path) as client:
+        """A header we refuse is rejected without ever fetching the JWKS."""
+        with (
+            _remote_server(tmp_path) as client,
+            patch.object(RemoteTokenVerifier, "_jwks", new_callable=AsyncMock) as jwks,
+        ):
             response = _McpClient(client).post(
                 {"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
                 _forged_token(case, key, other_key),
             )
 
         assert response.status_code == 401
+        jwks.assert_not_called()
 
 
 class TestPerUserIsolation:
