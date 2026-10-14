@@ -4,6 +4,16 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+### Added
+- **MCP Apps market view**: `get_market` now also declares a view
+  (`ui://pm-trader/market`) that renders the market — question, YES/NO best bid,
+  ask and spread, volume, end date — above a paper order ticket. "Preview" prices
+  an outcome/side/amount ticket off the live order book (estimated shares, average
+  price and cost) and "Confirm" sends exactly one `tools/call` to the existing
+  `buy`/`sell` tool, guarded against a double click; a host that cannot proxy tool
+  calls from a view gets the equivalent text instruction instead. The tool's text
+  result is unchanged.
+
 ### Changed
 - **README**: the demo and install sections now lead with
   `pip install polymarket-paper-trader` / `uvx --from polymarket-paper-trader
