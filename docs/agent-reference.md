@@ -43,9 +43,9 @@ patch level once CI is green. Owner-gated: any minor/major version bump (explici
 policy, below). `live`-marked tests and everything in Boundaries stay deliberate-run only —
 never wired into an automated gate.
 
-## Project state (2026-09-25)
+## Project state (2026-10-14)
 
-Current release: **v0.4.5** (PyPI + ClawHub + GitHub Releases, all `latest`). The client is
+Current release: **v0.4.7** (PyPI + ClawHub + GitHub Releases, all `latest`). The client is
 aligned with the current official API surface (Gamma keyset pagination, CLOB market data,
 Data API v2 price history) and the fee simulation follows the official per-match curve.
 Live e2e tests run weekly on CI (`live.yml`) and include bias assertions: simulated fills
@@ -65,7 +65,9 @@ envelopes, leaderboard `/ready` · v0.4.3 audit fixes: atomic trade and resoluti
 limit-order validation, GTD UTC expiry, leaderboard-server order identity and upstream errors ·
 v0.4.4 UMA-status resolution, atomic limit fills, uncapped analytics, backtest mark-to-market,
 atomic leaderboard trades, honest-red arena CI · v0.4.5 resolved-only benchmark alpha, arena
-min-n ranking, resolution-aware analytics, shared-db cash safety, hashed leaderboard API keys.
+min-n ranking, resolution-aware analytics, shared-db cash safety, hashed leaderboard API keys ·
+v0.4.6 MCP tool annotations + MCP Apps portfolio view · v0.4.7 opt-in authenticated multi-user
+remote MCP mode (`docs/remote-mcp.md`).
 
 ## Verified upstream contract facts (live-probed; the docs disagree)
 
