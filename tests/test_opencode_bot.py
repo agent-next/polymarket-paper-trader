@@ -231,31 +231,27 @@ class TestClosedLoopWiring:
             assert "pull_request.head" not in json.dumps(step)
 
     def test_review_permissions_are_minimal(self) -> None:
-        # pull-requests stays read: write would let the model submit reviews
-        # (including approving ones). issues: write still lets the action
-        # post its comment via the issues API.
+        # Commenting on a PR needs pull-requests: write (with read the action
+        # 403s before reviewing, issue #94). Approving stays impossible: the
+        # repo/org setting that lets Actions approve PRs is off, and contents
+        # stays read so nothing can be pushed or merged.
         assert _job("review").get("permissions") == {
             "contents": "read",
-            "pull-requests": "read",
+            "pull-requests": "write",
             "issues": "write",
         }
 
-    def test_review_tolerates_cosmetic_reaction_403(self) -> None:
-        # The action reacts to its own comment, which needs pull-requests:
-        # write the read-only review token lacks (403, issue #94). Only the
-        # advisory opencode step is non-fatal; the key-staging step and the
-        # job permissions stay strict.
-        assert _opencode_step("review").get("continue-on-error") is True
-        assert _step("review", "Stage FreeInference key").get("continue-on-error") is None
-        assert _job("review").get("permissions", {}).get("pull-requests") == "read"
-        for name in ("comment", "triage", "implement"):
-            assert _opencode_step(name).get("continue-on-error") is None
+    def test_review_failures_are_not_masked(self) -> None:
+        # continue-on-error turned the 403 into a green check while no review
+        # was ever posted; every bot step must fail visibly.
+        for name in ("comment", "triage", "implement", "review"):
+            assert _opencode_step(name).get("continue-on-error") is None, name
 
     def test_review_cannot_approve_pull_requests(self) -> None:
-        # Submitting a review requires pull-requests: write; a read token
-        # makes an injected APPROVE impossible regardless of the prompt.
-        perms = _job("review").get("permissions") or {}
-        assert perms.get("pull-requests") == "read"
+        # The token cannot approve (Actions approval is off for the repo and
+        # org); the workflow documents that dependency and the prompt forbids
+        # approving.
+        assert "can_approve_pull_request_reviews: false" in _workflow_text()
         prompt = str(_opencode_step("review").get("with", {}).get("prompt", ""))
         assert "Do not approve" in prompt
 
