@@ -13,6 +13,7 @@ cached, and every HTTP/transport failure raises a typed ``SimError``.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 
 import httpx
@@ -34,6 +35,11 @@ _PAGE_SIZE = 100  # GET /markets accepts up to 1000; 100 is its documented defau
 _PRICE_DP = 4  # finest grid any Kalshi market quotes (0.0001)
 
 _TIMEOUT = httpx.Timeout(10.0)
+
+# Kalshi tickers are upper-case letters, digits, '-', '.' and '_'. Anything else is
+# refused before it is pasted into a URL path, so a caller-supplied "ticker"
+# such as "../series/X" can never reach another endpoint.
+_TICKER = re.compile(r"[A-Z0-9][A-Z0-9._-]{0,127}")
 
 # Wire statuses past trading; `initialized`/`inactive` are pre-open, not closed.
 _CLOSED_STATUSES = frozenset(
@@ -165,6 +171,7 @@ class KalshiClient:
         A 404 is a missing market (:class:`MarketNotFoundError`); every other
         failure is an :class:`ApiError`.
         """
+        _check_ticker(ticker)
         cache_key = f"kalshi:market:{ticker}"
         cached = self._get_cached(cache_key)
         if cached is not None:
@@ -189,6 +196,7 @@ class KalshiClient:
         ladder (a no bid at ``p`` is a yes ask at ``1 - p``).  ``depth`` is
         passed through; omitted, Kalshi returns every level.
         """
+        _check_ticker(ticker)
         params = {"depth": depth} if depth else None
         return _parse_order_book(self._get(f"/markets/{ticker}/orderbook", params))
 
@@ -196,6 +204,12 @@ class KalshiClient:
 # ---------------------------------------------------------------------------
 # Parsing helpers
 # ---------------------------------------------------------------------------
+
+
+def _check_ticker(ticker: str) -> None:
+    """Refuse anything that is not a Kalshi ticker (see `_TICKER`)."""
+    if not isinstance(ticker, str) or not _TICKER.fullmatch(ticker):
+        raise MarketNotFoundError(str(ticker))
 
 
 def _to_float(value: object, default: float = 0.0) -> float:
