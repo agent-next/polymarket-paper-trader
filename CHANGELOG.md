@@ -12,6 +12,14 @@ All notable changes to `polymarket-paper-trader` are documented here.
   `dist/polymarket-paper-trader-<version>.mcpb`, and a new `publish-mcpb` job
   attaches the bundle to each GitHub Release. `test_meta` pins the manifest
   version and tool list to the package.
+- **Kalshi spec and read-only market data client**: `docs/kalshi.md` records the
+  live-probed public Kalshi contract (endpoints, fixed-point price units, fee
+  formula and settlement rules, and the field-by-field mapping onto the
+  engine's models), and `pm_trader/kalshi_api.py` adds a read-only, unauthenticated
+  `KalshiClient` for `GET /markets`, `GET /markets/{ticker}` and
+  `GET /markets/{ticker}/orderbook` with cursor pagination, a 100-market cap and
+  5-minute metadata caching. Not wired into the CLI, the MCP server or the
+  engine: no trading, no account, no auth.
 
 ## [0.4.9] - 2026-10-14
 
