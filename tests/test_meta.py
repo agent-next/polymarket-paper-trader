@@ -28,8 +28,9 @@ def _frontmatter_version(path: Path) -> str:
 
 
 def _tool_names() -> list[str]:
+    """Registered tool names: ``@_tool`` bare or ``@_tool(meta=...)``."""
     src = (ROOT / "pm_trader" / "mcp_server.py").read_text(encoding="utf-8")
-    return sorted(re.findall(r"@_tool\s*\ndef\s+([a-z_]+)\(", src))
+    return sorted(re.findall(r"@_tool(?:\([^()]*\))?\s*\ndef\s+([a-z_]+)\(", src))
 
 
 def _cli_leaf_commands() -> list[str]:

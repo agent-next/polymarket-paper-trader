@@ -19,6 +19,7 @@ import sys
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Any
 
 from mcp.server import MCPServer
 
@@ -59,6 +60,30 @@ def _skill_body() -> str:
     return re.sub(r"\A---\n.*?\n---\n", "", text, count=1, flags=re.DOTALL)
 
 
+# MCP Apps (the `io.modelcontextprotocol/ui` extension) renders a tool result by
+# fetching the HTML resource its tool metadata points at, then handing the result
+# to that document over the JSON-RPC postMessage bridge. Hosts without UI support
+# ignore the metadata and read the same text result as before.
+UI_RESOURCE_URI = "ui://pm-trader/portfolio"
+UI_MIME_TYPE = "text/html;profile=mcp-app"
+
+# `_meta.ui.resourceUri` is the standardized field; `openai/outputTemplate` is
+# ChatGPT's documented compatibility alias and `ui/resourceUri` is the spec's
+# deprecated (still served) flat form.
+_UI_TOOL_META = {
+    "ui": {"resourceUri": UI_RESOURCE_URI},
+    "openai/outputTemplate": UI_RESOURCE_URI,
+    "ui/resourceUri": UI_RESOURCE_URI,
+}
+
+
+def _ui_body() -> str:
+    """Return the packaged MCP Apps view HTML."""
+    return importlib.resources.files("pm_trader").joinpath(
+        "ui/portfolio.html"
+    ).read_text(encoding="utf-8")
+
+
 mcp = MCPServer(
     "pm-trader", version=_server_version(), instructions=_SERVER_INSTRUCTIONS
 )
@@ -84,6 +109,20 @@ def trading_playbook_resource() -> str:
     """Return the pm-trader SKILL.md playbook body."""
     return _skill_body()
 
+
+@mcp.resource(
+    UI_RESOURCE_URI,
+    name="portfolio",
+    title="pm-trader portfolio dashboard",
+    description="Interactive portfolio dashboard for the portfolio and stats tools.",
+    mime_type=UI_MIME_TYPE,
+    meta={"ui": {"prefersBorder": True}},
+)
+def portfolio_view() -> str:
+    """Return the portfolio dashboard HTML for MCP Apps hosts."""
+    return _ui_body()
+
+
 # MCP SDK 2.x dispatches tools/call concurrently and runs sync tool functions
 # on arbitrary anyio worker threads; the Engine's SQLite connection is bound
 # to the thread that opened it. Serialize every tool call on one dedicated
@@ -91,24 +130,39 @@ def trading_playbook_resource() -> str:
 _tool_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pm-trader-mcp")
 
 
-def _tool(fn: Callable[..., str]) -> Callable[..., str]:
+# Registers ``fn`` as an MCP tool executed on the dedicated worker thread; with
+# ``meta`` it also attaches MCP Apps UI metadata. Usable bare (``@_tool``) or
+# called (``@_tool(meta=...)``).
+_ToolDecorator = Callable[[Callable[..., str]], Callable[..., str]]
+
+
+def _tool(
+    fn: Callable[..., str] | None = None,
+    meta: dict[str, Any] | None = None,
+) -> Callable[..., str] | _ToolDecorator:
     """Register ``fn`` as an MCP tool executed on the dedicated worker thread.
 
     The registered callable is an async wrapper that submits ``fn`` to the
     single-worker executor; ``functools.wraps`` keeps the name, docstring and
     signature identical so the advertised tool schemas are unchanged. The
-    module attribute stays the plain sync function for direct calls.
+    module attribute stays the plain sync function for direct calls. ``meta``
+    carries MCP Apps UI metadata for the tools that render a view.
     """
 
-    @functools.wraps(fn)
-    async def _wrapper(**kwargs: object) -> str:
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(
-            _tool_executor, functools.partial(fn, **kwargs)
-        )
+    def register(func: Callable[..., str]) -> Callable[..., str]:
+        @functools.wraps(func)
+        async def _wrapper(**kwargs: object) -> str:
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(
+                _tool_executor, functools.partial(func, **kwargs)
+            )
 
-    mcp.add_tool(_wrapper)
-    return fn
+        mcp.add_tool(_wrapper, meta=meta)
+        return func
+
+    if fn is None:
+        return register
+    return register(fn)
 
 
 # ---------------------------------------------------------------------------
@@ -421,7 +475,7 @@ def sell(
 # ---------------------------------------------------------------------------
 
 
-@_tool
+@_tool(meta=_UI_TOOL_META)
 def portfolio(account: str = "default") -> str:
     """Get all open positions with live prices and unrealized P&L."""
     try:
@@ -545,7 +599,7 @@ def check_orders(account: str = "default") -> str:
 # ---------------------------------------------------------------------------
 
 
-@_tool
+@_tool(meta=_UI_TOOL_META)
 def stats(account: str = "default") -> str:
     """Get performance analytics: win rate, ROI, profit, max drawdown."""
     try:

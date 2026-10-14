@@ -36,7 +36,7 @@ dev = [
 include = ["pm_trader*"]
 
 [tool.setuptools.package-data]
-pm_trader = ["_skill/SKILL.md"]
+pm_trader = ["_skill/SKILL.md", "ui/*.html"]
 
 [tool.pytest.ini_options]
 markers = ["live: tests requiring network access to Polymarket API"]
