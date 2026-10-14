@@ -144,11 +144,13 @@ pm-trader-mcp --transport streamable-http --host 0.0.0.0 --port 8000 \
 
 ## MCP Apps (interactive UI)
 
-`pm-trader-mcp` ships one [MCP Apps](https://modelcontextprotocol.io/extensions/apps/overview)
-view: the `portfolio` and `stats` tools return the same JSON envelope as text as
+`pm-trader-mcp` ships two [MCP Apps](https://modelcontextprotocol.io/extensions/apps/overview)
+views. The `portfolio` and `stats` tools return the same JSON envelope as text as
 always, and additionally point at a self-contained dashboard
 (`ui://pm-trader/portfolio`, `text/html;profile=mcp-app`) through
 `_meta.ui.resourceUri` (ChatGPT also reads the `openai/outputTemplate` alias).
+The `get_market` tool declares a second one, `ui://pm-trader/market`, described
+below.
 
 Hosts that implement MCP Apps render the dashboard inline instead of the text
 result: cash, total value, P&L and ROI, a positions table (market, outcome,
@@ -164,6 +166,18 @@ scripts, fonts, images or network calls — and declares no CSP domains, so it
 runs under the spec's restrictive default CSP. Light and dark follow the host's
 `hostContext.theme` and theme variables, falling back to
 `prefers-color-scheme`.
+
+`get_market` renders the other view: the market's question, its YES and NO best
+bid, best ask and spread, volume and end date, above an order ticket (outcome,
+side, amount). "Preview" walks the live order book — asked for with a read-only
+`get_order_book` call through the bridge — and shows the estimated shares,
+average price and cost of the order; fees follow the market's `feeSchedule` and
+are reported on the receipt the fill returns. "Confirm" then sends exactly one
+`tools/call` to the existing `buy` or `sell` tool, with a double click and a
+resubmit both refused, so nothing trades without an explicit click. The ticket
+also refuses what the engine would (an amount under the $1 minimum, a sell the
+account does not hold), and a host without `serverTools` shows the equivalent
+sentence to say to the assistant instead of the buttons.
 
 Every other runtime listed above (and any host without MCP Apps support) keeps
 getting exactly the same text result it gets today: no configuration change, no
