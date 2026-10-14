@@ -71,8 +71,9 @@ the RSA/EC (`cryptography`) backend used to verify issuer signatures.
    PS256 PS384 PS512 ES256 ES384 ES512`.
 2. Fetch `{issuer}/.well-known/openid-configuration`, read `jwks_uri`, fetch the
    JWKS; keys are cached in-process for 5 minutes and refreshed after that. A
-   discovery/JWKS failure fails closed (`401`), it never falls back to "no
-   signature check".
+   discovery/JWKS failure keeps the last good key set (none on a cold start, so
+   every token is a `401`) and the issuer is not asked again for 30 seconds; it
+   never falls back to "no signature check".
 3. Select the key by `kid`; decode with `issuer`, `audience` and
    `require=["exp","iss","aud","sub"]`.
 4. Any failure returns `401` with `WWW-Authenticate: Bearer error="invalid_token"`.

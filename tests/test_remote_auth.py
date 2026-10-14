@@ -405,6 +405,32 @@ class TestTokenVerifierRejects:
 
         assert result is None
 
+    @pytest.mark.httpx_mock(can_send_already_matched_responses=True)
+    @pytest.mark.parametrize(("retry_seconds", "fetches"), [(30.0, 1), (0.0, 2)])
+    def test_issuer_outage_is_retried_once_per_window(
+        self, key, httpx_mock, monkeypatch, retry_seconds, fetches
+    ):
+        """A down issuer costs one fetch per retry window, not one per request."""
+        monkeypatch.setattr("pm_trader.remote_auth.JWKS_RETRY_SECONDS", retry_seconds)
+        httpx_mock.add_response(url=DISCOVERY_URL, status_code=500)
+
+        results = _verify(_config().token_verifier(), _token(key), _token(key))
+
+        assert results == [None, None]
+        assert len(httpx_mock.get_requests()) == fetches
+
+    def test_failed_refresh_keeps_the_last_good_keys(self, key, httpx_mock):
+        _serve_issuer(httpx_mock, key)
+        httpx_mock.add_response(url=DISCOVERY_URL, status_code=500)
+        verifier = RemoteTokenVerifier(ISSUER, AUDIENCE, jwks_ttl=0.0)
+
+        results = _verify(verifier, _token(key), _token(key))
+
+        assert [r is not None for r in results] == [True, True]
+        assert [str(r.url) for r in httpx_mock.get_requests()] == [
+            DISCOVERY_URL, JWKS_URL, DISCOVERY_URL,
+        ]
+
     def test_discovery_without_jwks_uri_is_refused(self, key, httpx_mock):
         httpx_mock.add_response(url=DISCOVERY_URL, json={"issuer": ISSUER})
 
