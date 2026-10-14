@@ -22,6 +22,9 @@ env:
   # Implement uses OPENCODE_IMPLEMENT_MODEL (slow pool, 1 in-flight per key).
   OPENCODE_MODEL: freeinference/qwen3.6-35b
   OPENCODE_IMPLEMENT_MODEL: freeinference/deepseek-v4-flash
+  # The bot's provider config lives outside the repo root so a contributor's
+  # own opencode does not load it (its {file:} key exists only on the runner).
+  OPENCODE_CONFIG: ${{ github.workspace }}/.github/opencode/opencode.json
 
 jobs:
   comment:
@@ -81,7 +84,7 @@ jobs:
             exit 1
           fi
           # Keep the key out of the agent shell env: the provider reads it
-          # via the {file:} reference in opencode.json.
+          # via the {file:} reference in .github/opencode/opencode.json.
           umask 077
           printf '%s' "$FREEINFERENCE_API_KEY" > "$HOME/.freeinference-api-key"
       - uses: anomalyco/opencode/github@08462140ec0de1e4b17d4a353d8d5827f53cf7b0 # v2.0.14
@@ -137,7 +140,7 @@ jobs:
             exit 1
           fi
           # Keep the key out of the agent shell env: the provider reads it
-          # via the {file:} reference in opencode.json.
+          # via the {file:} reference in .github/opencode/opencode.json.
           umask 077
           printf '%s' "$FREEINFERENCE_API_KEY" > "$HOME/.freeinference-api-key"
       - uses: anomalyco/opencode/github@08462140ec0de1e4b17d4a353d8d5827f53cf7b0 # v2.0.14
@@ -221,7 +224,7 @@ jobs:
             exit 1
           fi
           # Keep the key out of the agent shell env: the provider reads it
-          # via the {file:} reference in opencode.json.
+          # via the {file:} reference in .github/opencode/opencode.json.
           umask 077
           printf '%s' "$FREEINFERENCE_API_KEY" > "$HOME/.freeinference-api-key"
       - uses: anomalyco/opencode/github@08462140ec0de1e4b17d4a353d8d5827f53cf7b0 # v2.0.14
@@ -331,7 +334,7 @@ jobs:
             exit 1
           fi
           # Keep the key out of the agent shell env: the provider reads it
-          # via the {file:} reference in opencode.json.
+          # via the {file:} reference in .github/opencode/opencode.json.
           umask 077
           printf '%s' "$FREEINFERENCE_API_KEY" > "$HOME/.freeinference-api-key"
       - uses: anomalyco/opencode/github@08462140ec0de1e4b17d4a353d8d5827f53cf7b0 # v2.0.14
