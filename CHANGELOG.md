@@ -8,6 +8,12 @@ All notable changes to `polymarket-paper-trader` are documented here.
 - **MCP tool metadata**: every MCP tool now advertises a human-readable `title`
   and `ToolAnnotations` (read-only, destructive, idempotent and open-world
   hints) so directory-listed hosts can display and gate tools correctly.
+- **MCP Apps**: `portfolio` and `stats` now advertise the packaged dashboard at
+  `ui://pm-trader/portfolio` (`text/html;profile=mcp-app`) via
+  `_meta.ui.resourceUri`. Hosts with MCP Apps render cash, total value, P&L,
+  the positions table and the performance metrics inline; every other host keeps
+  the same text result. The view is one self-contained HTML file with inline
+  CSS/JS and no external resources, so it runs under the spec's default CSP.
 
 ### Fixed
 - **PR bot review**: skipped on Dependabot PRs, which get no repo secrets, so
