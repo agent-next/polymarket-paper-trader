@@ -30,6 +30,14 @@ dev = [
     "pytest-cov>=6.0",
     "pytest-httpx>=0.30",
     "pyyaml>=6.0",
+    # Remote MCP auth tests sign real RSA tokens; see docs/remote-mcp.md.
+    "PyJWT[crypto]>=2.10",
+]
+# Opt-in authenticated remote MCP mode (`--auth-issuer`). PyJWT itself is
+# already an MCP SDK dependency; the crypto extra only adds the RSA/EC backend
+# used to verify issuer signatures, so stdio users do not pay for it.
+remote = [
+    "PyJWT[crypto]>=2.10",
 ]
 
 [tool.setuptools.packages.find]
