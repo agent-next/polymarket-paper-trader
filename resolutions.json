@@ -1184,6 +1184,16 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-06T13:25:11Z"
   },
+  "will-annual-inflation-be-3pt6-in-september-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T15:27:21Z"
+  },
+  "will-annual-inflation-be-3pt7-in-september-2026": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T15:27:21Z"
+  },
   "will-any-presidential-candidate-win-outright-in-the-first-round-of-the-brazil-election": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -1558,6 +1568,11 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-06T13:25:11Z"
+  },
+  "will-monthly-inflation-increase-by-0pt5-in-september-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T15:27:21Z"
   },
   "will-mrbeast-gamings-next-video-get-between-30-and-35-million-views-in-week-1-20260922": {
     "outcome": 1,
