@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>pm-trader portfolio</title>
+<style>
+/* MCP Apps view: one self-contained document.
+   No external scripts, styles, fonts or images, so it runs under the spec's
+   default CSP (script-src/style-src 'unsafe-inline', connect-src 'none').
+   Colors prefer the host's standardized --color-* variables and fall back to
+   the light/dark palettes below (prefers-color-scheme, or the host theme). */
+:root {
+  color-scheme: light dark;
+  --pm-font: var(--font-sans, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif);
+  --pm-mono: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  --pm-radius: var(--border-radius-md, 10px);
+}
+:root,
+:root[data-theme="light"] {
+  --pm-bg: var(--color-background-primary, #ffffff);
+  --pm-surface: var(--color-background-secondary, #f5f6f8);
+  --pm-text: var(--color-text-primary, #15171c);
+  --pm-muted: var(--color-text-secondary, #5c6370);
+  --pm-border: var(--color-border-secondary, #e2e5ea);
+  --pm-positive: var(--color-text-success, #157347);
+  --pm-negative: var(--color-text-danger, #b42318);
+  --pm-accent: var(--color-text-info, #2f5bd7);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --pm-bg: #12141a;
+    --pm-surface: #1b1e26;
+    --pm-text: #f2f4f8;
+    --pm-muted: #9aa3b2;
+    --pm-border: #2b303b;
+    --pm-positive: #45d69a;
+    --pm-negative: #ff7b72;
+    --pm-accent: #86a8ff;
+  }
+}
+:root[data-theme="dark"] {
+  --pm-bg: var(--color-background-primary, #12141a);
+  --pm-surface: var(--color-background-secondary, #1b1e26);
+  --pm-text: var(--color-text-primary, #f2f4f8);
+  --pm-muted: var(--color-text-secondary, #9aa3b2);
+  --pm-border: var(--color-border-secondary, #2b303b);
+  --pm-positive: var(--color-text-success, #45d69a);
+  --pm-negative: var(--color-text-danger, #ff7b72);
+  --pm-accent: var(--color-text-info, #86a8ff);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--pm-bg);
+  color: var(--pm-text);
+  font-family: var(--pm-font);
+  font-size: 14px;
+  line-height: 1.45;
+  padding: 16px;
+}
+h1 { font-size: 15px; font-weight: 600; margin: 0; }
+h2 { font-size: 13px; font-weight: 600; margin: 0 0 8px; }
+.wrap { display: flex; flex-direction: column; gap: 14px; }
+
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.brand { display: flex; align-items: baseline; gap: 6px; }
+.badge {
+  border: 1px solid var(--pm-border);
+  border-radius: 999px;
+  color: var(--pm-muted);
+  font-size: 12px;
+  padding: 1px 9px;
+  white-space: nowrap;
+}
+
+.grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+}
+.kpi {
+  background: var(--pm-surface);
+  border: 1px solid var(--pm-border);
+  border-radius: var(--pm-radius);
+  padding: 10px 12px;
+}
+.kpi-label { color: var(--pm-muted); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+.kpi-value { font-family: var(--pm-mono); font-size: 19px; margin-top: 2px; }
+.kpi-sub { color: var(--pm-muted); font-size: 11px; margin-top: 2px; }
+.pos { color: var(--pm-positive); }
+.neg { color: var(--pm-negative); }
+
+.panel {
+  background: var(--pm-surface);
+  border: 1px solid var(--pm-border);
+  border-radius: var(--pm-radius);
+  overflow: hidden;
+}
+.panel-head { display: flex; align-items: baseline; justify-content: space-between; padding: 10px 12px 0; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: 8px 12px; text-align: right; white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+thead th {
+  border-bottom: 1px solid var(--pm-border);
+  color: var(--pm-muted);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+tbody tr + tr td { border-top: 1px solid var(--pm-border); }
+td { font-family: var(--pm-mono); font-size: 13px; }
+td.market { font-family: var(--pm-font); max-width: 260px; white-space: normal; }
+.question { display: block; }
+.slug { color: var(--pm-muted); font-family: var(--pm-mono); font-size: 11px; }
+.chip {
+  background: var(--pm-bg);
+  border: 1px solid var(--pm-border);
+  border-radius: 999px;
+  font-size: 11px;
+  padding: 0 8px;
+  text-transform: uppercase;
+}
+
+.empty, .error-message { color: var(--pm-muted); margin: 0; padding: 14px 12px; }
+.error-message { color: var(--pm-negative); padding: 0 12px; font-family: var(--pm-mono); }
+.error-code { color: var(--pm-muted); font-family: var(--pm-mono); font-size: 12px; margin: 0; padding: 4px 12px 14px; }
+footer { color: var(--pm-muted); font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand"><h1>pm-trader</h1><span class="badge" id="account">default</span></div>
+    <span class="badge" id="source"></span>
+  </header>
+  <div id="content"><p class="empty">Connecting to the host&hellip;</p></div>
+  <footer>Paper money &middot; live Polymarket prices &middot; no real funds at risk</footer>
+</div>
+<script>
+(function () {
+  "use strict";
+
+  var PROTOCOL_VERSION = "2025-06-18";
+  var APP_INFO = { name: "pm-trader portfolio", version: "1.0.0" };
+  var STATS_TOOL = "stats";
+
+  var contentEl = document.getElementById("content");
+  var accountEl = document.getElementById("account");
+  var sourceEl = document.getElementById("source");
+
+  var pending = new Map();
+  var nextId = 1;
+  var hostCapabilities = {};
+  var hostReady = false;
+  var toolArguments = null;
+  var latest = null; // { positions: [...], stats: {...} | null }
+
+  // ---------------------------------------------------------------- transport
+
+  function sendNotification(method, params) {
+    window.parent.postMessage({ jsonrpc: "2.0", method: method, params: params }, "*");
+  }
+
+  function sendRequest(method, params) {
+    var id = nextId++;
+    window.parent.postMessage({ jsonrpc: "2.0", id: id, method: method, params: params }, "*");
+    return new Promise(function (resolve, reject) {
+      pending.set(id, { resolve: resolve, reject: reject });
+    });
+  }
+
+  // ------------------------------------------------------------------ format
+
+  var usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+  var integer = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
+
+  function num(value) { return typeof value === "number" && isFinite(value); }
+  function money(value) { return num(value) ? usd.format(value) : "—"; }
+  function price(value) { return num(value) ? value.toFixed(2) : "—"; }
+  function share(value) { return num(value) ? integer.format(value) : "—"; }
+  function ratio(value) { return num(value) ? value.toFixed(2) : "—"; }
+  function pct(value, digits) {
+    return num(value) ? (value * 100).toFixed(digits === undefined ? 1 : digits) + "%" : "—";
+  }
+  function pctRaw(value) {
+    return num(value) ? value.toFixed(1) + "%" : "—";
+  }
+  function tone(value) { return num(value) && value > 0 ? "pos" : num(value) && value < 0 ? "neg" : ""; }
+
+  // --------------------------------------------------------------------- DOM
+
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) { node.className = className; }
+    if (text !== undefined && text !== null) { node.textContent = String(text); }
+    return node;
+  }
+
+  function cell(className, text) {
+    return el("td", className, text);
+  }
+
+  function kpi(label, value, sub, toneClass) {
+    var card = el("div", "kpi");
+    card.appendChild(el("div", "kpi-label", label));
+    card.appendChild(el("div", "kpi-value " + (toneClass || ""), value));
+    if (sub) { card.appendChild(el("div", "kpi-sub", sub)); }
+    return card;
+  }
+
+  function placeholder(message) {
+    contentEl.replaceChildren(el("p", "empty", message));
+  }
+
+  function renderError(message, code) {
+    var box = el("div", "panel");
+    box.appendChild(el("h2", null, "This view could not be loaded"));
+    box.appendChild(el("p", "error-message", message));
+    if (code) { box.appendChild(el("p", "error-code", "code: " + code)); }
+    contentEl.replaceChildren(box);
+  }
+
+  // ------------------------------------------------------------------ payload
+
+  function extractText(result) {
+    if (!result || !Array.isArray(result.content)) { return null; }
+    var blocks = result.content;
+    for (var i = 0; i < blocks.length; i++) {
+      var block = blocks[i];
+      if (block && block.type === "text" && typeof block.text === "string") { return block.text; }
+    }
+    return null;
+  }
+
+  function readEnvelope(result) {
+    var text = extractText(result);
+    if (text === null) {
+      return { ok: false, error: "The host sent a tool result with no text content.", code: "" };
+    }
+    var parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (err) {
+      return { ok: false, error: "The tool result was not valid JSON.", code: "" };
+    }
+    if (parsed && parsed.ok === true) { return { ok: true, data: parsed.data }; }
+    return {
+      ok: false,
+      error: (parsed && parsed.error) || "The tool reported an unknown error.",
+      code: (parsed && parsed.code) || ""
+    };
+  }
+
+  function isPositions(data) { return Array.isArray(data); }
+
+  function sum(positions, field) {
+    return positions.reduce(function (acc, position) {
+      return num(position[field]) ? acc + position[field] : acc;
+    }, 0);
+  }
+
+  // ------------------------------------------------------------------ render
+
+  function render() {
+    if (!latest) { return; }
+    var positions = latest.positions;
+    var stats = latest.stats;
+
+    var positionsValue = stats && num(stats.positions_value)
+      ? stats.positions_value
+      : sum(positions, "current_value");
+    var cash = stats ? stats.cash : null;
+    var totalValue = stats
+      ? stats.total_value
+      : num(cash) ? cash + positionsValue : null;
+    var pnl = stats ? stats.pnl : sum(positions, "unrealized_pnl");
+
+    var fragment = document.createDocumentFragment();
+
+    var totals = el("div", "grid");
+    totals.appendChild(kpi("Cash", money(cash),
+      stats ? "starting " + money(stats.starting_balance) : null));
+    totals.appendChild(kpi("Positions", money(positionsValue),
+      share(positions.length) + " open"));
+    totals.appendChild(kpi("Total value", money(totalValue), null));
+    totals.appendChild(kpi("P&L", money(pnl),
+      stats ? pctRaw(stats.roi_pct) + " ROI" : null, tone(pnl)));
+    fragment.appendChild(totals);
+
+    if (stats) {
+      var performance = el("div", "grid");
+      performance.appendChild(kpi("Win rate", pct(stats.win_rate, 0),
+        "buys " + share(stats.buy_count) + " · sells " + share(stats.sell_count)));
+      performance.appendChild(kpi("Sharpe", ratio(stats.sharpe_ratio), null,
+        tone(stats.sharpe_ratio)));
+      performance.appendChild(kpi("Max drawdown", pct(stats.max_drawdown), null));
+      performance.appendChild(kpi("Trades", share(stats.total_trades),
+        "avg " + money(stats.avg_trade_size) + " · fees " + money(stats.total_fees)));
+      fragment.appendChild(performance);
+    }
+
+    var panel = el("div", "panel");
+    var head = el("div", "panel-head");
+    head.appendChild(el("h2", null, "Open positions"));
+    head.appendChild(el("span", "badge", share(positions.length)));
+    panel.appendChild(head);
+
+    if (positions.length === 0) {
+      panel.appendChild(el("p", "empty", "No open positions. Buy a market and this view fills itself in."));
+    } else {
+      panel.appendChild(positionTable(positions));
+    }
+    fragment.appendChild(panel);
+
+    contentEl.replaceChildren(fragment);
+  }
+
+  function positionTable(positions) {
+    var wrap = el("div", "scroll");
+    var table = el("table");
+
+    var head = el("thead");
+    var headRow = el("tr");
+    ["Market", "Outcome", "Shares", "Avg price", "Live price", "Value", "Unrealized P&L"]
+      .forEach(function (label) { headRow.appendChild(el("th", null, label)); });
+    head.appendChild(headRow);
+    table.appendChild(head);
+
+    var body = el("tbody");
+    positions.forEach(function (position) {
+      var row = el("tr");
+      row.title = "cost basis " + money(position.total_cost) + " · " + String(position.market_slug);
+
+      var market = el("td", "market");
+      market.appendChild(el("span", "question",
+        position.market_question || position.market_slug));
+      market.appendChild(el("span", "slug", position.market_slug));
+      row.appendChild(market);
+
+      var outcome = el("td");
+      outcome.appendChild(el("span", "chip", position.outcome));
+      row.appendChild(outcome);
+      row.appendChild(cell(null, share(position.shares)));
+      row.appendChild(cell(null, price(position.avg_entry_price)));
+      row.appendChild(cell(null, price(position.live_price)));
+      row.appendChild(cell(null, money(position.current_value)));
+      row.appendChild(cell(tone(position.unrealized_pnl),
+        money(position.unrealized_pnl) + " (" + pctRaw(position.percent_pnl) + ")"));
+      body.appendChild(row);
+    });
+    table.appendChild(body);
+    wrap.appendChild(table);
+    return wrap;
+  }
+
+  // ------------------------------------------------------------------ bridge
+
+  function accountName() {
+    return (toolArguments && toolArguments.account) || "default";
+  }
+
+  function showAccount() {
+    accountEl.textContent = accountName();
+  }
+
+  function applyHostContext(context) {
+    if (!context) { return; }
+    if (context.theme === "light" || context.theme === "dark") {
+      document.documentElement.setAttribute("data-theme", context.theme);
+      document.documentElement.style.colorScheme = context.theme;
+    }
+    var styles = context.styles;
+    if (styles && styles.variables) {
+      var style = document.documentElement.style;
+      Object.keys(styles.variables).forEach(function (name) {
+        var value = styles.variables[name];
+        if (typeof value === "string") { style.setProperty(name, value); }
+      });
+    }
+    if (styles && styles.css && styles.css.fonts) {
+      var sheet = document.createElement("style");
+      sheet.textContent = styles.css.fonts;
+      document.head.appendChild(sheet);
+    }
+  }
+
+  function applyToolInput(params) {
+    toolArguments = (params && params.arguments) || null;
+    showAccount();
+  }
+
+  function applyToolResult(params) {
+    var envelope = readEnvelope(params);
+    if (!envelope.ok) {
+      latest = null;
+      renderError(envelope.error, envelope.code);
+      return;
+    }
+    var positionsOnly = isPositions(envelope.data);
+    latest = positionsOnly
+      ? { positions: envelope.data, stats: null }
+      : { positions: [], stats: envelope.data };
+    sourceEl.textContent = positionsOnly ? "portfolio" : "stats";
+    render();
+    if (positionsOnly) { loadTotals(); }
+  }
+
+  // Cash, total value and P&L are only in the stats envelope; ask the server
+  // for them through the bridge when the host can proxy tool calls.
+  function loadTotals() {
+    if (!hostReady || !hostCapabilities.serverTools) { return; }
+    sendRequest("tools/call", { name: STATS_TOOL, arguments: { account: accountName() } })
+      .then(function (result) {
+        var envelope = readEnvelope(result);
+        if (!envelope.ok || isPositions(envelope.data) || !latest) { return; }
+        latest.stats = envelope.data;
+        render();
+      })
+      .catch(function () { /* the host cannot proxy stats: show what we have */ });
+  }
+
+  function initialize() {
+    sendRequest("ui/initialize", {
+      protocolVersion: PROTOCOL_VERSION,
+      appInfo: APP_INFO,
+      appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] }
+    }).then(function (result) {
+      hostCapabilities = (result && result.hostCapabilities) || {};
+      applyHostContext(result && result.hostContext);
+      sendNotification("ui/notifications/initialized", {});
+      hostReady = true;
+      if (!latest) { placeholder("Waiting for the tool result…"); }
+      loadTotals();
+    }).catch(function () {
+      placeholder("Waiting for a host that supports interactive views…");
+    });
+  }
+
+  window.addEventListener("message", function (event) {
+    if (event.source !== window.parent) { return; }
+    var message = event.data;
+    if (!message || message.jsonrpc !== "2.0") { return; }
+
+    if (message.id !== undefined && message.method === "ui/resource-teardown") {
+      window.parent.postMessage({ jsonrpc: "2.0", id: message.id, result: {} }, "*");
+      return;
+    }
+    if (message.id !== undefined && pending.has(message.id)) {
+      var waiter = pending.get(message.id);
+      pending.delete(message.id);
+      if (message.error) { waiter.reject(new Error(message.error.message || "host error")); }
+      else { waiter.resolve(message.result); }
+      return;
+    }
+
+    switch (message.method) {
+      case "ui/notifications/tool-input":
+        applyToolInput(message.params);
+        break;
+      case "ui/notifications/tool-input-partial":
+        showAccount();
+        break;
+      case "ui/notifications/tool-result":
+        applyToolResult(message.params);
+        break;
+      case "ui/notifications/tool-cancelled":
+        placeholder("The tool call was cancelled before it returned a result.");
+        break;
+      case "ui/notifications/host-context-changed":
+        applyHostContext(message.params);
+        break;
+      default:
+        break;
+    }
+  });
+
+  // Flexible containers size the iframe from the view; report content size.
+  if (typeof ResizeObserver === "function") {
+    var lastWidth = 0;
+    var lastHeight = 0;
+    var sizeTimer = null;
+    var observer = new ResizeObserver(function () {
+      var root = document.documentElement;
+      var width = root.scrollWidth;
+      var height = root.scrollHeight;
+      if (width === lastWidth && height === lastHeight) { return; }
+      lastWidth = width;
+      lastHeight = height;
+      if (sizeTimer) { clearTimeout(sizeTimer); }
+      sizeTimer = setTimeout(function () {
+        sendNotification("ui/notifications/size-changed", { width: width, height: height });
+      }, 120);
+    });
+    observer.observe(document.body);
+  }
+
+  showAccount();
+  initialize();
+}());
+</script>
+</body>
+</html>
