@@ -4,6 +4,8 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+## [0.4.10] - 2026-10-14
+
 ### Added
 - **MCPB bundle**: the MCP server now ships as an MCP Bundle (`.mcpb`) for
   one-click install in Claude Desktop and other MCPB hosts. `mcpb/manifest.json`
