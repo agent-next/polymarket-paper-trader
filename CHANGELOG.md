@@ -4,6 +4,8 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+## [0.4.7] - 2026-10-14
+
 ### Added
 - **Opt-in remote MCP auth**: `pm-trader-mcp --transport streamable-http` now accepts
   `--auth-issuer`, `--auth-audience` and `--resource-url` (or `PM_TRADER_AUTH_ISSUER`,
