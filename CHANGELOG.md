@@ -4,6 +4,13 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- **Forecast Arena**: dropped the `space-bunny` entrant. Since 2026-10-11 the
+  OpenCode Zen free tier rejects it from outside OpenCode ("free tier can only
+  be used from within OpenCode"), so every forecast was a skip and the day's
+  second scheduled run failed the produced-nothing guard. Its recorded
+  forecasts stay on the board under their own id.
+
 ## [0.4.5] - 2026-10-01
 
 ### Changed

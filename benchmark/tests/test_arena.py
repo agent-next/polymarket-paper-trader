@@ -134,15 +134,11 @@ class TestLoadEntrants:
     def test_loads_bundled_config(self):
         entrants = load_entrants(_default_config())
         ids = [e.id for e in entrants]
-        assert ids == ["jev", "space-bunny", "crowd", "coin", "favorite"]
+        assert ids == ["jev", "crowd", "coin", "favorite"]
         by_id = {e.id: e for e in entrants}
         assert by_id["jev"].model == "opencode/jev-1.13-free"
         assert by_id["jev"].web_access is None  # undocumented upstream
         assert by_id["jev"].cutoff is None
-        bunny = by_id["space-bunny"]
-        assert bunny.model == "openai/space-bunny-free"
-        assert bunny.api_base == "https://opencode.ai/zen/v1"
-        assert bunny.api_key_env == "ZEN_API_KEY"
         assert by_id["crowd"].kind == "baseline"
         assert by_id["crowd"].model is None
 
