@@ -112,10 +112,6 @@ _WRITE_LIVE_IDEMPOTENT = ToolAnnotations(
     read_only_hint=False, destructive_hint=False,
     idempotent_hint=True, open_world_hint=True,
 )
-_WRITE_LOCAL_IDEMPOTENT = ToolAnnotations(
-    read_only_hint=False, destructive_hint=False,
-    idempotent_hint=True, open_world_hint=False,
-)
 _WRITE_LOCAL = ToolAnnotations(
     read_only_hint=False, destructive_hint=False,
     idempotent_hint=False, open_world_hint=False,
@@ -224,7 +220,7 @@ def _market_to_dict(m: object) -> dict:
 # ---------------------------------------------------------------------------
 
 
-@_tool(title="Initialize paper account", annotations=_WRITE_LOCAL_IDEMPOTENT)
+@_tool(title="Initialize paper account", annotations=_DESTRUCTIVE_LOCAL_IDEMPOTENT)
 def init_account(balance: float = 10_000.0, account: str = "default") -> str:
     """Initialize a paper trading account with starting balance (USD).
 

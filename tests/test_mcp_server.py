@@ -1370,6 +1370,13 @@ class TestToolMetadata:
         assert ann.destructive_hint is True
         assert ann.open_world_hint is False
 
+    def test_init_account_is_destructive(self):
+        # INSERT OR REPLACE: on an existing account it resets cash to the
+        # starting balance while positions and trades stay.
+        ann = self._annotations("init_account")
+        assert ann.read_only_hint is False
+        assert ann.destructive_hint is True
+
     def test_buy_is_write_non_destructive(self):
         ann = self._annotations("buy")
         assert ann.read_only_hint is False
