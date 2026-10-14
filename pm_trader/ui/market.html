@@ -588,6 +588,7 @@ footer { color: var(--pm-muted); font-size: 11px; }
       outcomeSelect.appendChild(option(keys[i], outcomeName(state.market, keys[i])));
     }
     outcomeSelect.value = ticket.outcome;
+    outcomeSelect.setAttribute("data-field", "outcome");
     outcomeSelect.addEventListener("change", function () {
       editTicket({ outcome: outcomeSelect.value });
     });
@@ -597,6 +598,7 @@ footer { color: var(--pm-muted); font-size: 11px; }
     sideSelect.appendChild(option("buy", "Buy"));
     sideSelect.appendChild(option("sell", "Sell"));
     sideSelect.value = ticket.side;
+    sideSelect.setAttribute("data-field", "side");
     sideSelect.addEventListener("change", function () {
       var side = sideSelect.value;
       var changes = { side: side };
@@ -615,6 +617,7 @@ footer { color: var(--pm-muted); font-size: 11px; }
     amountInput.min = "0";
     amountInput.step = "0.01";
     amountInput.value = state.draft.amount;
+    amountInput.setAttribute("data-field", "amount");
     amountInput.addEventListener("input", function () {
       editTicket({ amount: amountInput.value });
     });
@@ -765,10 +768,18 @@ footer { color: var(--pm-muted); font-size: 11px; }
 
   function render() {
     if (!state.market) { return; }
+    // Every edit re-renders the ticket; put focus back on the field being edited
+    // so typing "50" does not stop after the "5".
+    var focused = document.activeElement;
+    var field = focused && focused.getAttribute ? focused.getAttribute("data-field") : null;
     var fragment = document.createDocumentFragment();
     fragment.appendChild(renderCard());
     fragment.appendChild(renderTicket());
     contentEl.replaceChildren(fragment);
+    if (field) {
+      var again = contentEl.querySelector('[data-field="' + field + '"]');
+      if (again) { again.focus(); }
+    }
   }
 
   // ------------------------------------------------------------------ bridge
