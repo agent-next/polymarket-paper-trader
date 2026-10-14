@@ -112,10 +112,6 @@ _WRITE_LIVE_IDEMPOTENT = ToolAnnotations(
     read_only_hint=False, destructive_hint=False,
     idempotent_hint=True, open_world_hint=True,
 )
-_WRITE_LOCAL = ToolAnnotations(
-    read_only_hint=False, destructive_hint=False,
-    idempotent_hint=False, open_world_hint=False,
-)
 _DESTRUCTIVE_LOCAL_IDEMPOTENT = ToolAnnotations(
     read_only_hint=False, destructive_hint=True,
     idempotent_hint=True, open_world_hint=False,
@@ -894,7 +890,7 @@ def resolve_all(account: str = "default") -> str:
 # ---------------------------------------------------------------------------
 
 
-@_tool(title="Run backtest", annotations=_WRITE_LOCAL)
+@_tool(title="Run backtest", annotations=_WRITE_LIVE)
 def backtest(
     data_path: str,
     strategy_path: str,
