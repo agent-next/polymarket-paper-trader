@@ -21,6 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from mcp.server import MCPServer
+from mcp.types import ToolAnnotations
 
 from pm_trader.engine import Engine
 from pm_trader.models import is_valid_account_name
@@ -90,25 +91,66 @@ def trading_playbook_resource() -> str:
 # worker thread — the serialized execution semantics SDK 1.x provided.
 _tool_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pm-trader-mcp")
 
+# ToolAnnotations describe each tool's behavior to directory-listed hosts.
+# ``destructive_hint`` is only meaningful when ``read_only_hint`` is false, so
+# it is set explicitly false for read-only tools. ``idempotent_hint`` marks
+# calls that are a no-op when repeated with the same arguments. ``open_world_hint``
+# marks tools that reach the live Polymarket APIs.
+_READ_ONLY_LIVE = ToolAnnotations(
+    read_only_hint=True, destructive_hint=False,
+    idempotent_hint=True, open_world_hint=True,
+)
+_READ_ONLY_LOCAL = ToolAnnotations(
+    read_only_hint=True, destructive_hint=False,
+    idempotent_hint=True, open_world_hint=False,
+)
+_WRITE_LIVE = ToolAnnotations(
+    read_only_hint=False, destructive_hint=False,
+    idempotent_hint=False, open_world_hint=True,
+)
+_WRITE_LIVE_IDEMPOTENT = ToolAnnotations(
+    read_only_hint=False, destructive_hint=False,
+    idempotent_hint=True, open_world_hint=True,
+)
+_WRITE_LOCAL_IDEMPOTENT = ToolAnnotations(
+    read_only_hint=False, destructive_hint=False,
+    idempotent_hint=True, open_world_hint=False,
+)
+_WRITE_LOCAL = ToolAnnotations(
+    read_only_hint=False, destructive_hint=False,
+    idempotent_hint=False, open_world_hint=False,
+)
+_DESTRUCTIVE_LOCAL_IDEMPOTENT = ToolAnnotations(
+    read_only_hint=False, destructive_hint=True,
+    idempotent_hint=True, open_world_hint=False,
+)
 
-def _tool(fn: Callable[..., str]) -> Callable[..., str]:
-    """Register ``fn`` as an MCP tool executed on the dedicated worker thread.
 
-    The registered callable is an async wrapper that submits ``fn`` to the
-    single-worker executor; ``functools.wraps`` keeps the name, docstring and
-    signature identical so the advertised tool schemas are unchanged. The
-    module attribute stays the plain sync function for direct calls.
+def _tool(
+    *, title: str, annotations: ToolAnnotations,
+) -> Callable[[Callable[..., str]], Callable[..., str]]:
+    """Register the decorated function as an MCP tool.
+
+    ``title`` is the human-readable label and ``annotations`` the
+    read-only/destructive/idempotent/open-world hints. The registered callable
+    is an async wrapper that submits the function to the single-worker
+    executor; ``functools.wraps`` keeps the name, docstring and signature
+    identical so the advertised tool schemas are unchanged. The module
+    attribute stays the plain sync function for direct calls.
     """
 
-    @functools.wraps(fn)
-    async def _wrapper(**kwargs: object) -> str:
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(
-            _tool_executor, functools.partial(fn, **kwargs)
-        )
+    def register(fn: Callable[..., str]) -> Callable[..., str]:
+        @functools.wraps(fn)
+        async def _wrapper(**kwargs: object) -> str:
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(
+                _tool_executor, functools.partial(fn, **kwargs)
+            )
 
-    mcp.add_tool(_wrapper)
-    return fn
+        mcp.add_tool(_wrapper, title=title, annotations=annotations)
+        return fn
+
+    return register
 
 
 # ---------------------------------------------------------------------------
@@ -182,7 +224,7 @@ def _market_to_dict(m: object) -> dict:
 # ---------------------------------------------------------------------------
 
 
-@_tool
+@_tool(title="Initialize paper account", annotations=_WRITE_LOCAL_IDEMPOTENT)
 def init_account(balance: float = 10_000.0, account: str = "default") -> str:
     """Initialize a paper trading account with starting balance (USD).
 
@@ -199,7 +241,7 @@ def init_account(balance: float = 10_000.0, account: str = "default") -> str:
         return _err_from(e)
 
 
-@_tool
+@_tool(title="Get account balance", annotations=_READ_ONLY_LIVE)
 def get_balance(account: str = "default") -> str:
     """Get current account balance (cash, reserved/available cash), positions value, and P&L."""
     try:
@@ -210,7 +252,7 @@ def get_balance(account: str = "default") -> str:
         return _err_from(e, "not_initialized")
 
 
-@_tool
+@_tool(title="Reset account", annotations=_DESTRUCTIVE_LOCAL_IDEMPOTENT)
 def reset_account(account: str = "default") -> str:
     """Reset account — deletes all trades, positions, and balance."""
     try:
@@ -234,7 +276,7 @@ def _clamp_limit(limit: int, cap: int = MAX_RESULTS) -> int:
     return max(1, min(limit, cap))
 
 
-@_tool
+@_tool(title="Search markets", annotations=_READ_ONLY_LIVE)
 def search_markets(query: str, limit: int = 10) -> str:
     """Search Polymarket for markets matching a query string."""
     try:
@@ -245,7 +287,7 @@ def search_markets(query: str, limit: int = 10) -> str:
         return _err_from(e)
 
 
-@_tool
+@_tool(title="List markets", annotations=_READ_ONLY_LIVE)
 def list_markets(limit: int = 20, sort_by: str = "volume") -> str:
     """List active Polymarket markets sorted by volume or liquidity."""
     try:
@@ -256,7 +298,7 @@ def list_markets(limit: int = 20, sort_by: str = "volume") -> str:
         return _err_from(e)
 
 
-@_tool
+@_tool(title="Get market", annotations=_READ_ONLY_LIVE)
 def get_market(slug_or_id: str) -> str:
     """Get detailed info for a specific market by slug or condition ID."""
     try:
@@ -267,7 +309,7 @@ def get_market(slug_or_id: str) -> str:
         return _err_from(e, "market_not_found")
 
 
-@_tool
+@_tool(title="Get order book", annotations=_READ_ONLY_LIVE)
 def get_order_book(slug_or_id: str, outcome: str = "yes") -> str:
     """Get the live order book for a market outcome (asks and bids)."""
     try:
@@ -285,7 +327,7 @@ def get_order_book(slug_or_id: str, outcome: str = "yes") -> str:
         return _err_from(e, "order_book_error")
 
 
-@_tool
+@_tool(title="List market tags", annotations=_READ_ONLY_LIVE)
 def get_tags() -> str:
     """Get all market categories/tags for filtering."""
     try:
@@ -296,7 +338,7 @@ def get_tags() -> str:
         return _err_from(e)
 
 
-@_tool
+@_tool(title="List markets by tag", annotations=_READ_ONLY_LIVE)
 def get_markets_by_tag(tag_slug: str, limit: int = 20) -> str:
     """List markets in a specific category/tag."""
     try:
@@ -309,7 +351,7 @@ def get_markets_by_tag(tag_slug: str, limit: int = 20) -> str:
         return _err_from(e)
 
 
-@_tool
+@_tool(title="Get event", annotations=_READ_ONLY_LIVE)
 def get_event(slug: str) -> str:
     """Get event details — a group of related markets."""
     try:
@@ -320,7 +362,7 @@ def get_event(slug: str) -> str:
         return _err_from(e)
 
 
-@_tool
+@_tool(title="Watch prices", annotations=_READ_ONLY_LIVE)
 def watch_prices(
     slugs: str, outcomes: str = "yes",
 ) -> str:
@@ -344,7 +386,7 @@ def watch_prices(
 # ---------------------------------------------------------------------------
 
 
-@_tool
+@_tool(title="Buy shares", annotations=_WRITE_LIVE)
 def buy(
     slug_or_id: str,
     outcome: str,
@@ -380,7 +422,7 @@ def buy(
         return _err_from(e)
 
 
-@_tool
+@_tool(title="Sell shares", annotations=_WRITE_LIVE)
 def sell(
     slug_or_id: str,
     outcome: str,
@@ -421,7 +463,7 @@ def sell(
 # ---------------------------------------------------------------------------
 
 
-@_tool
+@_tool(title="Get portfolio", annotations=_READ_ONLY_LIVE)
 def portfolio(account: str = "default") -> str:
     """Get all open positions with live prices and unrealized P&L."""
     try:
@@ -432,7 +474,7 @@ def portfolio(account: str = "default") -> str:
         return _err_from(e)
 
 
-@_tool
+@_tool(title="Get trade history", annotations=_READ_ONLY_LOCAL)
 def history(limit: int = 50, account: str = "default") -> str:
     """Get recent trade history."""
     try:
@@ -462,7 +504,7 @@ def history(limit: int = 50, account: str = "default") -> str:
 # ---------------------------------------------------------------------------
 
 
-@_tool
+@_tool(title="Place limit order", annotations=_WRITE_LIVE)
 def place_limit_order(
     slug_or_id: str,
     outcome: str,
@@ -491,7 +533,7 @@ def place_limit_order(
         return _err_from(e)
 
 
-@_tool
+@_tool(title="List limit orders", annotations=_READ_ONLY_LOCAL)
 def list_orders(account: str = "default") -> str:
     """List all pending limit orders."""
     try:
@@ -502,7 +544,7 @@ def list_orders(account: str = "default") -> str:
         return _err_from(e)
 
 
-@_tool
+@_tool(title="Cancel limit order", annotations=_DESTRUCTIVE_LOCAL_IDEMPOTENT)
 def cancel_order(order_id: int, account: str = "default") -> str:
     """Cancel a pending limit order by ID."""
     try:
@@ -515,7 +557,7 @@ def cancel_order(order_id: int, account: str = "default") -> str:
         return _err_from(e)
 
 
-@_tool
+@_tool(title="Cancel all limit orders", annotations=_DESTRUCTIVE_LOCAL_IDEMPOTENT)
 def cancel_all_orders(account: str = "default") -> str:
     """Cancel all pending limit orders at once."""
     try:
@@ -526,7 +568,7 @@ def cancel_all_orders(account: str = "default") -> str:
         return _err_from(e)
 
 
-@_tool
+@_tool(title="Check limit orders", annotations=_WRITE_LIVE)
 def check_orders(account: str = "default") -> str:
     """Check all pending limit orders against live prices and execute fills.
 
@@ -545,7 +587,7 @@ def check_orders(account: str = "default") -> str:
 # ---------------------------------------------------------------------------
 
 
-@_tool
+@_tool(title="Get performance stats", annotations=_READ_ONLY_LIVE)
 def stats(account: str = "default") -> str:
     """Get performance analytics: win rate, ROI, profit, max drawdown."""
     try:
@@ -565,7 +607,7 @@ def stats(account: str = "default") -> str:
         return _err_from(e)
 
 
-@_tool
+@_tool(title="Get stats card", annotations=_READ_ONLY_LIVE)
 def stats_card(account: str = "default", format: str = "markdown") -> str:
     """Get a shareable stats card — ready to post on X, Telegram, Discord, etc.
 
@@ -597,7 +639,7 @@ def stats_card(account: str = "default", format: str = "markdown") -> str:
         return _err_from(e)
 
 
-@_tool
+@_tool(title="Get leaderboard entry", annotations=_READ_ONLY_LIVE)
 def leaderboard_entry(account: str = "default") -> str:
     """Generate a verifiable leaderboard entry for ranking and PK.
 
@@ -640,7 +682,7 @@ def leaderboard_entry(account: str = "default") -> str:
         return _err_from(e)
 
 
-@_tool
+@_tool(title="Generate share content", annotations=_READ_ONLY_LIVE)
 def share_content(
     account: str = "default",
     platform: str = "twitter",
@@ -689,7 +731,7 @@ def share_content(
         return _err_from(e)
 
 
-@_tool
+@_tool(title="Generate PK card", annotations=_READ_ONLY_LIVE)
 def pk_card(account_a: str = "default", account_b: str = "aggressive") -> str:
     """Generate a head-to-head PK comparison card between two accounts.
 
@@ -729,7 +771,7 @@ def pk_card(account_a: str = "default", account_b: str = "aggressive") -> str:
 # ---------------------------------------------------------------------------
 
 
-@_tool
+@_tool(title="Generate leaderboard card", annotations=_READ_ONLY_LIVE)
 def leaderboard_card(accounts: str = "") -> str:
     """Generate a Top 10 leaderboard card from all local accounts.
 
@@ -783,7 +825,7 @@ def leaderboard_card(accounts: str = "") -> str:
 # ---------------------------------------------------------------------------
 
 
-@_tool
+@_tool(title="Run strategy PK battle", annotations=_WRITE_LIVE)
 def pk_battle(
     strategy_a: str,
     strategy_b: str,
@@ -813,7 +855,7 @@ def pk_battle(
 # ---------------------------------------------------------------------------
 
 
-@_tool
+@_tool(title="Resolve market positions", annotations=_WRITE_LIVE_IDEMPOTENT)
 def resolve(slug_or_id: str, account: str = "default") -> str:
     """Resolve a market's positions, paying out $1/share for winning outcome."""
     try:
@@ -832,7 +874,7 @@ def resolve(slug_or_id: str, account: str = "default") -> str:
         return _err_from(e)
 
 
-@_tool
+@_tool(title="Resolve all closed positions", annotations=_WRITE_LIVE_IDEMPOTENT)
 def resolve_all(account: str = "default") -> str:
     """Resolve all open positions in closed/resolved markets."""
     try:
@@ -856,7 +898,7 @@ def resolve_all(account: str = "default") -> str:
 # ---------------------------------------------------------------------------
 
 
-@_tool
+@_tool(title="Run backtest", annotations=_WRITE_LOCAL)
 def backtest(
     data_path: str,
     strategy_path: str,

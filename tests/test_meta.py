@@ -28,8 +28,18 @@ def _frontmatter_version(path: Path) -> str:
 
 
 def _tool_names() -> list[str]:
+    import ast
+
     src = (ROOT / "pm_trader" / "mcp_server.py").read_text(encoding="utf-8")
-    return sorted(re.findall(r"@_tool\s*\ndef\s+([a-z_]+)\(", src))
+    names: list[str] = []
+    for node in ast.walk(ast.parse(src)):
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        for dec in node.decorator_list:
+            target = dec.func if isinstance(dec, ast.Call) else dec
+            if isinstance(target, ast.Name) and target.id == "_tool":
+                names.append(node.name)
+    return sorted(names)
 
 
 def _cli_leaf_commands() -> list[str]:
