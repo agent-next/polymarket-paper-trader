@@ -4,6 +4,8 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+## [0.4.9] - 2026-10-14
+
 ### Added
 - **MCP Apps market view**: `get_market` now also declares a view
   (`ui://pm-trader/market`) that renders the market — question, YES/NO best bid,
