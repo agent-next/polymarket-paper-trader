@@ -125,6 +125,24 @@ expose it through an authenticating reverse proxy or tunnel and register that pu
 `/mcp` URL as a remote MCP tool. The transport has no authentication of its own, so never
 bind it directly to a public interface.
 
+## Remote MCP with real logins (opt-in)
+
+A multi-user deployment — one paper account set per person, added by URL in ChatGPT,
+Claude.ai and other remote-MCP hosts — is off by default and switched on with three
+flags: `--auth-issuer`, `--auth-audience` and `--resource-url`. pm-trader then validates
+bearer tokens from that external OAuth/OIDC issuer (serving the protected-resource
+metadata the spec requires) and keeps every verified subject's data in its own
+directory. Details, threat model and the environment equivalents:
+[remote-mcp.md](remote-mcp.md).
+
+```bash
+pip install "polymarket-paper-trader[remote]"   # adds the JWT crypto backend
+pm-trader-mcp --transport streamable-http --host 0.0.0.0 --port 8000 \
+  --auth-issuer https://login.example.com \
+  --auth-audience https://pm.example.com/mcp \
+  --resource-url https://pm.example.com/mcp
+```
+
 ## MCP Apps (interactive UI)
 
 `pm-trader-mcp` ships one [MCP Apps](https://modelcontextprotocol.io/extensions/apps/overview)
