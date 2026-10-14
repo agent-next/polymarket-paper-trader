@@ -1377,6 +1377,11 @@ class TestToolMetadata:
         assert ann.read_only_hint is False
         assert ann.destructive_hint is True
 
+    def test_backtest_is_open_world(self):
+        # run_backtest patches only midpoint, book and fee lookups; other API
+        # calls a strategy makes still reach the live Polymarket API.
+        assert self._annotations("backtest").open_world_hint is True
+
     def test_buy_is_write_non_destructive(self):
         ann = self._annotations("buy")
         assert ann.read_only_hint is False
