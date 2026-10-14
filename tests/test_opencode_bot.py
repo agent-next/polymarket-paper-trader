@@ -208,6 +208,13 @@ class TestClosedLoopWiring:
         )
         assert "github.event.pull_request.draft == false" in review_if
 
+    def test_review_skips_dependabot_prs(self) -> None:
+        # Dependabot-triggered runs get no repo secrets, so "Stage
+        # FreeInference key" fails and the advisory review goes red on every
+        # dependency bump.
+        review_if = str(_job("review").get("if", ""))
+        assert "github.event.pull_request.user.login != 'dependabot[bot]'" in review_if
+
     def test_review_never_checks_out_pr_code(self) -> None:
         # The workspace stays on trusted base code; the diff reaches the model
         # as text via the event payload, never as checked-out PR code.
