@@ -5,6 +5,10 @@ All notable changes to `polymarket-paper-trader` are documented here.
 ## [Unreleased]
 
 ### Fixed
+- **Contributor opencode**: the PR bot's provider config moved from the repo
+  root to `.github/opencode/opencode.json` (the workflow points
+  `OPENCODE_CONFIG` at it). Its `{file:}` key exists only on the runner, so
+  the root copy made opencode fail at startup for anyone working in the repo.
 - **Forecast Arena**: dropped the `space-bunny` entrant. Since 2026-10-11 the
   OpenCode Zen free tier rejects it from outside OpenCode ("free tier can only
   be used from within OpenCode"), so every forecast was a skip and the day's

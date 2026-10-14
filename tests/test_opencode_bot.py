@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 WORKFLOWS_DIR = ROOT / ".github" / "workflows"
 WORKFLOW = WORKFLOWS_DIR / "opencode.yml"
 TEST_WORKFLOW = WORKFLOWS_DIR / "test.yml"
-CONFIG = ROOT / "opencode.json"
+CONFIG = ROOT / ".github" / "opencode" / "opencode.json"
 
 STRICT_REF_RE = r"^[A-Za-z0-9][A-Za-z0-9._/-]*$"
 
@@ -88,6 +88,16 @@ class TestPublicBotWiring:
         assert "FREEINFERENCE_API_KEY" not in (provider.get("env") or [])
         assert "qwen3.6-35b" in provider["models"]
 
+    def test_bot_config_is_not_loaded_by_contributors(self) -> None:
+        # opencode loads a root opencode.json for anyone working in the repo;
+        # the bot's {file:} key exists only on the runner, so a root config
+        # made every contributor's opencode fail at startup.
+        assert not (ROOT / "opencode.json").exists()
+        assert not (ROOT / "opencode.jsonc").exists()
+        assert _workflow()["env"]["OPENCODE_CONFIG"] == (
+            "${{ github.workspace }}/.github/opencode/opencode.json"
+        )
+
     def test_workflow_model_is_freeinference_qwen(self) -> None:
         wf = _workflow()
         assert wf["env"]["OPENCODE_MODEL"] == "freeinference/qwen3.6-35b"
@@ -103,7 +113,7 @@ class TestPublicBotWiring:
     def test_provider_key_never_enters_agent_env(self) -> None:
         # The action runs `opencode github run` with the step env, which the
         # agent's shell tools inherit. The provider key must reach the model
-        # via the {file:} reference in opencode.json, not the step env.
+        # via the {file:} reference in the bot config, not the step env.
         for job_name in ("comment", "triage", "implement", "review"):
             oc_env = _opencode_step(job_name).get("env") or {}
             assert "FREEINFERENCE_API_KEY" not in oc_env, job_name
