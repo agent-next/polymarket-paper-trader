@@ -5,6 +5,8 @@ All notable changes to `polymarket-paper-trader` are documented here.
 ## [Unreleased]
 
 ### Fixed
+- **PR bot review**: skipped on Dependabot PRs, which get no repo secrets, so
+  the key-staging step failed and the advisory check was red on every bump.
 - **Contributor opencode**: the PR bot's provider config moved from the repo
   root to `.github/opencode/opencode.json` (the workflow points
   `OPENCODE_CONFIG` at it). Its `{file:}` key exists only on the runner, so

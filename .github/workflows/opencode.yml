@@ -306,11 +306,13 @@ jobs:
     # the same-repo guard below keeps this secret-bearing job off untrusted
     # diffs entirely. The checkout stays pinned to the base commit, so the
     # diff reaches the model as text via the event payload and PR code is
-    # never checked out or executed.
+    # never checked out or executed. Dependabot PRs get no repo secrets, so
+    # the key-staging step could only fail on them.
     if: |
       github.event_name == 'pull_request' &&
       github.event.pull_request.draft == false &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # pull-requests stays read — a write token would let the model submit
