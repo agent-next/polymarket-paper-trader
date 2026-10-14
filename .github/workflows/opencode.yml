@@ -87,7 +87,7 @@ jobs:
           # via the {file:} reference in .github/opencode/opencode.json.
           umask 077
           printf '%s' "$FREEINFERENCE_API_KEY" > "$HOME/.freeinference-api-key"
-      - uses: anomalyco/opencode/github@08462140ec0de1e4b17d4a353d8d5827f53cf7b0 # v2.0.14
+      - uses: anomalyco/opencode/github@9b4ec5714d481559990db0a816d5dec19541a814 # v2.0.26
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -143,7 +143,7 @@ jobs:
           # via the {file:} reference in .github/opencode/opencode.json.
           umask 077
           printf '%s' "$FREEINFERENCE_API_KEY" > "$HOME/.freeinference-api-key"
-      - uses: anomalyco/opencode/github@08462140ec0de1e4b17d4a353d8d5827f53cf7b0 # v2.0.14
+      - uses: anomalyco/opencode/github@9b4ec5714d481559990db0a816d5dec19541a814 # v2.0.26
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -227,7 +227,7 @@ jobs:
           # via the {file:} reference in .github/opencode/opencode.json.
           umask 077
           printf '%s' "$FREEINFERENCE_API_KEY" > "$HOME/.freeinference-api-key"
-      - uses: anomalyco/opencode/github@08462140ec0de1e4b17d4a353d8d5827f53cf7b0 # v2.0.14
+      - uses: anomalyco/opencode/github@9b4ec5714d481559990db0a816d5dec19541a814 # v2.0.26
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -339,7 +339,7 @@ jobs:
           # via the {file:} reference in .github/opencode/opencode.json.
           umask 077
           printf '%s' "$FREEINFERENCE_API_KEY" > "$HOME/.freeinference-api-key"
-      - uses: anomalyco/opencode/github@08462140ec0de1e4b17d4a353d8d5827f53cf7b0 # v2.0.14
+      - uses: anomalyco/opencode/github@9b4ec5714d481559990db0a816d5dec19541a814 # v2.0.26
         # Advisory job: the action's reaction on its own comment needs
         # pull-requests: write and 403s under the read token (issue #94).
         continue-on-error: true
