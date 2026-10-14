@@ -13,7 +13,6 @@ import fnmatch
 import importlib.resources
 import json
 import re
-import tomllib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -252,8 +251,10 @@ class TestToolMeta:
 
 class TestPackaging:
     def test_pyproject_ships_the_view_as_package_data(self):
-        config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-        patterns = config["tool"]["setuptools"]["package-data"]["pm_trader"]
+        text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        table = re.search(r"\[tool\.setuptools\.package-data\](.*?)(\n\[|\Z)", text, re.DOTALL)
+        assert table, "package-data table not found in pyproject.toml"
+        patterns = re.findall(r'"([^"]+)"', table.group(1))
         assert any(fnmatch.fnmatch(UI_RELPATH, p) for p in patterns), (
             f"{UI_RELPATH} not matched by package-data {patterns}"
         )
