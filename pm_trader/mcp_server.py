@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextvars
 import functools
 import importlib.metadata
 import importlib.resources
 import json
+import os
 import re
 import sys
 from collections.abc import Callable
@@ -22,10 +24,17 @@ from pathlib import Path
 from typing import Any
 
 from mcp.server import MCPServer
+from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.types import ToolAnnotations
 
 from pm_trader.engine import Engine
 from pm_trader.models import is_valid_account_name
+from pm_trader.remote_auth import (
+    RemoteAuthConfig,
+    RemoteAuthConfigError,
+    configure_server,
+    user_root,
+)
 
 DEFAULT_DATA_DIR = Path.home() / ".pm-trader" / "default"
 
@@ -178,8 +187,13 @@ def _tool(
         @functools.wraps(fn)
         async def _wrapper(**kwargs: object) -> str:
             loop = asyncio.get_running_loop()
+            # The tool body runs on the worker thread, so carry the request's
+            # contextvars across: handlers that read request-scoped state (the
+            # verified MCP identity in authenticated remote mode) must see the
+            # values of the request that is calling them.
+            ctx = contextvars.copy_context()
             return await loop.run_in_executor(
-                _tool_executor, functools.partial(fn, **kwargs)
+                _tool_executor, lambda: ctx.run(functools.partial(fn, **kwargs))
             )
 
         mcp.add_tool(_wrapper, title=title, annotations=annotations, meta=meta)
@@ -194,6 +208,10 @@ def _tool(
 
 _engine: Engine | None = None
 
+# Set only when the opt-in remote mode is enabled (--auth-issuer and friends);
+# see docs/remote-mcp.md. None means the local ~/.pm-trader tree.
+_remote: RemoteAuthConfig | None = None
+
 
 def _validate_account_name(account: str) -> str:
     """Validate account name to prevent path traversal."""
@@ -202,11 +220,28 @@ def _validate_account_name(account: str) -> str:
     return account
 
 
+def _data_root() -> Path:
+    """Return the directory holding the accounts this session may touch.
+
+    Stdio and unauthenticated HTTP see the local ``~/.pm-trader`` tree exactly as
+    before. In authenticated remote mode every verified ``(issuer, subject)``
+    pair gets its own root directory, named by a hash, and the ``account``
+    argument is only a sub-account inside it — so one user can never read or
+    trade another user's accounts, whatever they pass as ``account``.
+    """
+    if _remote is None:
+        return Path.home() / ".pm-trader"
+    token = get_access_token()
+    if token is None or not token.subject or not (token.claims or {}).get("iss"):
+        raise ValueError("Remote MCP tools require a verified bearer token")
+    return user_root(str(token.claims["iss"]), token.subject)
+
+
 def _get_engine(account: str = "default") -> Engine:
     """Return the current Engine, creating if needed."""
     global _engine
     account = _validate_account_name(account)
-    data_dir = Path.home() / ".pm-trader" / account
+    data_dir = _data_root() / account
     if _engine is None or _engine.db.data_dir != data_dir:
         if _engine is not None:
             _engine.close()
@@ -812,13 +847,14 @@ def leaderboard_card(accounts: str = "") -> str:
 
     Ranks all qualified accounts (10+ trades) by ROI%.
     If accounts is provided (comma-separated), only include those accounts.
-    Otherwise scans all accounts in ~/.pm-trader/.
+    Otherwise scans every account in this session's data root
+    (~/.pm-trader locally, the caller's own directory in remote mode).
     """
     try:
         from pm_trader.analytics import compute_stats
         from pm_trader.card import generate_leaderboard_card
 
-        base = Path.home() / ".pm-trader"
+        base = _data_root()
         if accounts:
             names = [n.strip() for n in accounts.split(",")]
         else:
@@ -1019,6 +1055,25 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default=8000,
         help="Port to bind for streamable-http (default: 8000)",
     )
+    parser.add_argument(
+        "--auth-issuer",
+        default=os.environ.get("PM_TRADER_AUTH_ISSUER"),
+        help="OAuth/OIDC issuer that mints access tokens; enables the opt-in "
+        "authenticated remote mode (env: PM_TRADER_AUTH_ISSUER). Requires "
+        "--auth-audience and --resource-url. See docs/remote-mcp.md",
+    )
+    parser.add_argument(
+        "--auth-audience",
+        default=os.environ.get("PM_TRADER_AUTH_AUDIENCE"),
+        help="Value access tokens must carry in 'aud' (env: "
+        "PM_TRADER_AUTH_AUDIENCE)",
+    )
+    parser.add_argument(
+        "--resource-url",
+        default=os.environ.get("PM_TRADER_RESOURCE_URL"),
+        help="Public URL of this server, advertised in the protected-resource "
+        "metadata (env: PM_TRADER_RESOURCE_URL)",
+    )
     return parser
 
 
@@ -1031,10 +1086,42 @@ _LOCAL_ONLY_TOOLS = ("backtest", "pk_battle")
 
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
+# Each auth argument with the flag name used in its error message.
+_AUTH_ARGS = (
+    ("auth_issuer", "auth-issuer"),
+    ("auth_audience", "auth-audience"),
+    ("resource_url", "resource-url"),
+)
 
-def _run(transport: str, host: str, port: int) -> None:
+
+def _auth_config(args: argparse.Namespace) -> RemoteAuthConfig | None:
+    """Return the remote-mode config from the parsed args, or None when off.
+
+    None of the three set means the mode stays off (today's behaviour). Setting
+    only some of them is a startup error: a half-configured resource server
+    would quietly accept the wrong audience.
+    """
+    if not any((args.auth_issuer, args.auth_audience, args.resource_url)):
+        return None
+    missing = [flag for attr, flag in _AUTH_ARGS if not getattr(args, attr)]
+    if missing:
+        raise RemoteAuthConfigError(
+            "remote MCP auth needs --auth-issuer, --auth-audience and "
+            f"--resource-url (missing: {', '.join('--' + m for m in missing)})"
+        )
+    return RemoteAuthConfig(
+        issuer=args.auth_issuer, audience=args.auth_audience,
+        resource_url=args.resource_url,
+    )
+
+
+def _run(
+    transport: str, host: str, port: int,
+    auth: RemoteAuthConfig | None = None,
+) -> None:
+    global _remote
     if transport == "streamable-http":
-        if host not in _LOOPBACK_HOSTS:
+        if auth is None and host not in _LOOPBACK_HOSTS:
             print(
                 f"WARNING: streamable-http is UNAUTHENTICATED and is binding to "
                 f"{host!r}: anyone who can reach it can trade, reset and resolve "
@@ -1044,6 +1131,11 @@ def _run(transport: str, host: str, port: int) -> None:
             )
         for name in _LOCAL_ONLY_TOOLS:
             mcp.remove_tool(name)
+        if auth is not None:
+            # Authenticated and multi-user: every request must carry a bearer
+            # token, and each verified subject trades in its own data root.
+            _remote = auth
+            configure_server(mcp, auth)
         mcp.run(transport="streamable-http", host=host, port=port)
     else:
         mcp.run()
@@ -1051,8 +1143,15 @@ def _run(transport: str, host: str, port: int) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     """Run MCP server on stdio (default) or streamable-http transport."""
-    args = _build_arg_parser().parse_args(argv)
-    _run(args.transport, args.host, args.port)
+    parser = _build_arg_parser()
+    args = parser.parse_args(argv)
+    try:
+        auth = _auth_config(args)
+    except RemoteAuthConfigError as e:
+        parser.error(str(e))
+    if auth is not None and args.transport != "streamable-http":
+        parser.error("--auth-issuer needs --transport streamable-http")
+    _run(args.transport, args.host, args.port, auth)
 
 
 if __name__ == "__main__":  # pragma: no cover
