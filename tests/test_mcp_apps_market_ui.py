@@ -598,9 +598,17 @@ class TestTicketGuards:
         assert _norm(_js("editTicket")) == (
             "function editTicket(changes) { Object.keys(changes).forEach(function "
             "(key) { state.draft[key] = changes[key]; }); state.preview = null; "
-            "state.status = null; if (changes.side) { state.receipt = null; } "
-            "render(); }"
+            "state.status = null; if (!state.inFlight) { state.submitted = false; } "
+            "if (changes.side) { state.receipt = null; } render(); }"
         )
+
+    def test_a_new_market_drops_the_old_preview(self):
+        """A host push of another market must not leave the last ticket armed."""
+        body = _norm(_js("applyToolResult"))
+        assert (
+            "state.preview = null; state.status = null; state.draft.amount = \"\"; "
+            "if (!state.inFlight) { state.submitted = false; }"
+        ) in body
 
     def test_only_one_call_is_in_flight_at_a_time(self):
         assert html_calls_sendrequest("confirm") == 1

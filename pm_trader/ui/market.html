@@ -687,6 +687,8 @@ footer { color: var(--pm-muted); font-size: 11px; }
     // user has actually seen priced.
     state.preview = null;
     state.status = null;
+    // A filled ticket stays "Sent" until the user writes the next one.
+    if (!state.inFlight) { state.submitted = false; }
     if (changes.side) { state.receipt = null; }
     render();
   }
@@ -827,6 +829,11 @@ footer { color: var(--pm-muted); font-size: 11px; }
     state.market = envelope.data;
     state.books = {};
     state.receipt = null;
+    // A preview priced another market's book: a new market starts a new ticket.
+    state.preview = null;
+    state.status = null;
+    state.draft.amount = "";
+    if (!state.inFlight) { state.submitted = false; }
     sourceEl.textContent = MARKET_TOOL;
     render();
     loadBooks();
