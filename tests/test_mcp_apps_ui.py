@@ -24,6 +24,7 @@ from pm_trader import mcp_server
 ROOT = Path(__file__).resolve().parent.parent
 UI_RELPATH = "ui/portfolio.html"
 UI_URI = "ui://pm-trader/portfolio"
+MARKET_UI_URI = "ui://pm-trader/market"
 UI_MIME = "text/html;profile=mcp-app"
 
 # Message names the MCP Apps spec defines for the view side of the bridge.
@@ -131,9 +132,9 @@ class TestUiResource:
         assert entry[0]["name"] == "portfolio"
         assert entry[0]["description"]
 
-    def test_only_the_portfolio_view_uses_the_ui_scheme(self):
+    def test_only_the_two_views_use_the_ui_scheme(self):
         ui_resources = [r["uri"] for r in _resources() if r["uri"].startswith("ui://")]
-        assert ui_resources == [UI_URI]
+        assert ui_resources == [UI_URI, MARKET_UI_URI]
 
     def test_resource_body_is_the_packaged_html(self):
         content, mime_type, _ = _read_ui()
@@ -196,7 +197,7 @@ class TestToolMeta:
             for name, entry in tools.items()
             if "resourceUri" in json.dumps(entry.get("_meta", {}))
         }
-        assert with_ui == {"portfolio", "stats"}
+        assert with_ui == {"get_market", "portfolio", "stats"}
 
     def test_referenced_resource_exists(self):
         uris = {r["uri"] for r in _resources()}
