@@ -4,6 +4,8 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-10-14
+
 ### Added
 - **MCP tool metadata**: every MCP tool now advertises a human-readable `title`
   and `ToolAnnotations` (read-only, destructive, idempotent and open-world
