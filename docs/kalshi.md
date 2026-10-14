@@ -263,15 +263,20 @@ Same rules as `api.py`, so the two clients read alike:
 
 - `httpx` only (no new runtime dependency), 10 s timeout, one `httpx.Client`.
 - Metadata is cached in the shared SQLite `market_cache` table for
-  `CACHE_TTL_SECONDS = 300`; the cache key is namespaced `kalshi:…` so it can
-  never collide with a Polymarket key. Order books are **never** cached.
-- An empty page is **never** cached (`len(data) > 0` guard before `_set_cached`).
+  `CACHE_TTL_SECONDS = 300` (imported from `api.py`, so the TTL cannot drift);
+  cache keys are namespaced `kalshi:market:<ticker>` and
+  `kalshi:markets:<filters+limit>`, so they can never collide with a Polymarket
+  key. Order books are **never** cached.
+- An empty result is **never** cached (`if collected:` guard before
+  `_set_cached`), so a miss is re-queried instead of pinned for 5 minutes.
 - `MAX_RESULTS = 100` caps `list_markets`, page size 100, `limit <= 0` → no
   request at all. Cursors are followed until the cap, an empty `cursor`
-  (Kalshi sends `""`, not `null`), or a cursor that repeats.
-- `_parse_market` / `_parse_order_book` raise `ApiError` on a payload without a
-  `ticker` / without `orderbook_fp` — silent defaults would key a position on an
-  empty string.
+  (Kalshi sends `""`, not `null`), or a cursor that repeats — the wire answers
+  an unusable cursor with page 1, so the replay guard is what stops the loop.
+- `_parse_market` / `_parse_order_book` raise `ApiError` on a payload that is
+  not a market (`ticker` missing), not an order book (`orderbook_fp` missing or
+  a missing ladder), or carries a malformed level: silent defaults would key a
+  position on an empty string or fill against a garbage book.
 - No engine, CLI or MCP wiring; the client is constructed with a `Database` and
   `close()`d, like `PolymarketClient`.
 
