@@ -4,6 +4,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-06T16:55:43Z"
   },
+  "acle-itj-sah-2026-10-13-itj": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
   "bitcoin-above-80k-on-october-10-2026": {
     "outcome": 1,
     "resolution_source": "uma",
@@ -224,6 +229,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-11T13:02:47Z"
   },
+  "elc-bri-bbr-2026-10-13-bri": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
   "elon-musk-of-tweets-october-10-october-12-2026-40-64": {
     "outcome": 1,
     "resolution_source": "uma",
@@ -233,6 +243,11 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-12T19:59:25Z"
+  },
+  "elon-musk-of-tweets-october-12-october-14-2026-40-64": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
   },
   "elon-musk-of-tweets-october-2-october-9-2026-140-159": {
     "outcome": 0,
@@ -293,6 +308,16 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-13T14:21:36Z"
+  },
+  "elon-musk-of-tweets-october-6-october-13-2026-360-379": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
+  "elon-musk-of-tweets-october-6-october-13-2026-400-419": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
   },
   "elon-musk-of-tweets-october-8-october-10-2026-115-139": {
     "outcome": 0,
@@ -584,6 +609,21 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-10T12:41:42Z"
   },
+  "gemini-4pt0-released-by-october-13-2026": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
+  "gemini-4pt0-released-by-october-14-2026": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
+  "gemini-4pt0-released-by-october-15-2026": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
   "gemini-4pt0-released-by-september-30-2026": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -768,6 +808,101 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-11T13:02:47Z"
+  },
+  "ucl-ars-lil-2026-10-13-ars": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
+  "ucl-ars-lil-2026-10-13-lil": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
+  "ucl-atm-mnu-2026-10-13-atm": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
+  "ucl-atm-mnu-2026-10-13-draw": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
+  "ucl-atm-mnu-2026-10-13-mnu": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
+  "ucl-gal-fcb-2026-10-13-draw": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
+  "ucl-gal-fcb-2026-10-13-fcb": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
+  "ucl-gal-fcb-2026-10-13-gal": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
+  "ucl-int-bru-2026-10-13-bru": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
+  "ucl-int-bru-2026-10-13-int": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
+  "ucl-rbl-psv-2026-10-13-rbl": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
+  "ucl-sf-slp-2026-10-13-slp": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
+  "ucl-vf-bay-2026-10-13-bay": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
+  "ucl-vf-bay-2026-10-13-vf": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
+  "ucl-vil-nap-2026-10-13-nap": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
+  "ufc-ilibul-erivis-2026-09-29-bulaid-win-by-ko-tko": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
+  "ufc-ilibul-erivis-2026-09-29-go-the-distance": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
+  "ufc-ilibul-erivis-2026-09-29-visconde-win-by-ko-tko": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
+  "ufc-ilibul-erivis-2026-09-29-win-by-submission": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
   },
   "unl-alb-smr-2026-10-06-alb": {
     "outcome": 1,
@@ -1054,6 +1189,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-05T14:53:52Z"
   },
+  "will-argentinas-monthly-inflation-in-september-2026-be-between-1pt9-and-2pt1": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
   "will-augusto-cury-finish-in-third-place-in-the-first-round-of-the-2026-brazilian-presidential-election": {
     "outcome": 1,
     "resolution_source": "uma",
@@ -1094,6 +1234,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-13T14:21:36Z"
   },
+  "will-bitcoin-dip-to-81k-on-october-13-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
+  },
   "will-bitcoin-dip-to-81k-on-october-7-2026": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -1123,6 +1268,11 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-bitcoin-dip-to-83k-on-october-13-2026": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-14T12:03:36Z"
   },
   "will-bitcoin-dip-to-84k-on-october-5-2026": {
     "outcome": 0,
