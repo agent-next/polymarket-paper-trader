@@ -4,6 +4,11 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- **Remote MCP JWKS outages**: a failed discovery/JWKS fetch is retried at most
+  once every 30 seconds instead of on every request, and a failed refresh keeps
+  the last good keys instead of rejecting every token until the issuer is back.
+
 ## [0.4.7] - 2026-10-14
 
 ### Added

@@ -43,6 +43,8 @@ ALLOWED_ALGS: tuple[str, ...] = (
 )
 
 JWKS_CACHE_SECONDS = 300.0
+# After a failed JWKS fetch, wait this long before asking the issuer again.
+JWKS_RETRY_SECONDS = 30.0
 _FETCH_TIMEOUT = httpx.Timeout(10.0)
 
 # Directory under ~/.pm-trader/ that holds one hashed directory per remote user.
@@ -158,18 +160,22 @@ class RemoteTokenVerifier(TokenVerifier):
         self.jwks_ttl = jwks_ttl
         self._keys: list[dict[str, Any]] | None = None
         self._fetched_at = 0.0
+        self._failed_at = float("-inf")
         self._lock = asyncio.Lock()
 
     async def _jwks(self) -> list[dict[str, Any]] | None:
         """Return the issuer's JWKS, cached for `jwks_ttl` seconds.
 
-        Returns ``None`` when the issuer cannot be reached or its documents are
-        unusable, so an unverifiable token is rejected rather than trusted.
+        When a fetch fails, the last good key set (``None`` if there never was
+        one, so the token is rejected rather than trusted) is used for the next
+        `JWKS_RETRY_SECONDS`: an issuer outage costs one fetch per window, not
+        one timed-out fetch per request, and a failed refresh does not lock out
+        users whose keys are already known.
         """
         if self._fresh():
             return self._keys
         async with self._lock:
-            if self._fresh():
+            if self._fresh() or time.monotonic() - self._failed_at < JWKS_RETRY_SECONDS:
                 return self._keys
             try:
                 async with httpx.AsyncClient(timeout=_FETCH_TIMEOUT) as client:
@@ -181,10 +187,11 @@ class RemoteTokenVerifier(TokenVerifier):
                     response = await client.get(jwks_uri)
                     response.raise_for_status()
                     keys = response.json()["keys"]
+                if not isinstance(keys, list):
+                    raise TypeError("JWKS 'keys' is not a list")
             except (httpx.HTTPError, ValueError, KeyError, TypeError):
-                return None
-            if not isinstance(keys, list):
-                return None
+                self._failed_at = time.monotonic()
+                return self._keys
             self._keys = keys
             self._fetched_at = time.monotonic()
             return self._keys
