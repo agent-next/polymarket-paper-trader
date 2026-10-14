@@ -19,23 +19,26 @@ Part of [agent-next](https://github.com/agent-next) — building an agentic worl
 ## 60-second demo
 
 ```bash
-npx clawhub install polymarket-paper-trader    # install via ClawHub
+pip install polymarket-paper-trader
 pm-trader init --balance 10000                 # $10k paper money
 pm-trader markets search "bitcoin"             # find markets
 pm-trader buy will-bitcoin-hit-100k yes 500    # buy $500 of YES
 pm-trader stats --card                         # shareable stats card
 ```
 
+No install at all? `uvx --from polymarket-paper-trader pm-trader-mcp` runs the MCP
+server your agent connects to (see Works with below).
+
 That's it. Your AI agent is now trading Polymarket with zero risk.
 
 ## Install
 
 ```bash
-# via pip
+# via pip (CLI + MCP server)
 pip install polymarket-paper-trader
 
-# via ClawHub (for OpenClaw agents)
-npx clawhub install polymarket-paper-trader
+# or the MCP server alone, with no install
+uvx --from polymarket-paper-trader pm-trader-mcp
 
 # from source (development)
 uv pip install -e ".[dev]"
@@ -45,17 +48,29 @@ Requires Python 3.10+.
 
 ## Works with
 
-| Runtime | One-line install |
-|---|---|
-| Claude Code | `/plugin marketplace add agent-next/polymarket-paper-trader` |
-| Codex CLI | `codex mcp add polymarket-paper-trader -- uvx --from polymarket-paper-trader pm-trader-mcp` |
-| Cursor | [![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.png)](cursor://anysphere.cursor-deeplink/mcp/install?name=polymarket-paper-trader&config=eyJjb21tYW5kIjoidXZ4IiwiYXJncyI6WyItLWZyb20iLCJwb2x5bWFya2V0LXBhcGVyLXRyYWRlciIsInBtLXRyYWRlci1tY3AiXX0=) |
-| Gemini CLI | `gemini extensions install https://github.com/agent-next/polymarket-paper-trader` |
-| OpenCode / Goose / Cline / Windsurf / Copilot | add `pm-trader-mcp` to the client's MCP config |
-| OpenClaw / ClawHub | `npx clawhub install polymarket-paper-trader` |
-| Hermes Agent / LangChain / OpenAI Agents SDK / CrewAI | wrap `uvx --from polymarket-paper-trader pm-trader-mcp` |
+| Runtime | One-line install | Interactive UI (MCP Apps) |
+|---|---|---|
+| Claude Code | `/plugin marketplace add agent-next/polymarket-paper-trader` | |
+| Codex CLI | `codex mcp add polymarket-paper-trader -- uvx --from polymarket-paper-trader pm-trader-mcp` | |
+| Cursor | [![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.png)](cursor://anysphere.cursor-deeplink/mcp/install?name=polymarket-paper-trader&config=eyJjb21tYW5kIjoidXZ4IiwiYXJncyI6WyItLWZyb20iLCJwb2x5bWFya2V0LXBhcGVyLXRyYWRlciIsInBtLXRyYWRlci1tY3AiXX0=) | |
+| Gemini CLI | `gemini extensions install https://github.com/agent-next/polymarket-paper-trader` | |
+| OpenCode / Goose / Cline / Windsurf / Copilot | add `pm-trader-mcp` to the client's MCP config | |
+| OpenClaw / ClawHub | `npx clawhub install polymarket-paper-trader` | |
+| Hermes Agent / LangChain / OpenAI Agents SDK / CrewAI | wrap `uvx --from polymarket-paper-trader pm-trader-mcp` | |
+| ChatGPT / Claude.ai (remote MCP) | add the remote `/mcp` URL in the host's remote-MCP settings | ChatGPT: dashboards render inline |
 
 Full copy-paste config for every runtime above (plus Grok/xAI remote MCP): [docs/integrations.md](docs/integrations.md).
+
+## Use it from ChatGPT / Claude.ai / personal agents
+
+Remote mode exists for hosts that only speak HTTP: run
+`pm-trader-mcp --transport streamable-http` with the opt-in `--auth-issuer`,
+`--auth-audience` and `--resource-url` flags, then add your server's `/mcp`
+URL in the host's remote-MCP settings. It is off by default, and it needs an
+OAuth/OIDC issuer you operate — pm-trader verifies bearer tokens against it
+and gives every verified subject its own paper accounts. There is no hosted
+endpoint to add: you run the server yourself. Setup, threat model and the
+environment equivalents: [docs/remote-mcp.md](docs/remote-mcp.md).
 
 ## Quick start
 
