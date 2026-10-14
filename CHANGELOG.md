@@ -4,6 +4,19 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Opt-in remote MCP auth**: `pm-trader-mcp --transport streamable-http` now accepts
+  `--auth-issuer`, `--auth-audience` and `--resource-url` (or `PM_TRADER_AUTH_ISSUER`,
+  `PM_TRADER_AUTH_AUDIENCE`, `PM_TRADER_RESOURCE_URL`). With them it is an OAuth 2.1
+  resource server: bearer JWTs are verified against the issuer's JWKS (signature, `iss`,
+  `aud`, `exp`; `alg: none` and HS* rejected), it serves RFC 9728 protected-resource
+  metadata and answers unauthenticated or invalid tokens with 401 + `WWW-Authenticate`.
+  Every verified subject trades in its own `~/.pm-trader/remote/<hash of issuer+sub>/`
+  directory, so one user can never read or trade another's accounts. Off by default —
+  stdio and the unauthenticated loopback streamable-HTTP behaviour are unchanged, and
+  the `UNAUTHENTICATED` bind warning only prints when no issuer is configured. See
+  docs/remote-mcp.md.
+
 ### Fixed
 - **PR bot review**: the review job gets `pull-requests: write`, the
   permission GitHub requires to comment on a PR; with `read` it failed with a
