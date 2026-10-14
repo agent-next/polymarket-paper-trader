@@ -4,6 +4,13 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+### Changed
+- **README**: the demo and install sections now lead with
+  `pip install polymarket-paper-trader` / `uvx --from polymarket-paper-trader
+  pm-trader-mcp`; ClawHub is one row in a "Works with" table that also marks
+  which hosts render the MCP Apps dashboard, and remote MCP mode for
+  ChatGPT / Claude.ai / personal agents gets its own section.
+
 ## [0.4.8] - 2026-10-14
 
 ### Fixed

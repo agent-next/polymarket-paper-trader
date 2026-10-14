@@ -87,6 +87,22 @@ def _readme_cli_commands() -> list[str]:
     return sorted(commands)
 
 
+def _readme_works_with_commands() -> list[str]:
+    """Extract install commands from the README 'Works with' table.
+
+    A command is a backticked span that invokes uvx, `codex mcp add` or
+    `gemini extensions install`; docs/integrations.md documents each of them.
+    """
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    section = re.search(r"## Works with\n\n(.*?)\n\n", readme, re.DOTALL)
+    assert section, "Works with table not found in README.md"
+    commands = []
+    for span in re.findall(r"`([^`]+)`", section.group(1)):
+        if re.search(r"\buvx\b|codex mcp add|gemini extensions install", span):
+            commands.append(span)
+    return sorted(commands)
+
+
 class TestVersionConsistency:
     def test_server_json_matches_installed(self) -> None:
         data = json.loads((ROOT / "server.json").read_text(encoding="utf-8"))
@@ -132,6 +148,15 @@ class TestDocCounts:
     def test_readme_cli_table_matches_click_tree(self) -> None:
         """Every leaf CLI command appears in the README table, and vice versa."""
         assert _readme_cli_commands() == _cli_leaf_commands()
+
+    def test_readme_works_with_commands_in_integrations(self) -> None:
+        """Every install command in the README 'Works with' table appears verbatim
+        in docs/integrations.md — editing one without the other fails here."""
+        integrations = (ROOT / "docs" / "integrations.md").read_text(encoding="utf-8")
+        commands = _readme_works_with_commands()
+        assert commands, "no install commands found in the README 'Works with' table"
+        missing = [command for command in commands if command not in integrations]
+        assert not missing, f"in README but not docs/integrations.md: {missing}"
 
     def test_skill_tools_table_matches_registered_tools(self) -> None:
         """Both SKILL.md copies list exactly the registered MCP tools."""
