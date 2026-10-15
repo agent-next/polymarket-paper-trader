@@ -22,11 +22,12 @@ import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import IO, Any
+from typing import IO, Annotated, Any
 
 from mcp.server import MCPServer
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.types import ToolAnnotations
+from pydantic import Field
 
 from pm_trader.engine import Engine
 from pm_trader.kalshi_api import KalshiClient
@@ -364,16 +365,41 @@ def _market_to_dict(m: object) -> dict:
     }
 
 
+_Account = Annotated[str, Field(description=(
+    "Paper account name (letters, digits, hyphen, underscore); each name is a "
+    "separate local account. Default 'default'."
+))]
+_MarketRef = Annotated[str, Field(description=(
+    "Market slug or condition ID. For a Kalshi market use the slug "
+    "'kalshi:<TICKER>', e.g. 'kalshi:KXNBAGAME-26OCT16DENLAL-LAL'."
+))]
+_Outcome = Annotated[str, Field(description=(
+    "Outcome to trade, e.g. 'yes' or 'no' (case-insensitive); must match one "
+    "of the market's outcomes."
+))]
+_OrderType = Annotated[str, Field(description=(
+    "'fok' (fill-or-kill: all or nothing) or 'fak' (fill-and-kill: partial "
+    "fills allowed). Default 'fok'."
+))]
+
+
 # ---------------------------------------------------------------------------
 # Account tools
 # ---------------------------------------------------------------------------
 
 
 @_tool(title="Initialize paper account", annotations=_DESTRUCTIVE_LOCAL_IDEMPOTENT)
-def init_account(balance: float = 10_000.0, account: str = "default") -> str:
-    """Initialize a paper trading account with starting balance (USD).
+def init_account(
+    balance: Annotated[float, Field(description=(
+        "Starting cash in USD, e.g. 10000. Default 10000."
+    ))] = 10_000.0,
+    account: _Account = "default",
+) -> str:
+    """Create a paper trading account with a starting USD balance.
 
-    Creates a new account or resets an existing one.
+    Writes the local account database; calling it again on an existing account
+    replaces its balance. Run it before any trade; use reset_account to wipe
+    trades and positions instead.
     """
     try:
         engine = _get_engine(account, create=True)
@@ -387,8 +413,12 @@ def init_account(balance: float = 10_000.0, account: str = "default") -> str:
 
 
 @_tool(title="Get account balance", annotations=_READ_ONLY_LIVE)
-def get_balance(account: str = "default") -> str:
-    """Get current account balance (cash, reserved/available cash), positions value, and P&L."""
+def get_balance(account: _Account = "default") -> str:
+    """Get an account's cash, reserved and available cash, positions value and P&L.
+
+    Reads the local account and prices positions with live market data. Use
+    portfolio for per-position detail and stats for performance metrics.
+    """
     try:
         engine = _get_engine(account)
         bal = engine.get_balance()
@@ -398,8 +428,12 @@ def get_balance(account: str = "default") -> str:
 
 
 @_tool(title="Reset account", annotations=_DESTRUCTIVE_LOCAL_IDEMPOTENT)
-def reset_account(account: str = "default") -> str:
-    """Reset account — deletes all trades, positions, and balance."""
+def reset_account(account: _Account = "default") -> str:
+    """Delete an account's trades, positions and orders and reset its balance.
+
+    Irreversible local change. Use init_account to set a new starting balance
+    afterwards; use cancel_all_orders to remove only pending orders.
+    """
     try:
         engine = _get_engine(account)
         engine.reset()
@@ -422,8 +456,20 @@ def _clamp_limit(limit: int, cap: int = MAX_RESULTS) -> int:
 
 
 @_tool(title="Search markets", annotations=_READ_ONLY_LIVE)
-def search_markets(query: str, limit: int = 10) -> str:
-    """Search Polymarket for markets matching a query string."""
+def search_markets(
+    query: Annotated[str, Field(description=(
+        "Free-text search, e.g. 'bitcoin' or 'fed rate cut'."
+    ))],
+    limit: Annotated[int, Field(description=(
+        "Maximum markets to return, clamped to 1-100. Default 10."
+    ))] = 10,
+) -> str:
+    """Search Polymarket markets by text and return slug, question, prices and volume.
+
+    Queries the live Polymarket API and changes nothing. Searches Polymarket
+    only: use kalshi_markets to find Kalshi markets, list_markets to browse by
+    volume, or get_markets_by_tag to browse a category.
+    """
     try:
         engine = _get_engine()
         markets = engine.api.search_markets(query, limit=_clamp_limit(limit))
@@ -433,8 +479,20 @@ def search_markets(query: str, limit: int = 10) -> str:
 
 
 @_tool(title="List markets", annotations=_READ_ONLY_LIVE)
-def list_markets(limit: int = 20, sort_by: str = "volume") -> str:
-    """List active Polymarket markets sorted by volume or liquidity."""
+def list_markets(
+    limit: Annotated[int, Field(description=(
+        "Maximum markets to return, clamped to 1-100. Default 20."
+    ))] = 20,
+    sort_by: Annotated[str, Field(description=(
+        "'volume' or 'liquidity', highest first. Default 'volume'."
+    ))] = "volume",
+) -> str:
+    """List active Polymarket markets, highest volume or liquidity first.
+
+    Queries the live Polymarket API and changes nothing. Use search_markets
+    for a keyword, get_markets_by_tag for a category, or kalshi_markets for
+    Kalshi.
+    """
     try:
         engine = _get_engine()
         markets = engine.api.list_markets(limit=_clamp_limit(limit), sort_by=sort_by)
@@ -444,8 +502,15 @@ def list_markets(limit: int = 20, sort_by: str = "volume") -> str:
 
 
 @_tool(title="Get market", annotations=_READ_ONLY_LIVE, meta=_MARKET_UI_TOOL_META)
-def get_market(slug_or_id: str) -> str:
-    """Get detailed info for a specific market by slug or condition ID."""
+def get_market(
+    slug_or_id: _MarketRef,
+) -> str:
+    """Get one market's question, outcome prices, volume, liquidity and status.
+
+    Takes a Polymarket slug or condition ID, or a Kalshi market as
+    'kalshi:<TICKER>'. Reads live data and changes nothing; use get_order_book
+    for depth.
+    """
     try:
         engine = _get_engine()
         m = engine.api.get_market(slug_or_id)
@@ -455,8 +520,17 @@ def get_market(slug_or_id: str) -> str:
 
 
 @_tool(title="Get order book", annotations=_READ_ONLY_LIVE)
-def get_order_book(slug_or_id: str, outcome: str = "yes") -> str:
-    """Get the live order book for a market outcome (asks and bids)."""
+def get_order_book(
+    slug_or_id: _MarketRef,
+    outcome: Annotated[str, Field(description=(
+        "Outcome whose book to read, 'yes' or 'no'. Default 'yes'."
+    ))] = "yes",
+) -> str:
+    """Get the live asks and bids (price and size) for one market outcome.
+
+    Works for Polymarket slugs and for Kalshi markets as 'kalshi:<TICKER>'.
+    Reads live data and changes nothing; check it before sizing a buy or sell.
+    """
     try:
         engine = _get_engine()
         market = engine.api.get_market(slug_or_id)
@@ -477,15 +551,24 @@ _KALSHI_STATUSES = ("open", "closed", "settled")
 
 @_tool(title="List Kalshi markets", annotations=_READ_ONLY_LIVE)
 def kalshi_markets(
-    limit: int = 20,
-    status: str = "open",
-    series_ticker: str | None = None,
-    event_ticker: str | None = None,
+    limit: Annotated[int, Field(description=(
+        "Maximum markets to return, clamped to 1-100. Default 20."
+    ))] = 20,
+    status: Annotated[str, Field(description=(
+        "'open', 'closed' or 'settled'. Default 'open'."
+    ))] = "open",
+    series_ticker: Annotated[str | None, Field(description=(
+        "Only markets in this Kalshi series ticker. Default none (all)."
+    ))] = None,
+    event_ticker: Annotated[str | None, Field(description=(
+        "Only markets in this Kalshi event ticker. Default none (all)."
+    ))] = None,
 ) -> str:
-    """List Kalshi markets (read-only; trading stays on Polymarket).
+    """List Kalshi markets for discovery; this tool is read-only and places no trade.
 
-    ``status`` is open, closed or settled; ``series_ticker`` / ``event_ticker``
-    narrow the list. Each market's ``slug`` is its Kalshi ticker.
+    Reads the live Kalshi API. To trade a result, pass 'kalshi:<TICKER>' as
+    slug_or_id to buy, sell or place_limit_order. Use search_markets or
+    list_markets for Polymarket instead.
     """
     if status not in _KALSHI_STATUSES:
         return _err(f"status must be one of {', '.join(_KALSHI_STATUSES)}", "invalid_status")
@@ -504,8 +587,16 @@ def kalshi_markets(
 
 
 @_tool(title="Get Kalshi market", annotations=_READ_ONLY_LIVE)
-def kalshi_market(ticker: str) -> str:
-    """Get one Kalshi market by ticker (read-only)."""
+def kalshi_market(
+    ticker: Annotated[str, Field(description=(
+        "Kalshi market ticker, e.g. 'KXNBAGAME-26OCT16DENLAL-LAL'."
+    ))],
+) -> str:
+    """Get one Kalshi market by ticker; read-only discovery, no trade is placed.
+
+    Reads the live Kalshi API. To trade it, pass 'kalshi:<TICKER>' as
+    slug_or_id to buy or sell. The same slug also works in get_market.
+    """
     try:
         client = KalshiClient(_get_engine().db)
         try:
@@ -518,11 +609,19 @@ def kalshi_market(ticker: str) -> str:
 
 
 @_tool(title="Get Kalshi order book", annotations=_READ_ONLY_LIVE)
-def kalshi_book(ticker: str, depth: int = 10) -> str:
-    """Get the live YES order book for a Kalshi market, best levels first.
+def kalshi_book(
+    ticker: Annotated[str, Field(description=(
+        "Kalshi market ticker, e.g. 'KXNBAGAME-26OCT16DENLAL-LAL'."
+    ))],
+    depth: Annotated[int, Field(description=(
+        "Maximum price levels per side, clamped to 1-100. Default 10."
+    ))] = 10,
+) -> str:
+    """Get the live YES order book for a Kalshi market, best levels first; read-only.
 
-    Kalshi publishes bids only; the asks are derived from the NO bids
-    (a NO bid at p is a YES ask at 1 - p).
+    Kalshi publishes bids only, so asks are derived from NO bids (a NO bid at
+    p is a YES ask at 1 - p). get_order_book returns the same book for the
+    slug 'kalshi:<TICKER>' and also covers the NO side.
     """
     try:
         client = KalshiClient(_get_engine().db)
@@ -544,7 +643,11 @@ def kalshi_book(ticker: str, depth: int = 10) -> str:
 
 @_tool(title="List market tags", annotations=_READ_ONLY_LIVE)
 def get_tags() -> str:
-    """Get all market categories/tags for filtering."""
+    """List all Polymarket market categories (tags) with their slugs.
+
+    Reads the live Polymarket API and changes nothing. Pass a returned slug to
+    get_markets_by_tag.
+    """
     try:
         engine = _get_engine()
         tags = engine.api.get_tags()
@@ -554,8 +657,21 @@ def get_tags() -> str:
 
 
 @_tool(title="List markets by tag", annotations=_READ_ONLY_LIVE)
-def get_markets_by_tag(tag_slug: str, limit: int = 20) -> str:
-    """List markets in a specific category/tag."""
+def get_markets_by_tag(
+    tag_slug: Annotated[str, Field(description=(
+        "Tag slug from get_tags, e.g. 'politics'. An unknown slug returns an "
+        "empty list."
+    ))],
+    limit: Annotated[int, Field(description=(
+        "Maximum markets to return, clamped to 1-100. Default 20."
+    ))] = 20,
+) -> str:
+    """List open Polymarket markets in one category tag.
+
+    Reads the live Polymarket API and changes nothing. Get slugs from get_tags;
+    use search_markets for a keyword or list_markets for the top markets
+    overall.
+    """
     try:
         engine = _get_engine()
         markets = engine.api.get_markets_by_tag(
@@ -567,8 +683,16 @@ def get_markets_by_tag(tag_slug: str, limit: int = 20) -> str:
 
 
 @_tool(title="Get event", annotations=_READ_ONLY_LIVE)
-def get_event(slug: str) -> str:
-    """Get event details — a group of related markets."""
+def get_event(
+    slug: Annotated[str, Field(description=(
+        "Polymarket event slug, e.g. the event part of a polymarket.com/event/ URL."
+    ))],
+) -> str:
+    """Get a Polymarket event: the group of related markets sharing one topic.
+
+    Reads the live Polymarket API and changes nothing. Use get_market for a
+    single market.
+    """
     try:
         engine = _get_engine()
         event = engine.api.get_event(slug)
@@ -579,12 +703,18 @@ def get_event(slug: str) -> str:
 
 @_tool(title="Watch prices", annotations=_READ_ONLY_LIVE)
 def watch_prices(
-    slugs: str, outcomes: str = "yes",
+    slugs: Annotated[str, Field(description=(
+        "Comma-separated market slugs or condition IDs, e.g. 'slug-a,slug-b'. "
+        "Markets that cannot be fetched are skipped."
+    ))],
+    outcomes: Annotated[str, Field(description=(
+        "Comma-separated outcomes to price, e.g. 'yes,no'. Default 'yes'."
+    ))] = "yes",
 ) -> str:
-    """Watch live midpoint prices for one or more markets.
+    """Get live midpoint prices for several markets and outcomes in one call.
 
-    slugs: comma-separated market slugs or condition IDs
-    outcomes: comma-separated outcomes (default: "yes")
+    Reads live data and changes nothing. Use get_order_book for depth on one
+    market, or portfolio for prices of the positions you hold.
     """
     try:
         engine = _get_engine()
@@ -603,16 +733,20 @@ def watch_prices(
 
 @_tool(title="Buy shares", annotations=_WRITE_LIVE)
 def buy(
-    slug_or_id: str,
-    outcome: str,
-    amount_usd: float,
-    order_type: str = "fok",
-    account: str = "default",
+    slug_or_id: _MarketRef,
+    outcome: _Outcome,
+    amount_usd: Annotated[float, Field(description=(
+        "USD to spend, e.g. 100. Minimum 1.0 on Polymarket; no minimum on "
+        "Kalshi."
+    ))],
+    order_type: _OrderType = "fok",
+    account: _Account = "default",
 ) -> str:
-    """Buy shares in a Polymarket outcome.
+    """Buy shares of a Polymarket or Kalshi ('kalshi:<TICKER>') outcome with paper money.
 
-    Spends amount_usd to buy at best available prices.
-    order_type: "fok" (fill-or-kill) or "fak" (fill-and-kill, allows partial).
+    Fills immediately against the live order book and records the trade and
+    fee (simulated; no real order). Kalshi fees follow the series fee schedule.
+    Use place_limit_order for a resting order at your price, or sell to exit.
     """
     try:
         engine = _get_engine(account)
@@ -639,16 +773,19 @@ def buy(
 
 @_tool(title="Sell shares", annotations=_WRITE_LIVE)
 def sell(
-    slug_or_id: str,
-    outcome: str,
-    shares: float,
-    order_type: str = "fok",
-    account: str = "default",
+    slug_or_id: _MarketRef,
+    outcome: _Outcome,
+    shares: Annotated[float, Field(description=(
+        "Number of shares to sell, at most the shares held in that outcome."
+    ))],
+    order_type: _OrderType = "fok",
+    account: _Account = "default",
 ) -> str:
-    """Sell shares in a Polymarket outcome.
+    """Sell held shares of a Polymarket or Kalshi ('kalshi:<TICKER>') outcome for paper cash.
 
-    Sells shares at best available prices.
-    order_type: "fok" (fill-or-kill) or "fak" (fill-and-kill, allows partial).
+    Fills immediately against the live order book and records the trade and
+    fee (simulated; no real order). Use place_limit_order with side 'sell' to
+    rest an exit at your price, or resolve to collect payout on a closed market.
     """
     try:
         engine = _get_engine(account)
@@ -679,8 +816,13 @@ def sell(
 
 
 @_tool(title="Get portfolio", annotations=_READ_ONLY_LIVE, meta=_UI_TOOL_META)
-def portfolio(account: str = "default") -> str:
-    """Get all open positions with live prices and unrealized P&L."""
+def portfolio(account: _Account = "default") -> str:
+    """List an account's open positions with live prices and unrealized P&L.
+
+    Reads the local account and prices positions with live market data. Use
+    get_balance for cash totals, history for past trades, or stats for
+    performance metrics.
+    """
     try:
         engine = _get_engine(account)
         positions = engine.get_portfolio()
@@ -690,8 +832,17 @@ def portfolio(account: str = "default") -> str:
 
 
 @_tool(title="Get trade history", annotations=_READ_ONLY_LOCAL)
-def history(limit: int = 50, account: str = "default") -> str:
-    """Get recent trade history."""
+def history(
+    limit: Annotated[int, Field(description=(
+        "Maximum trades to return, newest first, clamped to 1-1000. Default 50."
+    ))] = 50,
+    account: _Account = "default",
+) -> str:
+    """List an account's recent trades with market, side, price, shares, USD and fee.
+
+    Reads the local database only (no network) and changes nothing. Use
+    portfolio for open positions or stats for aggregate performance.
+    """
     try:
         limit = _clamp_limit(limit, MAX_RESULTS * 10)
         engine = _get_engine(account)
@@ -721,21 +872,32 @@ def history(limit: int = 50, account: str = "default") -> str:
 
 @_tool(title="Place limit order", annotations=_WRITE_LIVE)
 def place_limit_order(
-    slug_or_id: str,
-    outcome: str,
-    side: str,
-    amount: float,
-    limit_price: float,
-    order_type: str = "gtc",
-    expires_at: str | None = None,
-    account: str = "default",
+    slug_or_id: _MarketRef,
+    outcome: _Outcome,
+    side: Annotated[str, Field(description="'buy' or 'sell'.")],
+    amount: Annotated[float, Field(description=(
+        "For a buy, USD to spend (minimum 1.0 on Polymarket, none on Kalshi); "
+        "for a sell, number of shares to sell."
+    ))],
+    limit_price: Annotated[float, Field(description=(
+        "Limit price strictly between 0 and 1, on the market's tick grid "
+        "(e.g. 0.42)."
+    ))],
+    order_type: Annotated[str, Field(description=(
+        "'gtc' (open until filled or cancelled) or 'gtd' (expires at "
+        "expires_at). Default 'gtc'."
+    ))] = "gtc",
+    expires_at: Annotated[str | None, Field(description=(
+        "ISO 8601 expiry timestamp, e.g. '2026-12-31T23:59:00Z'; required "
+        "when order_type is 'gtd'. Default none."
+    ))] = None,
+    account: _Account = "default",
 ) -> str:
-    """Place a limit order that stays open until filled or cancelled/expired.
+    """Place a resting paper limit order on a Polymarket or Kalshi ('kalshi:<TICKER>') market.
 
-    side: "buy" or "sell"
-    limit_price: target price between 0 and 1
-    order_type: "gtc" (stays open until cancelled) or "gtd" (expires at timestamp)
-    expires_at: ISO timestamp for GTD orders (required if order_type="gtd")
+    Stores the order locally and reserves cash for a buy; an order that
+    crosses the book fills at once as a taker. Resting orders fill only when
+    check_orders runs. Use buy or sell for an immediate market-price fill.
     """
     try:
         engine = _get_engine(account)
@@ -749,8 +911,12 @@ def place_limit_order(
 
 
 @_tool(title="List limit orders", annotations=_READ_ONLY_LOCAL)
-def list_orders(account: str = "default") -> str:
-    """List all pending limit orders."""
+def list_orders(account: _Account = "default") -> str:
+    """List an account's pending limit orders.
+
+    Reads the local database only and changes nothing. Use check_orders to
+    evaluate them against live prices, or cancel_order to remove one.
+    """
     try:
         engine = _get_engine(account)
         orders = engine.get_pending_orders()
@@ -760,8 +926,17 @@ def list_orders(account: str = "default") -> str:
 
 
 @_tool(title="Cancel limit order", annotations=_DESTRUCTIVE_LOCAL_IDEMPOTENT)
-def cancel_order(order_id: int, account: str = "default") -> str:
-    """Cancel a pending limit order by ID."""
+def cancel_order(
+    order_id: Annotated[int, Field(description=(
+        "ID of the pending order, from place_limit_order or list_orders."
+    ))],
+    account: _Account = "default",
+) -> str:
+    """Cancel one pending limit order by ID and release its reserved cash.
+
+    Local change only. Returns a not_found error if the order does not exist
+    or is no longer pending. Use cancel_all_orders to cancel every pending order.
+    """
     try:
         engine = _get_engine(account)
         order = engine.cancel_limit_order(order_id)
@@ -773,8 +948,12 @@ def cancel_order(order_id: int, account: str = "default") -> str:
 
 
 @_tool(title="Cancel all limit orders", annotations=_DESTRUCTIVE_LOCAL_IDEMPOTENT)
-def cancel_all_orders(account: str = "default") -> str:
-    """Cancel all pending limit orders at once."""
+def cancel_all_orders(account: _Account = "default") -> str:
+    """Cancel every pending limit order of an account and release the reserved cash.
+
+    Local change only; filled orders and open positions are untouched. Returns
+    the count and the cancelled orders. Use cancel_order to cancel just one.
+    """
     try:
         engine = _get_engine(account)
         cancelled = engine.cancel_all_orders()
@@ -784,10 +963,12 @@ def cancel_all_orders(account: str = "default") -> str:
 
 
 @_tool(title="Check limit orders", annotations=_WRITE_LIVE)
-def check_orders(account: str = "default") -> str:
-    """Check all pending limit orders against live prices and execute fills.
+def check_orders(account: _Account = "default") -> str:
+    """Evaluate pending limit orders against live prices and execute any that fill.
 
-    Call this periodically to trigger limit order evaluation.
+    Writes fills and cash changes to the local account. Resting orders never
+    fill on their own, so call this periodically. Use list_orders to only view
+    pending orders.
     """
     try:
         engine = _get_engine(account)
@@ -803,8 +984,13 @@ def check_orders(account: str = "default") -> str:
 
 
 @_tool(title="Get performance stats", annotations=_READ_ONLY_LIVE, meta=_UI_TOOL_META)
-def stats(account: str = "default") -> str:
-    """Get performance analytics: win rate, ROI, profit, max drawdown."""
+def stats(account: _Account = "default") -> str:
+    """Get one account's raw performance numbers: win rate, ROI, profit, Sharpe, max drawdown.
+
+    Reads the local account and prices positions live; changes nothing. Use
+    this for analysis, stats_card for a postable text card, or
+    leaderboard_entry for the ranking record.
+    """
     try:
         engine = _get_engine(account)
         from pm_trader.analytics import compute_stats
@@ -823,12 +1009,18 @@ def stats(account: str = "default") -> str:
 
 
 @_tool(title="Get stats card", annotations=_READ_ONLY_LIVE)
-def stats_card(account: str = "default", format: str = "markdown") -> str:
-    """Get a shareable stats card — ready to post on X, Telegram, Discord, etc.
+def stats_card(
+    account: _Account = "default",
+    format: Annotated[str, Field(description=(
+        "'tweet' (X/Twitter), 'markdown' (chat apps) or 'plain' (no "
+        "formatting). Default 'markdown'."
+    ))] = "markdown",
+) -> str:
+    """Render one account's ROI, Sharpe, win rate and P&L as a postable text card.
 
-    Returns a formatted card showing ROI, Sharpe, win rate, P&L.
-
-    format: "tweet" (X/Twitter optimized), "markdown" (chat apps), "plain" (no formatting)
+    Reads the local account and posts nothing. Use stats for raw numbers,
+    share_content for platform and template choices, or pk_card to compare two
+    accounts.
     """
     try:
         engine = _get_engine(account)
@@ -855,12 +1047,12 @@ def stats_card(account: str = "default", format: str = "markdown") -> str:
 
 
 @_tool(title="Get leaderboard entry", annotations=_READ_ONLY_LIVE)
-def leaderboard_entry(account: str = "default") -> str:
-    """Generate a verifiable leaderboard entry for ranking and PK.
+def leaderboard_entry(account: _Account = "default") -> str:
+    """Return one account's standardized leaderboard record as JSON.
 
-    Returns standardized JSON with ROI%, Sharpe, win rate, trade count,
-    max drawdown, and account metadata. Designed for fair comparison:
-    includes starting balance, total trades, and account age.
+    Includes ROI%, Sharpe, win rate, trade count, max drawdown, fees, first and
+    last trade times, and 'qualified' (10+ trades). Reads the local account
+    only. Use leaderboard_card to rank many accounts, or stats for analysis.
     """
     try:
         engine = _get_engine(account)
@@ -899,17 +1091,20 @@ def leaderboard_entry(account: str = "default") -> str:
 
 @_tool(title="Generate share content", annotations=_READ_ONLY_LIVE)
 def share_content(
-    account: str = "default",
-    platform: str = "twitter",
-    template: str = "performance",
+    account: _Account = "default",
+    platform: Annotated[str, Field(description=(
+        "'twitter', 'telegram', 'discord' or 'plain'. Default 'twitter'."
+    ))] = "twitter",
+    template: Annotated[str, Field(description=(
+        "'performance' (stats overview), 'milestone' (achievement) or 'daily' "
+        "(daily report with positions). Default 'performance'."
+    ))] = "performance",
 ) -> str:
-    """Generate shareable content optimized for a specific platform and template.
+    """Generate post-ready text for a platform and template from one account's stats.
 
-    platform: "twitter" (X), "telegram", "discord", "plain"
-    template: "performance" (stats overview), "milestone" (achievement),
-              "daily" (daily report with positions)
-
-    Each platform gets appropriately formatted content with hashtags and install CTA.
+    Reads the local account and posts nothing. Use this when you need a
+    template (milestone, daily); use stats_card for a plain stats card or
+    stats for raw numbers.
     """
     try:
         from pm_trader.analytics import compute_stats
@@ -947,11 +1142,19 @@ def share_content(
 
 
 @_tool(title="Generate PK card", annotations=_READ_ONLY_LIVE)
-def pk_card(account_a: str = "default", account_b: str = "aggressive") -> str:
-    """Generate a head-to-head PK comparison card between two accounts.
+def pk_card(
+    account_a: Annotated[str, Field(description=(
+        "First paper account name. Default 'default'."
+    ))] = "default",
+    account_b: Annotated[str, Field(description=(
+        "Second paper account name. Default 'aggressive'."
+    ))] = "aggressive",
+) -> str:
+    """Compare two existing accounts head-to-head and return a card naming the winner.
 
-    Compares ROI, Sharpe, win rate, trades, and tier. Outputs a tweet-ready
-    card with winner announcement. Great for rivalry and sharing.
+    Compares ROI, Sharpe, win rate, trades and tier; reads local accounts only.
+    Use pk_battle to run two strategies from scratch instead, or stats_card for
+    a single account.
     """
     try:
         from pm_trader.analytics import compute_stats
@@ -987,13 +1190,17 @@ def pk_card(account_a: str = "default", account_b: str = "aggressive") -> str:
 
 
 @_tool(title="Generate leaderboard card", annotations=_READ_ONLY_LIVE)
-def leaderboard_card(accounts: str = "") -> str:
-    """Generate a Top 10 leaderboard card from all local accounts.
+def leaderboard_card(
+    accounts: Annotated[str, Field(description=(
+        "Comma-separated account names to rank, e.g. 'default,aggressive'. "
+        "Default empty: every account in this session's data root."
+    ))] = "",
+) -> str:
+    """Rank accounts with 10+ trades by ROI% and return a Top 10 leaderboard card.
 
-    Ranks all qualified accounts (10+ trades) by ROI%.
-    If accounts is provided (comma-separated), only include those accounts.
-    Otherwise scans every account in this session's data root
-    (~/.pm-trader locally, the caller's own directory in remote mode).
+    Scans local accounts (~/.pm-trader locally, the caller's own directory in
+    remote mode) and changes nothing. Use leaderboard_entry for one account's
+    record or pk_card for two.
     """
     try:
         from pm_trader.analytics import compute_stats
@@ -1043,19 +1250,29 @@ def leaderboard_card(accounts: str = "") -> str:
 
 @_tool(title="Run strategy PK battle", annotations=_WRITE_LIVE)
 def pk_battle(
-    strategy_a: str,
-    strategy_b: str,
-    name_a: str = "player_a",
-    name_b: str = "player_b",
-    balance: float = 10_000.0,
+    strategy_a: Annotated[str, Field(description=(
+        "Dotted Python path of strategy A, e.g. 'examples.momentum.run'; only "
+        "'examples.' modules are allowed."
+    ))],
+    strategy_b: Annotated[str, Field(description=(
+        "Dotted Python path of strategy B, e.g. 'examples.contrarian.run'; "
+        "only 'examples.' modules are allowed."
+    ))],
+    name_a: Annotated[str, Field(description=(
+        "Display name of strategy A on the PK card. Default 'player_a'."
+    ))] = "player_a",
+    name_b: Annotated[str, Field(description=(
+        "Display name of strategy B on the PK card. Default 'player_b'."
+    ))] = "player_b",
+    balance: Annotated[float, Field(description=(
+        "Starting USD for each strategy. Default 10000."
+    ))] = 10_000.0,
 ) -> str:
-    """Run two strategies head-to-head in a PK battle.
+    """Run two strategies from scratch on equal balances and return stats, a PK card and the winner.
 
-    Both start with the same balance. Each strategy runs independently,
-    then results are compared with a PK card and winner announced.
-
-    strategy_a/b: dotted Python path like "examples.momentum.run"
-    name_a/b: display names for the PK card
+    Executes the strategy functions against live market data in temporary
+    accounts. Use pk_card to compare accounts that already exist, or backtest
+    to test one strategy on historical data.
     """
     try:
         from pm_trader.benchmark import pk_battle as _pk_battle
@@ -1072,8 +1289,16 @@ def pk_battle(
 
 
 @_tool(title="Resolve market positions", annotations=_WRITE_LIVE_IDEMPOTENT)
-def resolve(slug_or_id: str, account: str = "default") -> str:
-    """Resolve a market's positions, paying out $1/share for winning outcome."""
+def resolve(
+    slug_or_id: _MarketRef,
+    account: _Account = "default",
+) -> str:
+    """Settle an account's positions in one closed market, paying $1 per winning share.
+
+    Writes payouts to the local account and cancels resting orders on that
+    market. Fails if the market is not closed, the winner is ambiguous, or no
+    position is held. Use resolve_all to settle every closed market at once.
+    """
     try:
         engine = _get_engine(account)
         results = engine.resolve_market(slug_or_id)
@@ -1091,8 +1316,13 @@ def resolve(slug_or_id: str, account: str = "default") -> str:
 
 
 @_tool(title="Resolve all closed positions", annotations=_WRITE_LIVE_IDEMPOTENT)
-def resolve_all(account: str = "default") -> str:
-    """Resolve all open positions in closed/resolved markets."""
+def resolve_all(account: _Account = "default") -> str:
+    """Settle every open position whose market has closed, paying $1 per winning share.
+
+    Writes payouts to the local account; open markets are skipped, as are
+    markets that hit a transient network error (retry later). Use resolve to
+    settle a single market.
+    """
     try:
         engine = _get_engine(account)
         results = engine.resolve_all()
@@ -1116,19 +1346,31 @@ def resolve_all(account: str = "default") -> str:
 
 @_tool(title="Run backtest", annotations=_WRITE_LIVE)
 def backtest(
-    data_path: str,
-    strategy_path: str,
-    balance: float = 10_000.0,
-    spread: float = 0.02,
-    depth: float = 500.0,
+    data_path: Annotated[str, Field(description=(
+        "Path to a CSV or JSON file of price snapshots (timestamp, "
+        "market_slug, outcome, midpoint); must be under the home directory or "
+        "/tmp."
+    ))],
+    strategy_path: Annotated[str, Field(description=(
+        "Dotted Python path of the strategy function, e.g. "
+        "'examples.momentum.run'; only 'examples.' modules are allowed."
+    ))],
+    balance: Annotated[float, Field(description=(
+        "Starting USD balance. Default 10000."
+    ))] = 10_000.0,
+    spread: Annotated[float, Field(description=(
+        "Synthetic order-book spread as a price fraction (0.02 = 2 cents). "
+        "Default 0.02."
+    ))] = 0.02,
+    depth: Annotated[float, Field(description=(
+        "Synthetic order-book size in shares at each price level. Default 500."
+    ))] = 500.0,
 ) -> str:
-    """Run a backtest with historical price data.
+    """Replay a strategy over historical price snapshots on synthetic order books.
 
-    data_path: path to CSV or JSON file with historical prices
-    strategy_path: dotted Python path to strategy function (e.g. "mymod.my_strategy")
-    balance: starting balance (USD)
-    spread: synthetic order book spread
-    depth: synthetic order book depth per level
+    Reads the data file and returns performance metrics; it does not touch your
+    paper accounts. Use pk_battle to compare two strategies live, or stats for
+    an account's real results.
     """
     try:
         from csv import Error as CsvError

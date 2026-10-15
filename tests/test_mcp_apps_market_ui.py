@@ -289,9 +289,15 @@ class TestMarketToolMeta:
 
     def test_meta_does_not_touch_the_input_schema(self):
         entry = _tools()["get_market"]
+        description = entry["inputSchema"]["properties"]["slug_or_id"]["description"]
+        assert "kalshi:<TICKER>" in description
         assert entry["inputSchema"] == {
             "properties": {
-                "slug_or_id": {"title": "Slug Or Id", "type": "string"}
+                "slug_or_id": {
+                    "description": description,
+                    "title": "Slug Or Id",
+                    "type": "string",
+                }
             },
             "required": ["slug_or_id"],
             "title": "get_marketArguments",

@@ -178,7 +178,14 @@ class TestToolMeta:
         entry = tools[name]
         assert entry["inputSchema"] == {
             "properties": {
-                "account": {"default": "default", "title": "Account", "type": "string"}
+                "account": {
+                    "default": "default",
+                    "description": entry["inputSchema"]["properties"]["account"][
+                        "description"
+                    ],
+                    "title": "Account",
+                    "type": "string",
+                }
             },
             "title": f"{name}Arguments",
             "type": "object",
