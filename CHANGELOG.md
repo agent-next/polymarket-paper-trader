@@ -4,6 +4,8 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+## [0.4.13] - 2026-10-15
+
 ### Added
 - **Remote MCP abuse limits** (authenticated remote mode only): a per-subject
   rate limit on tool calls (`--rate-limit-per-minute`, default 60, error code
@@ -22,6 +24,13 @@ All notable changes to `polymarket-paper-trader` are documented here.
 - The account cap now applies only to `init_account`; reads on unknown accounts
   return `not_initialized` without creating a directory, and market tools work
   at the cap. `fcntl` is imported lazily, so Windows can still run local mode.
+  The implicit `default` account is outside the cap.
+
+### Changed
+- Every MCP tool parameter now carries a schema description, and tool
+  descriptions state behavior and which sibling tool to use instead. `buy`,
+  `sell`, `place_limit_order`, `get_order_book` and `get_market` document the
+  `kalshi:<TICKER>` slug. No tool, parameter or return value changed.
 
 ## [0.4.12] - 2026-10-15
 
