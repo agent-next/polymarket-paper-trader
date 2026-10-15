@@ -20,7 +20,7 @@ import time
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-STDIO_TOOLS = 30
+STDIO_TOOLS = 33
 LOCAL_ONLY = {"backtest", "pk_battle"}  # not served over streamable-http
 EXPECTED_VERSION = sys.argv[1] if len(sys.argv) > 1 else ""
 TIMEOUT = 60  # seconds per request/command; a hung server must fail, not stall CI
