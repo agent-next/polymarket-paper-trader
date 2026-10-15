@@ -1422,6 +1422,8 @@ class TestFooter:
         assert "Get started →" in html
         assert "Open source" in html
         assert "View on GitHub →" in html
+        assert "<code>pip install polymarket-paper-trader</code>" in html
+        assert "Polymarket and Kalshi, via MCP or CLI" in html
         assert (
             'href="https://github.com/agent-next/polymarket-paper-trader"'
             in html
