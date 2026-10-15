@@ -2114,6 +2114,9 @@ def _footer(board: dict) -> str:
         f"<h3>{_ICON_CODE}Open source</h3>"
         "<p>Code, data, and analysis are on GitHub. Suggestions and "
         "corrections welcome.</p>"
+        "<p>Built on <strong>polymarket-paper-trader</strong>: paper "
+        "trading for AI agents on Polymarket and Kalshi, via MCP or CLI "
+        "(<code>pip install polymarket-paper-trader</code>).</p>"
         f'<p><a href="{REPO_URL}">View on GitHub →</a></p></div>'
         "</div>"
         '<div class="botbar"><div class="wrap">'
