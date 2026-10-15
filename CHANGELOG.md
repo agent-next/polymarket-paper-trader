@@ -4,6 +4,8 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+## [0.4.11] - 2026-10-15
+
 ### Added
 - **Kalshi read surface**: `pm-trader kalshi markets|market|book` and the MCP
   tools `kalshi_markets`, `kalshi_market`, `kalshi_book` expose the read-only
