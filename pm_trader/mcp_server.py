@@ -366,8 +366,8 @@ def _market_to_dict(m: object) -> dict:
 
 
 _Account = Annotated[str, Field(description=(
-    "Paper account name (letters, digits, hyphen, underscore); each name is a "
-    "separate local account. Default 'default'."
+    "Paper account name; any name without '/', '\\', '..' or surrounding "
+    "spaces. Each name is a separate local account. Default 'default'."
 ))]
 _MarketRef = Annotated[str, Field(description=(
     "Market slug or condition ID. For a Kalshi market use the slug "
@@ -1018,7 +1018,8 @@ def stats_card(
 ) -> str:
     """Render one account's ROI, Sharpe, win rate and P&L as a postable text card.
 
-    Reads the local account and posts nothing. Use stats for raw numbers,
+    Reads the local account and posts nothing. Open positions are valued at live midpoints (0 if a lookup fails).
+    Use stats for raw numbers,
     share_content for platform and template choices, or pk_card to compare two
     accounts.
     """
@@ -1051,8 +1052,8 @@ def leaderboard_entry(account: _Account = "default") -> str:
     """Return one account's standardized leaderboard record as JSON.
 
     Includes ROI%, Sharpe, win rate, trade count, max drawdown, fees, first and
-    last trade times, and 'qualified' (10+ trades). Reads the local account
-    only. Use leaderboard_card to rank many accounts, or stats for analysis.
+    last trade times, and 'qualified' (10+ trades). Reads the local account; Open positions are valued at live midpoints (0 if a lookup fails).
+    Use leaderboard_card to rank many accounts, or stats for analysis.
     """
     try:
         engine = _get_engine(account)
@@ -1102,7 +1103,8 @@ def share_content(
 ) -> str:
     """Generate post-ready text for a platform and template from one account's stats.
 
-    Reads the local account and posts nothing. Use this when you need a
+    Reads the local account and posts nothing. Open positions are valued at live midpoints (0 if a lookup fails).
+    Use this when you need a
     template (milestone, daily); use stats_card for a plain stats card or
     stats for raw numbers.
     """
@@ -1152,7 +1154,7 @@ def pk_card(
 ) -> str:
     """Compare two existing accounts head-to-head and return a card naming the winner.
 
-    Compares ROI, Sharpe, win rate, trades and tier; reads local accounts only.
+    Compares ROI, Sharpe, win rate, trades and tier from local accounts. Open positions are valued at live midpoints (0 if a lookup fails).
     Use pk_battle to run two strategies from scratch instead, or stats_card for
     a single account.
     """
@@ -1199,7 +1201,8 @@ def leaderboard_card(
     """Rank accounts with 10+ trades by ROI% and return a Top 10 leaderboard card.
 
     Scans local accounts (~/.pm-trader locally, the caller's own directory in
-    remote mode) and changes nothing. Use leaderboard_entry for one account's
+    remote mode) and changes nothing. Open positions are valued at live midpoints (0 if a lookup fails).
+    Use leaderboard_entry for one account's
     record or pk_card for two.
     """
     try:
