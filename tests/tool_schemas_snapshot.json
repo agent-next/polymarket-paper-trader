@@ -410,6 +410,122 @@
       "type": "object"
     }
   },
+  "kalshi_book": {
+    "inputSchema": {
+      "properties": {
+        "depth": {
+          "default": 10,
+          "title": "Depth",
+          "type": "integer"
+        },
+        "ticker": {
+          "title": "Ticker",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ticker"
+      ],
+      "title": "kalshi_bookArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "kalshi_bookOutput",
+      "type": "object"
+    }
+  },
+  "kalshi_market": {
+    "inputSchema": {
+      "properties": {
+        "ticker": {
+          "title": "Ticker",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ticker"
+      ],
+      "title": "kalshi_marketArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "kalshi_marketOutput",
+      "type": "object"
+    }
+  },
+  "kalshi_markets": {
+    "inputSchema": {
+      "properties": {
+        "event_ticker": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Event Ticker"
+        },
+        "limit": {
+          "default": 20,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "series_ticker": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Series Ticker"
+        },
+        "status": {
+          "default": "open",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "title": "kalshi_marketsArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "kalshi_marketsOutput",
+      "type": "object"
+    }
+  },
   "leaderboard_card": {
     "inputSchema": {
       "properties": {

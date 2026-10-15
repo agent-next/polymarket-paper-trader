@@ -1176,7 +1176,7 @@ class TestStdioSmoke:
                         "polymarket-paper-trader"
                     )
                     tools = await session.list_tools()
-                    assert len(tools.tools) == 30
+                    assert len(tools.tools) == 33
 
 
 class TestStdioCallTool:
@@ -1354,7 +1354,7 @@ class TestToolMetadata:
 
     def test_every_tool_has_title_and_annotations(self):
         tools = self._tools()
-        assert len(tools) == 30
+        assert len(tools) == 33
         for tool in tools:
             assert tool.title, f"{tool.name} has no title"
             assert tool.annotations is not None, f"{tool.name} has no annotations"
@@ -1594,7 +1594,7 @@ class TestStreamableHttpSmoke:
                     assert init.instructions == mcp_server._SERVER_INSTRUCTIONS
                     tools = await session.list_tools()
                     names = {t.name for t in tools.tools}
-                    assert len(tools.tools) == 28
+                    assert len(tools.tools) == 31
                     assert "backtest" not in names
                     assert "pk_battle" not in names
         finally:

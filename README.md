@@ -123,6 +123,9 @@ pm-trader stats
 | `sell SLUG OUTCOME SHARES [--type fok\|fak]` | Sell at market price |
 | `portfolio` | Open positions with live prices |
 | `history [--limit N]` | Trade history |
+| `kalshi markets [--limit N] [--status open\|closed\|settled] [--series T] [--event T]` | Kalshi markets (read-only) |
+| `kalshi market TICKER` | One Kalshi market (read-only) |
+| `kalshi book TICKER [--depth N]` | Kalshi YES order book (read-only) |
 | `orders place SLUG OUTCOME SIDE AMOUNT PRICE` | Limit order (GTC/GTD) |
 | `orders list` | Open limit orders (pending and partially filled) |
 | `orders cancel ID` | Cancel a limit order |
@@ -215,6 +218,9 @@ authenticating proxy in front of it — the container has no auth of its own.
 | `get_event` | Event details — a group of related markets |
 | `get_market` | Market details with outcomes and prices |
 | `get_order_book` | Live order book snapshot (bids + asks) |
+| `kalshi_markets` | Kalshi markets, read-only (open/closed/settled, by series or event) |
+| `kalshi_market` | One Kalshi market by ticker, read-only |
+| `kalshi_book` | Live Kalshi YES order book, read-only |
 | `watch_prices` | Monitor prices for multiple markets |
 | `buy` | Buy shares at best available prices |
 | `sell` | Sell shares at best available prices |

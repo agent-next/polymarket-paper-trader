@@ -18,13 +18,25 @@ a later change can point the same fill simulation at a Kalshi book.
 
 - **No trading.** No order placement, cancellation, amendment, portfolio or
   balance calls. No API keys, no request signing, no account.
-- **No CLI or MCP surface.** Nothing in `cli.py` / `mcp_server.py` changes; the
-  client is importable only.
 - **No Kalshi fees, settlement or resolution logic** in the engine. The data a
   later change needs is captured here (see Fees / Settlement), not implemented.
 - **No scalar (`market_type: "scalar"`) markets.** The engine is binary YES/NO;
   the client parses scalar payloads but they must not be traded.
 - **No WebSocket feed, no historical/candlestick data, no FX or funding.**
+
+## Surface (read-only)
+
+The client is exposed read-only; none of these place, price or settle a trade.
+
+| CLI | MCP tool | Client call |
+|---|---|---|
+| `pm-trader kalshi markets [--limit N] [--status open\|closed\|settled] [--series T] [--event T]` | `kalshi_markets` | `list_markets` |
+| `pm-trader kalshi market TICKER` | `kalshi_market` | `get_market` |
+| `pm-trader kalshi book TICKER [--depth N]` | `kalshi_book` | `get_order_book` |
+
+Markets come back in the same shape as the Polymarket tools, with the Kalshi
+ticker as `slug`. The book is the YES side, best level first; its asks are the
+NO bids read as `1 - p`.
 
 ## Environments and base URL
 
@@ -289,7 +301,7 @@ Same rules as `api.py`, so the two clients read alike:
   not a market (`ticker` missing), not an order book (`orderbook_fp` missing or
   a missing ladder), or carries a malformed level: silent defaults would key a
   position on an empty string or fill against a garbage book.
-- No engine, CLI or MCP wiring; the client is constructed with a `Database` and
+- No engine wiring; the client is constructed with a `Database` and
   `close()`d, like `PolymarketClient`.
 
 ## Verified wire-vs-doc facts (2026-10-14)
