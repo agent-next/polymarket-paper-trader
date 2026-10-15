@@ -1,6 +1,6 @@
 [project]
 name = "polymarket-paper-trader-mcpb"
-version = "0.4.10"
+version = "0.4.11"
 description = "MCPB entry point for the pm-trader MCP server."
 requires-python = ">=3.10"
-dependencies = ["polymarket-paper-trader==0.4.10"]
+dependencies = ["polymarket-paper-trader==0.4.11"]
