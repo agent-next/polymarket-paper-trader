@@ -57,12 +57,17 @@ Polymarket and Kalshi positions side by side.
   cached 5 minutes) become the engine's `feeSchedule`:
   `quadratic` → taker rate `0.07 x M`, makers free; `quadratic_with_maker_fees`
   and `quadratic_with_combo_maker_fees` → taker `0.07 x M`, maker
-  `0.0175 x M` (`makerRate`). Any other fee type (e.g. `flat`) refuses the
+  `0.0175 x M` (`makerRate`, charged per filled level on resting fills). Any other fee type (e.g. `flat`) refuses the
   trade instead of guessing. Fees are the exact curve rounded to $0.00001, not
   Kalshi's `ceil` to $0.000001 plus centicent rounding fee/rebate, so a fill can
   differ from Kalshi's charge by under $0.0001. `(unverified)`: whether
   `quadratic_with_combo_maker_fees` charges makers outside combo markets; the
   engine charges them.
+- **Order rules.** No dollar minimum (Polymarket's $1 minimum does not apply);
+  a limit price must sit on the step of the `price_ranges` band it falls in
+  (NO prices are checked at `1 - p`, since bands are in YES terms). Only
+  `binary` markets trade: a `scalar` market is refused, because its payout could
+  never resolve to a $1 YES/NO winner.
 - **Resolution.** A market resolves only when its status is `determined`,
   `amended` or `finalized` and `result` is `yes` or `no`; a `disputed` or
   merely `closed` market is reported as ambiguous, never paid on its last price.

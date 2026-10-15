@@ -20,6 +20,7 @@ from pm_trader.models import (
     ApiError,
     InsufficientBalanceError,
     InvalidOutcomeError,
+    FillResult,
     Market,
     OrderBook,
     MarketClosedError,
@@ -48,7 +49,11 @@ from pm_trader.orders import (
     reject_order,
     should_fill,
 )
-from pm_trader.orderbook import simulate_buy_fill, simulate_sell_fill
+from pm_trader.orderbook import (
+    calculate_fee_schedule,
+    simulate_buy_fill,
+    simulate_sell_fill,
+)
 
 MIN_ORDER_USD = 1.0  # Polymarket minimum order size
 TICK_EPSILON = 1e-9  # float-noise tolerance for tick-grid comparison
@@ -81,23 +86,31 @@ def _resolve_fee_rate(market: Market) -> float | None:
     return rate
 
 
-def _maker_fee(market: Market, taker_fee: float) -> float:
-    """The fee a resting (maker) fill pays, given its taker-rate fee.
+def _maker_fee(market: Market, fill: FillResult) -> float:
+    """The fee a resting (maker) fill pays.
 
     ``feeSchedule.takerOnly``: "When true, fees are charged to the taker side
     only, and makers pay no fee."  A schedule with a ``makerRate`` (Kalshi's
-    maker-fee series) charges makers that rate on the same curve.
+    maker-fee series) charges makers that rate on the same curve, per filled
+    level like the taker fee.  Otherwise makers pay the taker fee.
     """
     schedule = market.fee_schedule
     if not schedule:
-        return taker_fee
+        return fill.fee
     if schedule.get("takerOnly", False):
         return 0.0
     maker_rate = schedule.get("makerRate")
-    rate = float(schedule.get("rate", 0) or 0)
-    if maker_rate is not None and rate > 0:
-        return taker_fee * float(maker_rate) / rate
-    return taker_fee
+    if maker_rate is None:
+        return fill.fee
+    exponent = schedule.get("exponent", 1)
+    return sum(
+        calculate_fee_schedule(float(maker_rate), exponent, f.price, f.shares)
+        for f in fill.fills
+    )
+
+
+def _is_kalshi(slug_or_id: str) -> bool:
+    return isinstance(slug_or_id, str) and slug_or_id.startswith(KALSHI_PREFIX)
 
 
 class _VenueRouter:
@@ -115,7 +128,7 @@ class _VenueRouter:
         self._kalshi: KalshiClient | None = None
 
     def _venue(self, key: str):
-        if not (isinstance(key, str) and key.startswith(KALSHI_PREFIX)):
+        if not _is_kalshi(key):
             return self._polymarket
         if self._kalshi is None:
             self._kalshi = KalshiClient(self._db)
@@ -136,13 +149,17 @@ class _VenueRouter:
     def get_fee_rate(self, token_id: str) -> int:
         return self._venue(token_id).get_fee_rate(token_id)
 
-    def get_tick_size(self, token_id: str) -> float:
-        return self._venue(token_id).get_tick_size(token_id)
+    def get_tick_size(self, token_id: str, price: float | None = None) -> float:
+        venue = self._venue(token_id)
+        if venue is self._polymarket:
+            return venue.get_tick_size(token_id)
+        return venue.get_tick_size(token_id, price=price)
 
     def close(self) -> None:
         self._polymarket.close()
         if self._kalshi is not None:
             self._kalshi.close()
+            self._kalshi = None
 
     def __getattr__(self, name: str):
         return getattr(self._polymarket, name)
@@ -286,7 +303,11 @@ class Engine:
         """
         self._require_account()
 
-        if amount_usd < MIN_ORDER_USD:
+        # Polymarket's $1 minimum; Kalshi has no dollar minimum.
+        if _is_kalshi(slug_or_id):
+            if not amount_usd > 0:
+                raise OrderRejectedError("Order amount must be positive")
+        elif amount_usd < MIN_ORDER_USD:
             raise OrderRejectedError(
                 f"Minimum order size is ${MIN_ORDER_USD:.2f}"
             )
@@ -425,7 +446,11 @@ class Engine:
 
         # Gross proceeds at the best bid must clear the minimum order size
         best_bid = max((level.price for level in book.bids), default=0.0)
-        if best_bid > 0 and shares * best_bid < MIN_ORDER_USD:
+        if (
+            not _is_kalshi(market.slug)
+            and best_bid > 0
+            and shares * best_bid < MIN_ORDER_USD
+        ):
             raise OrderRejectedError(
                 f"Minimum order size is ${MIN_ORDER_USD:.2f}"
             )
@@ -648,7 +673,7 @@ class Engine:
                 ) from None
         if not math.isfinite(amount) or amount <= 0:
             raise OrderRejectedError(f"Order amount must be positive and finite, got {amount}")
-        if side == "buy" and amount < MIN_ORDER_USD:
+        if side == "buy" and amount < MIN_ORDER_USD and not _is_kalshi(slug_or_id):
             raise OrderRejectedError(f"Minimum buy order size is ${MIN_ORDER_USD:.2f}, got ${amount:.2f}")
 
         market = self.api.get_market(slug_or_id)
@@ -672,7 +697,10 @@ class Engine:
         # row: a violation must leave no order behind. Markets reporting no
         # tick size fall back to the cached CLOB /tick-size endpoint.
         tick_size = market.tick_size
-        if tick_size <= 0:
+        if _is_kalshi(market.slug):
+            # Kalshi's grid is banded: the step depends on the price.
+            tick_size = self.api.get_tick_size(token_id, price=limit_price)
+        elif tick_size <= 0:
             tick_size = self.api.get_tick_size(token_id)
         self._validate_tick_size(limit_price, tick_size)
 
@@ -896,7 +924,7 @@ class Engine:
         ``maker=False`` and pays the taker fee.
         """
         self._require_account()
-        fee = _maker_fee(market, fill.fee) if maker else fill.fee
+        fee = _maker_fee(market, fill) if maker else fill.fee
         total_outflow = fill.total_cost + fee
         # One transaction for all three writes (issue #69).
         with self.db.atomic():
@@ -943,7 +971,7 @@ class Engine:
         ``maker=False`` and pays the taker fee.
         """
         self._require_account()
-        fee = _maker_fee(market, fill.fee) if maker else fill.fee
+        fee = _maker_fee(market, fill) if maker else fill.fee
         position = self.db.get_position(market.condition_id, order.outcome)
         if position is None or position.shares <= 0:
             raise NoPositionError(market.slug, order.outcome)
