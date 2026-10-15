@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "polymarket-paper-trader",
   "display_name": "Polymarket Paper Trader",
-  "version": "0.4.12",
+  "version": "0.4.13",
   "description": "Polymarket paper trading for AI agents: $10k paper money, real order books, official fees.",
   "long_description": "Paper-trading simulator for Polymarket. Real markets, real order books and real prices, but every dollar is fake: no wallet, no API keys, no real money at risk. The server exposes the full trading workflow — discover markets, read live order books, buy and sell (market or resting limit orders), track portfolio and performance — plus a trading playbook prompt.",
   "author": {
