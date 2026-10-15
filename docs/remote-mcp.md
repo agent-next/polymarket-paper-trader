@@ -74,16 +74,29 @@ limited. Each limit is per verified subject (keyed by its `user_root` digest).
 |---|---|---|---|---|
 | Tool calls per minute (in-process sliding window, never sleeps) | 60 | `--rate-limit-per-minute` | `PM_TRADER_RATE_LIMIT_PER_MINUTE` | `RATE_LIMITED` |
 | Distinct accounts per subject (existing accounts keep working) | 20 | `--max-accounts` | `PM_TRADER_MAX_ACCOUNTS` | `ACCOUNT_LIMIT` |
-| Retention: idle subject directories | 90 days | `pm-trader-mcp prune-remote --idle-days N [--dry-run]` | | |
+| Retention, in-server: idle subject directories pruned at startup and every 24 h (0 disables) | 90 days | `--prune-idle-days` | `PM_TRADER_PRUNE_IDLE_DAYS` | |
+| Retention, offline: `pm-trader-mcp prune-remote --idle-days N [--dry-run]` | 90 days | | | |
 
 Both limits must be at least 1. The rate-limit window lives in process memory,
 so a restart clears it.
 
-`prune-remote` deletes every `~/.pm-trader/remote/<digest>/` whose newest file
-is older than `--idle-days`, prints each directory it removed (or `would remove`
-with `--dry-run`), and touches nothing else: only real hashed directories
-directly under the remote users root qualify, symlinks are skipped, and
-`prune_remote()` raises for any other root. Run it from cron or a timer.
+A remote server holds an exclusive `flock` on `~/.pm-trader/remote/.server.lock`
+for its whole lifetime; a second remote server on the same root refuses to
+start. The in-server prune runs on the same single worker thread that serializes
+tool calls, so it never interleaves with one, and it closes the cached engine
+first when that engine lives in a directory it is about to delete.
+
+`prune-remote` takes the same lock without blocking. While a server is running
+it exits 1 with `server running; use the in-server prune` and deletes nothing
+(deleting an open SQLite database would silently lose writes). Otherwise it
+deletes every `~/.pm-trader/remote/<digest>/` whose newest file is older than
+`--idle-days`, prints each directory it removed (or `would remove` with
+`--dry-run`), and touches nothing else: only real hashed directories directly
+under the remote users root qualify, symlinks are skipped, and `prune_remote()`
+raises for any other root.
+
+`ACCOUNT_LIMIT` and `RATE_LIMITED` are never relabelled by a tool's own error
+code (for example `get_balance` on a new name at the cap).
 
 ### Token validation
 

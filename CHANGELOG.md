@@ -11,6 +11,14 @@ All notable changes to `polymarket-paper-trader` are documented here.
   `ACCOUNT_LIMIT`), and `pm-trader-mcp prune-remote --idle-days N [--dry-run]`
   to delete idle subject directories. Local stdio and unauthenticated HTTP are
   unchanged. See `docs/remote-mcp.md` "Abuse limits".
+- Remote servers hold an exclusive lock on `~/.pm-trader/remote/.server.lock`
+  and prune idle users themselves (`--prune-idle-days`, default 90, 0 disables;
+  startup and every 24 h, on the tool worker thread). `prune-remote` refuses
+  while a server runs.
+
+### Fixed
+- `ACCOUNT_LIMIT` / `RATE_LIMITED` keep their code when a tool such as
+  `get_balance` supplies its own error code.
 
 ## [0.4.12] - 2026-10-15
 
