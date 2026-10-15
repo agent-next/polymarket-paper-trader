@@ -190,6 +190,26 @@ class TestMcpTools:
         assert data["ok"] is False
         assert data["code"] == "market_not_found"
 
+    def test_market_rejects_a_non_ticker_without_a_request(self, httpx_mock) -> None:
+        data = json.loads(kalshi_market("../series/X"))
+
+        assert data["ok"] is False
+        assert data["code"] == "market_not_found"
+        assert httpx_mock.get_requests() == []
+
+    def test_book_sorts_levels_best_first(self) -> None:
+        from pm_trader.models import OrderBook, OrderBookLevel
+
+        unsorted = OrderBook(
+            bids=[OrderBookLevel(0.40, 5.0), OrderBookLevel(0.45, 1.0)],
+            asks=[OrderBookLevel(0.60, 2.0), OrderBookLevel(0.50, 3.0)],
+        )
+        with patch.object(mcp_server.KalshiClient, "get_order_book", return_value=unsorted):
+            data = json.loads(kalshi_book(TICKER, depth=1))
+
+        assert data["data"]["bids"] == [{"price": 0.45, "size": 1.0}]
+        assert data["data"]["asks"] == [{"price": 0.50, "size": 3.0}]
+
     def test_book(self, httpx_mock) -> None:
         httpx_mock.add_response(json=_fixture("kalshi_orderbook.json"))
 

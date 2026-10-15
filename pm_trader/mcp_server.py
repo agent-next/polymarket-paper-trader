@@ -480,10 +480,12 @@ def kalshi_book(ticker: str, depth: int = 10) -> str:
         finally:
             client.close()
         depth = _clamp_limit(depth)
+        asks = sorted(book.asks, key=lambda l: l.price)[:depth]
+        bids = sorted(book.bids, key=lambda l: l.price, reverse=True)[:depth]
         return _ok({
             "ticker": ticker,
-            "asks": [{"price": a.price, "size": a.size} for a in book.asks[:depth]],
-            "bids": [{"price": b.price, "size": b.size} for b in book.bids[:depth]],
+            "asks": [{"price": a.price, "size": a.size} for a in asks],
+            "bids": [{"price": b.price, "size": b.size} for b in bids],
         })
     except Exception as e:
         return _err_from(e, "order_book_error")
