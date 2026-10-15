@@ -264,6 +264,61 @@ class TestEngineTrading:
         assert results[0].payout == pytest.approx(bought.trade.shares)
         assert engine.get_account().cash == pytest.approx(cash_after_buy + bought.trade.shares)
 
+    def test_resting_limit_fill_charges_the_kalshi_maker_fee(
+        self, engine, httpx_mock,
+    ) -> None:
+        _serve(httpx_mock)
+
+        # Best ask is 0.60, so a 0.59 buy limit cannot cross: it rests.
+        order = engine.place_limit_order(SLUG, "yes", "buy", 310.0, 0.59)
+        assert order["status"] == "pending"
+
+        # The ask side then drops through the resting limit at two levels:
+        # no bids 0.41/0.42 -> yes asks 0.59 x 3000, 0.58 x 521.
+        crossed = {"orderbook_fp": {
+            "yes_dollars": BOOK["orderbook_fp"]["yes_dollars"],
+            "no_dollars": [["0.4100", "3000"], ["0.4200", "521.00"]],
+        }}
+        httpx_mock.add_response(url=_url(f"/markets/{TICKER}/orderbook"), json=crossed)
+
+        results = engine.check_orders()
+
+        assert [r["action"] for r in results] == ["filled"]
+        trade = engine.db.get_trades()[0]
+
+        # Independent oracle: walk the served asks the way the exchange
+        # would, then price every filled level on the maker curve built from
+        # the fixture's own fee_multiplier (never via _maker_fee).
+        multiplier = SERIES["series"]["fee_multiplier"]
+        asks = [
+            (1.0 - float(no_bid), float(size))
+            for no_bid, size in reversed(crossed["orderbook_fp"]["no_dollars"])
+        ]
+        levels: list[tuple[float, float]] = []
+        remaining = 310.0
+        for price, size in asks:
+            if remaining <= 0:
+                break
+            cost = min(remaining, size * price)
+            levels.append((price, cost / price))
+            remaining -= cost
+        assert len(levels) == 2  # 521 contracts @ 0.58, then the rest @ 0.59
+
+        maker_fee = sum(
+            round(contracts * 0.0175 * multiplier * price * (1 - price), 5)
+            for price, contracts in levels
+        )
+        taker_fee = sum(
+            round(contracts * 0.07 * multiplier * price * (1 - price), 5)
+            for price, contracts in levels
+        )
+
+        assert trade.fee == pytest.approx(maker_fee, abs=1e-9)
+        assert trade.fee != taker_fee  # negative control: not the taker curve
+        assert trade.fee < taker_fee
+        assert trade.shares == pytest.approx(521.0 + 7.82 / 0.59)
+        assert engine.get_account().cash == pytest.approx(1_000.0 - 310.0 - maker_fee)
+
     def test_unmodelled_fee_type_refuses_the_trade(self, engine, httpx_mock) -> None:
         _serve(httpx_mock, series={"series": {**SERIES["series"], "fee_type": "flat"}})
 
