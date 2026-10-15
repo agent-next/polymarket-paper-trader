@@ -18,7 +18,6 @@ without it the server runs exactly as it did before.
 from __future__ import annotations
 
 import asyncio
-import fcntl
 import hashlib
 import json
 import os
@@ -227,6 +226,10 @@ def acquire_server_lock() -> IO[str]:
     closing it (or exiting) releases the lock. Raises `RemoteAuthConfigError`
     when another process already holds it.
     """
+    try:
+        import fcntl  # POSIX only; imported here so local mode works everywhere
+    except ImportError:
+        raise RemoteAuthConfigError("remote mode requires a POSIX host") from None
     root = remote_root()
     root.mkdir(parents=True, exist_ok=True)
     handle = open(root / SERVER_LOCK_NAME, "a+")

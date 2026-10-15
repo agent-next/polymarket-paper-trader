@@ -420,13 +420,12 @@ class TestFlags:
 
 
 class TestLimitCodesSurvive:
-    def test_get_balance_at_the_cap_reports_account_limit(self, tmp_path):
+    def test_account_limit_code_survives_a_tool_override(self):
         """get_balance labels errors not_initialized; the cap code must win."""
-        _, patches = _remote(tmp_path, max_accounts=1)
-        with patches[0], patches[1], patches[2], _as_user(_user("alice")):
-            assert json.loads(mcp_server.init_account(account="one"))["ok"]
-            refused = json.loads(mcp_server.get_balance(account="new"))
-        assert refused["code"] == "ACCOUNT_LIMIT"
+        envelope = json.loads(
+            mcp_server._err_from(AccountLimitError("cap"), "not_initialized")
+        )
+        assert envelope["code"] == "ACCOUNT_LIMIT"
 
     def test_other_errors_still_take_the_override(self):
         envelope = json.loads(
@@ -436,6 +435,38 @@ class TestLimitCodesSurvive:
 
 
 class TestServerLock:
+    def test_missing_fcntl_gives_a_clear_error(self, tmp_path):
+        import builtins
+
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "fcntl":
+                raise ImportError("no fcntl")
+            return real_import(name, *args, **kwargs)
+
+        with (
+            patch.object(Path, "home", return_value=tmp_path),
+            patch.object(builtins, "__import__", fake_import),
+            pytest.raises(RemoteAuthConfigError, match="requires a POSIX host"),
+        ):
+            acquire_server_lock()
+
+    def test_fcntl_is_not_a_module_level_import(self):
+        """Importing remote_auth (hence local stdio mode) must not need fcntl."""
+        import ast
+
+        import pm_trader.remote_auth as module
+
+        tree = ast.parse(Path(module.__file__).read_text())
+        top = [
+            alias.name
+            for node in tree.body
+            if isinstance(node, (ast.Import, ast.ImportFrom))
+            for alias in node.names
+        ] + [n.module for n in tree.body if isinstance(n, ast.ImportFrom)]
+        assert "fcntl" not in top
+
     def test_second_holder_is_refused(self, tmp_path):
         with patch.object(Path, "home", return_value=tmp_path):
             first = acquire_server_lock()
@@ -631,3 +662,55 @@ class TestInServerPrune:
             prune_remote(90, dry_run=True, before_delete=calls.append)
             prune_remote(900, before_delete=calls.append)
         assert calls == [] and old.exists()
+
+
+def _market():
+    from pm_trader.models import Market
+
+    return Market(
+        condition_id="0xabc", slug="m", question="Q?", description="",
+        outcomes=["Yes", "No"], outcome_prices=[0.5, 0.5], tokens=[],
+        active=True, closed=False,
+    )
+
+
+class TestCapOnCreationOnly:
+    def _full(self, tmp_path, cap=2):
+        _, patches = _remote(tmp_path, max_accounts=cap)
+        return patches
+
+    def test_creation_over_cap_refused_reads_dont_create(self, tmp_path):
+        patches = self._full(tmp_path)
+        with patches[0], patches[1], patches[2], _as_user(_user("alice")):
+            root = user_root(ISSUER, "alice")
+            for n in range(2):
+                assert json.loads(mcp_server.init_account(account=f"a{n}"))["ok"]
+            assert _code(mcp_server.init_account(account="a2")) == "ACCOUNT_LIMIT"
+            typo = json.loads(mcp_server.get_balance(account="typo"))
+            assert typo["code"] == "not_initialized"
+            assert not (root / "typo").exists()
+            assert not (root / "a2").exists()
+            assert sorted(p.name for p in root.iterdir()) == ["a0", "a1"]
+
+    def test_failed_reads_do_not_consume_quota(self, tmp_path):
+        patches = self._full(tmp_path)
+        with patches[0], patches[1], patches[2], _as_user(_user("alice")):
+            for n in range(5):
+                mcp_server.get_balance(account=f"typo{n}")
+            assert json.loads(mcp_server.init_account(account="real"))["ok"]
+
+    def test_market_tools_work_at_the_cap(self, tmp_path):
+        from unittest.mock import MagicMock
+
+        patches = self._full(tmp_path)
+        with patches[0], patches[1], patches[2], _as_user(_user("alice")):
+            for n in range(2):
+                mcp_server.init_account(account=f"a{n}")
+            engine = mcp_server._get_engine()  # implicit default, at the cap
+            engine.api.search_markets = MagicMock(return_value=[_market()])
+            engine.api.list_markets = MagicMock(return_value=[_market()])
+            for out in (
+                mcp_server.search_markets("q"),
+                mcp_server.list_markets(),
+            ):
+                assert json.loads(out)["ok"] is True
