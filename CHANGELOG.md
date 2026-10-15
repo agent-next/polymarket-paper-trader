@@ -4,6 +4,8 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+## [0.4.12] - 2026-10-15
+
 ### Added
 - **Kalshi paper trading**: `buy`, `sell`, limit orders, `portfolio`, `watch`
   and `resolve` (CLI and MCP) accept a Kalshi market as `kalshi:<ticker>`; one
