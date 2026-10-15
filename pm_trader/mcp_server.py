@@ -31,9 +31,14 @@ from pm_trader.engine import Engine
 from pm_trader.kalshi_api import KalshiClient
 from pm_trader.models import is_valid_account_name
 from pm_trader.remote_auth import (
+    DEFAULT_IDLE_DAYS,
+    DEFAULT_MAX_ACCOUNTS,
+    DEFAULT_RATE_LIMIT_PER_MINUTE,
     RemoteAuthConfig,
     RemoteAuthConfigError,
+    check_account_cap,
     configure_server,
+    prune_remote,
     user_root,
 )
 
@@ -210,6 +215,9 @@ def _tool(
     def register(fn: Callable[..., str]) -> Callable[..., str]:
         @functools.wraps(fn)
         async def _wrapper(**kwargs: object) -> str:
+            limited = _rate_limit_error()
+            if limited is not None:
+                return limited
             loop = asyncio.get_running_loop()
             # The tool body runs on the worker thread, so carry the request's
             # contextvars across: handlers that read request-scoped state (the
@@ -261,11 +269,35 @@ def _data_root() -> Path:
     return user_root(str(token.claims["iss"]), token.subject)
 
 
+def _rate_limit_error() -> str | None:
+    """Return a RATE_LIMITED envelope when the remote caller is over its limit.
+
+    Always None outside authenticated remote mode, and for a call without a
+    verified principal (the data-root check refuses that one itself).
+    """
+    if _remote is None:
+        return None
+    try:
+        key = _data_root().name
+    except ValueError:
+        return None
+    if _remote.limiter.allow(key):
+        return None
+    return _err(
+        f"Rate limit exceeded: at most {_remote.rate_limit_per_minute} "
+        "tool calls per minute",
+        "RATE_LIMITED",
+    )
+
+
 def _get_engine(account: str = "default") -> Engine:
     """Return the current Engine, creating if needed."""
     global _engine
     account = _validate_account_name(account)
-    data_dir = _data_root() / account
+    root = _data_root()
+    if _remote is not None:
+        check_account_cap(root, account, _remote.max_accounts)
+    data_dir = root / account
     if _engine is None or _engine.db.data_dir != data_dir:
         if _engine is not None:
             _engine.close()
@@ -1168,6 +1200,22 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Public URL of this server, advertised in the protected-resource "
         "metadata (env: PM_TRADER_RESOURCE_URL)",
     )
+    parser.add_argument(
+        "--rate-limit-per-minute",
+        type=int,
+        default=os.environ.get(
+            "PM_TRADER_RATE_LIMIT_PER_MINUTE", DEFAULT_RATE_LIMIT_PER_MINUTE
+        ),
+        help="Remote mode: tool calls allowed per user per minute (default: "
+        f"{DEFAULT_RATE_LIMIT_PER_MINUTE}; env: PM_TRADER_RATE_LIMIT_PER_MINUTE)",
+    )
+    parser.add_argument(
+        "--max-accounts",
+        type=int,
+        default=os.environ.get("PM_TRADER_MAX_ACCOUNTS", DEFAULT_MAX_ACCOUNTS),
+        help="Remote mode: accounts allowed per user (default: "
+        f"{DEFAULT_MAX_ACCOUNTS}; env: PM_TRADER_MAX_ACCOUNTS)",
+    )
     return parser
 
 
@@ -1206,6 +1254,8 @@ def _auth_config(args: argparse.Namespace) -> RemoteAuthConfig | None:
     return RemoteAuthConfig(
         issuer=args.auth_issuer, audience=args.auth_audience,
         resource_url=args.resource_url,
+        rate_limit_per_minute=args.rate_limit_per_minute,
+        max_accounts=args.max_accounts,
     )
 
 
@@ -1235,8 +1285,38 @@ def _run(
         mcp.run()
 
 
+def _prune_remote_main(argv: list[str]) -> None:
+    """Run ``pm-trader-mcp prune-remote``: delete idle remote-user directories."""
+    parser = argparse.ArgumentParser(
+        prog="pm-trader-mcp prune-remote",
+        description="Delete remote-mode user directories idle for N days.",
+    )
+    parser.add_argument(
+        "--idle-days", type=int, default=DEFAULT_IDLE_DAYS,
+        help=f"Delete users whose newest file is older than this (default: {DEFAULT_IDLE_DAYS})",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Print what would be removed without deleting anything",
+    )
+    args = parser.parse_args(argv)
+    try:
+        pruned = prune_remote(args.idle_days, dry_run=args.dry_run)
+    except RemoteAuthConfigError as e:
+        parser.error(str(e))
+    verb = "would remove" if args.dry_run else "removed"
+    for path in pruned:
+        print(f"{verb} {path}")
+    print(f"{verb} {len(pruned)} idle user director{'y' if len(pruned) == 1 else 'ies'}")
+
+
 def main(argv: list[str] | None = None) -> None:
     """Run MCP server on stdio (default) or streamable-http transport."""
+    if argv is None:
+        argv = sys.argv[1:]
+    if argv[:1] == ["prune-remote"]:
+        _prune_remote_main(argv[1:])
+        return
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
     try:

@@ -22,7 +22,7 @@ token subject gets its own paper accounts.
 - **No local-only tools over HTTP.** `backtest` and `pk_battle` read local files
   and execute local strategy modules; they stay removed on every network
   transport, authenticated or not.
-- No token issuance, quotas, per-user rate limits or token revocation.
+- No token issuance or token revocation. Abuse limits are in "Abuse limits" below.
 
 ## Threat model
 
@@ -64,6 +64,26 @@ for `localhost`/`127.0.0.1`, so tests and local IdPs work).
 
 No extra install: the MCP SDK already depends on `PyJWT[crypto]`, which brings
 the RSA/EC (`cryptography`) backend used to verify issuer signatures.
+
+### Abuse limits
+
+Authenticated remote mode only; stdio and unauthenticated HTTP are never
+limited. Each limit is per verified subject (keyed by its `user_root` digest).
+
+| Limit | Default | Flag | Env | Error code |
+|---|---|---|---|---|
+| Tool calls per minute (in-process sliding window, never sleeps) | 60 | `--rate-limit-per-minute` | `PM_TRADER_RATE_LIMIT_PER_MINUTE` | `RATE_LIMITED` |
+| Distinct accounts per subject (existing accounts keep working) | 20 | `--max-accounts` | `PM_TRADER_MAX_ACCOUNTS` | `ACCOUNT_LIMIT` |
+| Retention: idle subject directories | 90 days | `pm-trader-mcp prune-remote --idle-days N [--dry-run]` | | |
+
+Both limits must be at least 1. The rate-limit window lives in process memory,
+so a restart clears it.
+
+`prune-remote` deletes every `~/.pm-trader/remote/<digest>/` whose newest file
+is older than `--idle-days`, prints each directory it removed (or `would remove`
+with `--dry-run`), and touches nothing else: only real hashed directories
+directly under the remote users root qualify, symlinks are skipped, and
+`prune_remote()` raises for any other root. Run it from cron or a timer.
 
 ### Token validation
 
