@@ -18,6 +18,7 @@ without it the server runs exactly as it did before.
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import hashlib
 import json
 import os
@@ -28,6 +29,7 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import IO
 from typing import Any
 from urllib.parse import urlparse
 
@@ -64,6 +66,7 @@ _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 DEFAULT_RATE_LIMIT_PER_MINUTE = 60
 DEFAULT_MAX_ACCOUNTS = 20
 DEFAULT_IDLE_DAYS = 90
+SERVER_LOCK_NAME = ".server.lock"
 RATE_WINDOW_SECONDS = 60.0
 
 # Per-subject directory names are the first 32 hex digits of a sha256.
@@ -125,6 +128,7 @@ class RemoteAuthConfig:
     resource_url: str
     rate_limit_per_minute: int = DEFAULT_RATE_LIMIT_PER_MINUTE
     max_accounts: int = DEFAULT_MAX_ACCOUNTS
+    prune_idle_days: int = DEFAULT_IDLE_DAYS
     limiter: RateLimiter = field(init=False, compare=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -135,6 +139,10 @@ class RemoteAuthConfig:
         ):
             if value < 1:
                 raise RemoteAuthConfigError(f"--{flag} must be at least 1: {value!r}")
+        if self.prune_idle_days < 0:
+            raise RemoteAuthConfigError(
+                f"--prune-idle-days must not be negative: {self.prune_idle_days!r}"
+            )
         self.limiter = RateLimiter(self.rate_limit_per_minute)
         _check_url(self.issuer, "auth-issuer")
         _check_url(self.audience, "auth-audience")
@@ -212,6 +220,27 @@ def remote_root() -> Path:
     return Path.home() / ".pm-trader" / REMOTE_DIR
 
 
+def acquire_server_lock() -> IO[str]:
+    """Take the exclusive, non-blocking lock a remote server holds for its lifetime.
+
+    The lock file lives in the remote users root. Keep the returned file open:
+    closing it (or exiting) releases the lock. Raises `RemoteAuthConfigError`
+    when another process already holds it.
+    """
+    root = remote_root()
+    root.mkdir(parents=True, exist_ok=True)
+    handle = open(root / SERVER_LOCK_NAME, "a+")
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        handle.close()
+        raise RemoteAuthConfigError(
+            f"{root / SERVER_LOCK_NAME} is locked: another remote pm-trader-mcp "
+            "server is running"
+        ) from None
+    return handle
+
+
 def check_account_cap(root: Path, account: str, max_accounts: int) -> None:
     """Refuse to create account number ``max_accounts + 1`` under `root`.
 
@@ -250,6 +279,7 @@ def prune_remote(
     dry_run: bool = False,
     root: Path | None = None,
     now: float | None = None,
+    before_delete: Callable[[list[Path]], None] | None = None,
 ) -> list[Path]:
     """Delete subject directories idle for more than `idle_days`; return them.
 
@@ -258,7 +288,8 @@ def prune_remote(
     root are ever touched: anything else under the root is skipped, and `root`
     itself must be the remote users root (``~/.pm-trader/remote``), otherwise
     `RemoteAuthConfigError` is raised before anything is read or removed.
-    With ``dry_run`` nothing is deleted.
+    With ``dry_run`` nothing is deleted. ``before_delete`` is called with the
+    directories about to be removed, just before the first deletion.
     """
     users_root = remote_root()
     if idle_days < 0:
@@ -276,6 +307,8 @@ def prune_remote(
         if _is_user_dir(p) and _newest_mtime(p) < cutoff
     ]
     if not dry_run:
+        if stale and before_delete is not None:
+            before_delete(stale)
         for path in stale:
             shutil.rmtree(path)
     return stale

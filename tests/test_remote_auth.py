@@ -800,6 +800,18 @@ class TestCliFlags:
 
 
 class TestRunWiring:
+    @pytest.fixture(autouse=True)
+    def _isolated_home(self, tmp_path):
+        """Keep the server lock and prune schedule out of the real home."""
+        with (
+            patch.object(Path, "home", return_value=tmp_path),
+            patch.object(mcp_server, "_schedule_prune"),
+        ):
+            yield
+        if mcp_server._server_lock is not None:
+            mcp_server._server_lock.close()
+            mcp_server._server_lock = None
+
     def test_remote_run_configures_auth_and_drops_local_tools(self, capsys):
         with (
             patch.object(mcp_server, "_remote", None),

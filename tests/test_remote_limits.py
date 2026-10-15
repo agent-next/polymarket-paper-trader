@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 from pathlib import Path
 from unittest.mock import patch
@@ -17,6 +18,7 @@ from pm_trader.remote_auth import (
     AccountLimitError,
     RateLimiter,
     RemoteAuthConfigError,
+    acquire_server_lock,
     check_account_cap,
     prune_remote,
     remote_root,
@@ -415,3 +417,217 @@ class TestFlags:
                  "--max-accounts", "0"]
             )
         assert "--max-accounts must be at least 1" in capsys.readouterr().err
+
+
+class TestLimitCodesSurvive:
+    def test_get_balance_at_the_cap_reports_account_limit(self, tmp_path):
+        """get_balance labels errors not_initialized; the cap code must win."""
+        _, patches = _remote(tmp_path, max_accounts=1)
+        with patches[0], patches[1], patches[2], _as_user(_user("alice")):
+            assert json.loads(mcp_server.init_account(account="one"))["ok"]
+            refused = json.loads(mcp_server.get_balance(account="new"))
+        assert refused["code"] == "ACCOUNT_LIMIT"
+
+    def test_other_errors_still_take_the_override(self):
+        envelope = json.loads(
+            mcp_server._err_from(ValueError("x"), "not_initialized")
+        )
+        assert envelope["code"] == "not_initialized"
+
+
+class TestServerLock:
+    def test_second_holder_is_refused(self, tmp_path):
+        with patch.object(Path, "home", return_value=tmp_path):
+            first = acquire_server_lock()
+            try:
+                with pytest.raises(RemoteAuthConfigError, match="already|another"):
+                    acquire_server_lock()
+            finally:
+                first.close()
+            acquire_server_lock().close()  # released on close
+
+    def test_run_takes_the_lock_and_fails_startup_if_held(self, tmp_path):
+        config = _config()
+        with (
+            patch.object(Path, "home", return_value=tmp_path),
+            patch.object(mcp_server, "_remote", None),
+            patch.object(mcp_server, "_server_lock", None),
+            patch.object(mcp_server, "_schedule_prune") as schedule,
+            patch.object(mcp_server.mcp, "run") as run,
+            patch.object(mcp_server.mcp, "remove_tool"),
+            patch.object(mcp_server.mcp.settings, "auth", None),
+            patch.object(mcp_server.mcp, "_token_verifier", None),
+        ):
+            mcp_server._run("streamable-http", "127.0.0.1", 8000, config)
+            held = mcp_server._server_lock
+            assert held is not None and not held.closed
+            schedule.assert_called_once_with(90)
+            with pytest.raises(RemoteAuthConfigError):
+                mcp_server._run("streamable-http", "127.0.0.1", 8000, config)
+            assert run.call_count == 1
+            held.close()
+
+    def test_main_reports_a_held_lock_as_usage_error(self, tmp_path, capsys):
+        with patch.object(Path, "home", return_value=tmp_path):
+            held = acquire_server_lock()
+            try:
+                with (
+                    patch.object(mcp_server, "_remote", None),
+                    patch.object(mcp_server.mcp, "remove_tool"),
+                    patch.object(mcp_server.mcp.settings, "auth", None),
+                    patch.object(mcp_server.mcp, "_token_verifier", None),
+                    pytest.raises(SystemExit) as exc,
+                ):
+                    mcp_server.main(
+                        ["--transport", "streamable-http", "--auth-issuer", ISSUER,
+                         "--auth-audience", AUDIENCE, "--resource-url", RESOURCE_URL]
+                    )
+            finally:
+                held.close()
+        assert exc.value.code == 2
+        assert "another remote pm-trader-mcp server" in capsys.readouterr().err
+
+    def test_prune_cli_refuses_while_server_holds_the_lock(self, tmp_path, capsys):
+        now = time.time()
+        root = tmp_path / ".pm-trader" / "remote"
+        old = _make_user(root, HASH_OLD, 100, now)
+        with patch.object(Path, "home", return_value=tmp_path):
+            held = acquire_server_lock()
+            try:
+                with pytest.raises(SystemExit) as exc:
+                    mcp_server.main(["prune-remote", "--idle-days", "90"])
+            finally:
+                held.close()
+        assert exc.value.code == 1
+        assert "server running; use the in-server prune" in capsys.readouterr().err
+        assert (old / "acct" / "paper.db").exists()
+
+    def test_prune_cli_releases_the_lock_after_running(self, tmp_path):
+        with patch.object(Path, "home", return_value=tmp_path):
+            mcp_server.main(["prune-remote"])
+            acquire_server_lock().close()  # would raise if the CLI kept it
+
+
+class TestInServerPrune:
+    def test_closes_a_cached_engine_inside_a_pruned_dir(self, tmp_path):
+        now = time.time()
+        root = tmp_path / ".pm-trader" / "remote"
+        old = _make_user(root, HASH_OLD, 100, now)
+        new = _make_user(root, HASH_NEW, 10, now)
+
+        class Db:
+            data_dir = old / "acct"
+
+        class Eng:
+            db = Db()
+            closed = False
+
+            def close(self):
+                self.closed = True
+
+        engine = Eng()
+        with (
+            patch.object(Path, "home", return_value=tmp_path),
+            patch.object(mcp_server, "_engine", engine),
+        ):
+            removed = mcp_server._prune_idle_users(90)
+            assert mcp_server._engine is None
+        assert engine.closed
+        assert removed == [old] and not old.exists() and new.exists()
+
+    def test_keeps_an_engine_outside_pruned_dirs(self, tmp_path):
+        now = time.time()
+        root = tmp_path / ".pm-trader" / "remote"
+        old = _make_user(root, HASH_OLD, 100, now)
+        new = _make_user(root, HASH_NEW, 10, now)
+
+        class Db:
+            data_dir = new / "acct"
+
+        class Eng:
+            db = Db()
+
+        engine = Eng()
+        with (
+            patch.object(Path, "home", return_value=tmp_path),
+            patch.object(mcp_server, "_engine", engine),
+        ):
+            mcp_server._prune_idle_users(90)
+            assert mcp_server._engine is engine
+        assert not old.exists()
+
+    def test_no_engine_cached(self, tmp_path):
+        now = time.time()
+        old = _make_user(tmp_path / ".pm-trader" / "remote", HASH_OLD, 100, now)
+        with (
+            patch.object(Path, "home", return_value=tmp_path),
+            patch.object(mcp_server, "_engine", None),
+        ):
+            assert mcp_server._prune_idle_users(90) == [old]
+
+    def test_an_os_error_is_reported_not_raised(self, tmp_path, capsys):
+        with patch.object(mcp_server, "prune_remote", side_effect=OSError("boom")):
+            assert mcp_server._prune_idle_users(90) == []
+        assert "remote prune failed: boom" in capsys.readouterr().err
+
+    def test_schedule_runs_on_the_tool_executor_and_rearms(self):
+        seen: dict[str, str] = {}
+
+        def fake_prune(days):
+            seen["thread"] = threading.current_thread().name
+            seen["days"] = days
+            return []
+
+        with (
+            patch.object(mcp_server, "_prune_idle_users", fake_prune),
+            patch.object(threading, "Timer") as timer,
+        ):
+            mcp_server._schedule_prune(7).result(timeout=10)
+        assert seen["thread"].startswith("pm-trader-mcp")
+        assert seen["days"] == 7
+        timer.assert_called_once_with(
+            86400.0, mcp_server._schedule_prune, (7, 86400.0)
+        )
+        assert timer.return_value.daemon is True
+        timer.return_value.start.assert_called_once_with()
+
+    def test_zero_disables_the_schedule(self, tmp_path):
+        config = RemoteAuthConfig(
+            issuer=ISSUER, audience=AUDIENCE, resource_url=RESOURCE_URL,
+            prune_idle_days=0,
+        )
+        with (
+            patch.object(Path, "home", return_value=tmp_path),
+            patch.object(mcp_server, "_remote", None),
+            patch.object(mcp_server, "_server_lock", None),
+            patch.object(mcp_server, "_schedule_prune") as schedule,
+            patch.object(mcp_server.mcp, "run"),
+            patch.object(mcp_server.mcp, "remove_tool"),
+            patch.object(mcp_server.mcp.settings, "auth", None),
+            patch.object(mcp_server.mcp, "_token_verifier", None),
+        ):
+            mcp_server._run("streamable-http", "127.0.0.1", 8000, config)
+            mcp_server._server_lock.close()
+        schedule.assert_not_called()
+
+    def test_flag_env_and_validation(self, monkeypatch):
+        monkeypatch.delenv("PM_TRADER_PRUNE_IDLE_DAYS", raising=False)
+        parser = mcp_server._build_arg_parser()
+        assert parser.parse_args([]).prune_idle_days == 90
+        assert parser.parse_args(["--prune-idle-days", "0"]).prune_idle_days == 0
+        monkeypatch.setenv("PM_TRADER_PRUNE_IDLE_DAYS", "30")
+        assert mcp_server._build_arg_parser().parse_args([]).prune_idle_days == 30
+        with pytest.raises(RemoteAuthConfigError, match="negative"):
+            RemoteAuthConfig(
+                issuer=ISSUER, audience=AUDIENCE, resource_url=RESOURCE_URL,
+                prune_idle_days=-1,
+            )
+
+    def test_before_delete_not_called_for_dry_run_or_nothing(self, tmp_path):
+        now = time.time()
+        old = _make_user(tmp_path / ".pm-trader" / "remote", HASH_OLD, 100, now)
+        calls: list = []
+        with patch.object(Path, "home", return_value=tmp_path):
+            prune_remote(90, dry_run=True, before_delete=calls.append)
+            prune_remote(900, before_delete=calls.append)
+        assert calls == [] and old.exists()

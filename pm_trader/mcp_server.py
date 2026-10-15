@@ -18,10 +18,11 @@ import json
 import os
 import re
 import sys
+import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 from mcp.server import MCPServer
 from mcp.server.auth.middleware.auth_context import get_access_token
@@ -36,6 +37,7 @@ from pm_trader.remote_auth import (
     DEFAULT_RATE_LIMIT_PER_MINUTE,
     RemoteAuthConfig,
     RemoteAuthConfigError,
+    acquire_server_lock,
     check_account_cap,
     configure_server,
     prune_remote,
@@ -240,6 +242,9 @@ def _tool(
 
 _engine: Engine | None = None
 
+# Lock file handle held for the lifetime of a remote server (see acquire_server_lock).
+_server_lock: IO[str] | None = None
+
 # Set only when the opt-in remote mode is enabled (--auth-issuer and friends);
 # see docs/remote-mcp.md. None means the local ~/.pm-trader tree.
 _remote: RemoteAuthConfig | None = None
@@ -315,6 +320,9 @@ def _err(msg: str, code: str = "error") -> str:
     return json.dumps({"ok": False, "error": msg, "code": code})
 
 
+_LIMIT_CODES = frozenset({"ACCOUNT_LIMIT", "RATE_LIMITED"})
+
+
 def _err_from(e: Exception, code: str | None = None) -> str:
     """Return an error envelope from an exception, sanitizing internals.
 
@@ -323,7 +331,9 @@ def _err_from(e: Exception, code: str | None = None) -> str:
     from pm_trader.models import SimError
 
     if isinstance(e, (SimError, ValueError, TypeError)):
-        return _err(str(e), code or getattr(e, "code", type(e).__name__))
+        own = getattr(e, "code", type(e).__name__)
+        # Limit errors keep their own code whatever the tool would label them.
+        return _err(str(e), own if own in _LIMIT_CODES else code or own)
     return _err("Internal error", "internal_error")
 
 
@@ -1216,6 +1226,14 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Remote mode: accounts allowed per user (default: "
         f"{DEFAULT_MAX_ACCOUNTS}; env: PM_TRADER_MAX_ACCOUNTS)",
     )
+    parser.add_argument(
+        "--prune-idle-days",
+        type=int,
+        default=os.environ.get("PM_TRADER_PRUNE_IDLE_DAYS", DEFAULT_IDLE_DAYS),
+        help="Remote mode: delete user directories idle this many days, at "
+        f"startup and every 24 h (default: {DEFAULT_IDLE_DAYS}, 0 disables; "
+        "env: PM_TRADER_PRUNE_IDLE_DAYS)",
+    )
     return parser
 
 
@@ -1256,14 +1274,49 @@ def _auth_config(args: argparse.Namespace) -> RemoteAuthConfig | None:
         resource_url=args.resource_url,
         rate_limit_per_minute=args.rate_limit_per_minute,
         max_accounts=args.max_accounts,
+        prune_idle_days=args.prune_idle_days,
     )
+
+
+PRUNE_INTERVAL_SECONDS = 86400.0
+
+
+def _prune_idle_users(idle_days: int) -> list[Path]:
+    """Prune idle remote users; runs on `_tool_executor`, so never during a tool call.
+
+    The cached engine is closed first when it sits inside a directory about to
+    be deleted, so no open SQLite handle outlives its files.
+    """
+    def close_cached_engine(stale: list[Path]) -> None:
+        global _engine
+        if _engine is not None and any(
+            d == _engine.db.data_dir or d in _engine.db.data_dir.parents
+            for d in stale
+        ):
+            _engine.close()
+            _engine = None
+
+    try:
+        return prune_remote(idle_days, before_delete=close_cached_engine)
+    except OSError as e:
+        print(f"WARNING: remote prune failed: {e}", file=sys.stderr)
+        return []
+
+
+def _schedule_prune(idle_days: int, interval: float = PRUNE_INTERVAL_SECONDS):
+    """Queue a prune on the tool executor now and again every `interval` seconds."""
+    future = _tool_executor.submit(_prune_idle_users, idle_days)
+    timer = threading.Timer(interval, _schedule_prune, (idle_days, interval))
+    timer.daemon = True
+    timer.start()
+    return future
 
 
 def _run(
     transport: str, host: str, port: int,
     auth: RemoteAuthConfig | None = None,
 ) -> None:
-    global _remote
+    global _remote, _server_lock
     if transport == "streamable-http":
         if auth is None and host not in _LOOPBACK_HOSTS:
             print(
@@ -1278,8 +1331,11 @@ def _run(
         if auth is not None:
             # Authenticated and multi-user: every request must carry a bearer
             # token, and each verified subject trades in its own data root.
+            _server_lock = acquire_server_lock()
             _remote = auth
             configure_server(mcp, auth)
+            if auth.prune_idle_days > 0:
+                _schedule_prune(auth.prune_idle_days)
         mcp.run(transport="streamable-http", host=host, port=port)
     else:
         mcp.run()
@@ -1301,9 +1357,16 @@ def _prune_remote_main(argv: list[str]) -> None:
     )
     args = parser.parse_args(argv)
     try:
+        lock = acquire_server_lock()
+    except RemoteAuthConfigError:
+        print("server running; use the in-server prune", file=sys.stderr)
+        raise SystemExit(1) from None
+    try:
         pruned = prune_remote(args.idle_days, dry_run=args.dry_run)
     except RemoteAuthConfigError as e:
         parser.error(str(e))
+    finally:
+        lock.close()
     verb = "would remove" if args.dry_run else "removed"
     for path in pruned:
         print(f"{verb} {path}")
@@ -1325,7 +1388,10 @@ def main(argv: list[str] | None = None) -> None:
         parser.error(str(e))
     if auth is not None and args.transport != "streamable-http":
         parser.error("--auth-issuer needs --transport streamable-http")
-    _run(args.transport, args.host, args.port, auth)
+    try:
+        _run(args.transport, args.host, args.port, auth)
+    except RemoteAuthConfigError as e:
+        parser.error(str(e))
 
 
 if __name__ == "__main__":  # pragma: no cover
