@@ -39,7 +39,7 @@ include = ["pm_trader*"]
 pm_trader = ["_skill/SKILL.md", "ui/*.html"]
 
 [tool.pytest.ini_options]
-markers = ["live: tests requiring network access to Polymarket API"]
+markers = ["live: tests requiring network access to the Polymarket or Kalshi APIs"]
 # Root invocation collects only the product suite (same scope as CI test.yml);
 # benchmark/ and leaderboard-client/ carry their own pytest configs + CI jobs —
 # collecting them from here double-imports their conftest (ImportPathMismatch).
