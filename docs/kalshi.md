@@ -1,8 +1,9 @@
-# Kalshi: spec and read-only market data
+# Kalshi: spec, market data and paper trading
 
-What the Kalshi side of a second market would look like, and the public read
-endpoints verified for it. This page is the contract; `pm_trader/kalshi_api.py`
-implements exactly the endpoints listed here and nothing else.
+The Kalshi side of the second market: the public read endpoints verified for it
+and how the paper engine trades on them. This page is the contract;
+`pm_trader/kalshi_api.py` implements exactly the endpoints listed here and
+nothing else.
 
 Polymarket facts live in [agent-reference.md](agent-reference.md) ("Verified
 upstream contract facts"). Same discipline applies here: the wire wins over the
@@ -11,15 +12,14 @@ docs, and every claim below was probed live on 2026-10-14.
 ## Goal
 
 Let the paper engine read Kalshi market data — list markets, fetch one market,
-fetch its order book — and return the existing `Market` / `OrderBook` models, so
-a later change can point the same fill simulation at a Kalshi book.
+fetch its order book — as the existing `Market` / `OrderBook` models, and paper
+trade those markets with the same fill simulation, fees and resolution path as
+Polymarket.
 
 ## Non-goals
 
-- **No trading.** No order placement, cancellation, amendment, portfolio or
-  balance calls. No API keys, no request signing, no account.
-- **No Kalshi fees, settlement or resolution logic** in the engine. The data a
-  later change needs is captured here (see Fees / Settlement), not implemented.
+- **No real trading.** Every Kalshi trade is simulated against the public book;
+  no order is ever sent to Kalshi. No API keys, no request signing, no account.
 - **No scalar (`market_type: "scalar"`) markets.** The engine is binary YES/NO;
   the client parses scalar payloads but they must not be traded.
 - **No WebSocket feed, no historical/candlestick data, no FX or funding.**
@@ -34,9 +34,44 @@ The client is exposed read-only; none of these place, price or settle a trade.
 | `pm-trader kalshi market TICKER` | `kalshi_market` | `get_market` |
 | `pm-trader kalshi book TICKER [--depth N]` | `kalshi_book` | `get_order_book` |
 
-Markets come back in the same shape as the Polymarket tools, with the Kalshi
-ticker as `slug`. The book is the YES side, best level first; its asks are the
-NO bids read as `1 - p`.
+Markets come back in the same shape as the Polymarket tools, with
+`kalshi:<ticker>` as `slug`. The book is the YES side, best level first; its
+asks are the NO bids read as `1 - p`.
+
+## Paper trading
+
+Every trading command and tool (`buy`, `sell`, `orders place`, `portfolio`,
+`resolve`, `watch` and their MCP twins) takes a Kalshi market by its
+`kalshi:<ticker>` slug, for example
+`pm-trader buy kalshi:KXNBAGAME-26OCT16DENLAL-LAL yes 25`. One account can hold
+Polymarket and Kalshi positions side by side.
+
+- **Routing.** The engine's market client is a router: any slug or token that
+  starts with `kalshi:` goes to `KalshiClient`, everything else to Polymarket.
+  Search, tags and events stay Polymarket-only; find Kalshi markets with
+  `kalshi markets`.
+- **Sides.** The YES token is the slug; the NO token is `<slug>:no`, whose book
+  is the YES book inverted (NO asks = `1 - YES bids`, NO bids = `1 - YES asks`).
+- **Fees.** The series' `fee_type` and `fee_multiplier` (reached through
+  `GET /events/{event_ticker}` → `series_ticker` → `GET /series/{ticker}`, both
+  cached 5 minutes) become the engine's `feeSchedule`:
+  `quadratic` → taker rate `0.07 x M`, makers free; `quadratic_with_maker_fees`
+  and `quadratic_with_combo_maker_fees` → taker `0.07 x M`, maker
+  `0.0175 x M` (`makerRate`, charged per filled level on resting fills). Any other fee type (e.g. `flat`) refuses the
+  trade instead of guessing. Fees are the exact curve rounded to $0.00001, not
+  Kalshi's `ceil` to $0.000001 plus centicent rounding fee/rebate, so a fill can
+  differ from Kalshi's charge by under $0.0001. `(unverified)`: whether
+  `quadratic_with_combo_maker_fees` charges makers outside combo markets; the
+  engine charges them.
+- **Order rules.** No dollar minimum (Polymarket's $1 minimum does not apply);
+  a limit price must sit on the step of the `price_ranges` band it falls in
+  (NO prices are checked at `1 - p`, since bands are in YES terms). Only
+  `binary` markets trade: a `scalar` market is refused, because its payout could
+  never resolve to a $1 YES/NO winner.
+- **Resolution.** A market resolves only when its status is `determined`,
+  `amended` or `finalized` and `result` is `yes` or `no`; a `disputed` or
+  merely `closed` market is reported as ambiguous, never paid on its last price.
+  The winner is paid $1 per contract, as on Polymarket.
 
 ## Environments and base URL
 
@@ -196,14 +231,10 @@ $ curl -s "BASE/series/KXNBAGAME" | jq -c '.series | {ticker, fee_type, fee_mult
   with different rounding (`ceil` to $0.000001, plus a rounding fee and a rebate
   per <https://docs.kalshi.com/getting_started/fee_rounding>) and a non-zero
   maker leg on some series.
-- **Therefore the client does not populate `Market.fee_rate_bps` /
-  `maker_base_fee_bps` / `taker_base_fee_bps` / `fee_schedule`.** Mapping 0.07
-  into `fee_rate_bps` would make the engine charge
-  `(bps/10000) x min(p, 1-p) x size` — a flat rate on the wrong side of $0.50.
-  A later change needs an explicit Kalshi fee curve (per-series
-  `fee_type` + `fee_multiplier` + `ceil` to 1e-6), not a reuse of the bps path.
-- The client does not call `/series/{ticker}`; that would be an extra endpoint
-  for a fee feature that is out of scope here.
+- **The client never populates `Market.fee_rate_bps`.** Mapping 0.07 into
+  `fee_rate_bps` would make the engine charge `(bps/10000) x min(p, 1-p) x size`
+  — a flat rate on the wrong side of $0.50. Trading uses the series fee curve
+  as `fee_schedule` instead (see "Paper trading").
 
 ## Settlement and resolution
 
@@ -246,21 +277,23 @@ $ curl -s "BASE/markets?status=settled&limit=40" | jq -c ...
 
 | Kalshi field | Engine field | Note |
 |--------------|--------------|------|
-| `ticker` | `condition_id`, `slug` | Kalshi has no condition id; the ticker is the only stable key. Positions and trades are keyed on it. |
+| `ticker` | `condition_id`; `slug` = `kalshi:<ticker>` | Kalshi has no condition id; the ticker is the only stable key. Positions are keyed on it; the `kalshi:` slug routes trades to Kalshi. |
 | `title` | `question` | Kalshi's `title` is the *outcome* ("Los Angeles L wins"), not a question; the question lives on the event (`GET /events/{ticker}`), which is out of scope. Documented compromise. |
 | `rules_primary` (+ `rules_secondary` on the event) | `description` | Plain-language resolution criteria. |
 | — | `outcomes` | Always `["Yes", "No"]` (binary markets). |
 | `settlement_value_dollars` else `last_price_dollars` | `outcome_prices[0]` | Determined markets settle to `1.0000`/`0.0000`, so the engine's `>= 0.99` winner test reads correctly. |
 | `1 - outcome_prices[0]` | `outcome_prices[1]` | NO is the complement. |
-| — | `tokens` | Both entries carry the ticker (`{"token_id": ticker, "outcome": "Yes"/"No"}`): Kalshi has no per-side token id, so `get_token_id` cannot distinguish sides. A trading change needs side-aware plumbing. |
+| — | `tokens` | YES = `kalshi:<ticker>`, NO = `kalshi:<ticker>:no`. Kalshi has no per-side token id; the suffix tells the client which side's book to build. |
 | `status == "active"` | `active`, `accepting_orders` | Kalshi has no separate "accepting orders" flag. |
 | `status in {closed, determined, disputed, amended, finalized}` | `closed` | Pre-open (`initialized`, `inactive`) is neither active nor closed, so the engine's tradability gate rejects it as inactive. |
 | `volume_fp` | `volume` | Contract count, not dollars. |
 | `close_time` | `end_date` | ISO-8601, same shape as Polymarket's `end_date_iso`. |
 | min `step` across `price_ranges` | `tick_size` | See "Price units and the price grid". |
 | — | `liquidity` | **No Kalshi field** — stays `0.0`. Market ranking must not sort on it (`open_interest_fp` is a different quantity and is deliberately not substituted). |
-| — | `fee_rate_bps`, `maker_base_fee_bps`, `taker_base_fee_bps`, `fee_schedule`, `neg_risk`, `min_order_size`, `uma_resolution_status` | **Do not map.** Fees are a different curve, neg-risk and UMA status have no Kalshi equivalent, and there is no minimum order size. |
-| `market_type`, `event_ticker`, `result`, `settlement_value_dollars`, `price_level_structure` | — | **No field to hold them.** Reachable from the raw payload; a resolution feature will need new fields on `Market`. |
+| series `fee_type`, `fee_multiplier` | `fee_schedule` | Only on the trading path (`get_tradable_market`); see "Paper trading". |
+| `status` + `result` | `uma_resolution_status` | `"resolved"` when determined/amended/finalized with a yes/no `result`, else `"unresolved"`, so the engine's existing resolution gate applies. |
+| — | `fee_rate_bps`, `maker_base_fee_bps`, `taker_base_fee_bps`, `neg_risk`, `min_order_size` | **Do not map.** Fees are a different curve, neg-risk has no Kalshi equivalent, and there is no minimum order size. |
+| `market_type`, `price_level_structure` | — | **No field to hold them.** Reachable from the raw payload. |
 
 ### `OrderBook`
 
@@ -274,7 +307,7 @@ no at `1 - X`, so there is no ask ladder to fetch
 |------|--------------------|------|
 | `orderbook_fp.yes_dollars` | `bids` | Reversed to best-first (descending); prices are already dollars. |
 | `orderbook_fp.no_dollars` | `asks` | A no bid at `p` is a yes ask at `1 - p`; reversed to ascending. |
-| — | — | Only the **yes** side is reconstructed. A Kalshi "NO" position sells into the yes bid ladder, which the engine's sell path already does. |
+| — | — | `get_order_book("<slug>:no")` returns the NO side: the yes book inverted. |
 
 `depth` is passed through (`None` → omit → the full book). Prices converted from
 the no ladder are rounded to 4 decimals — the finest grid any Kalshi market
@@ -301,8 +334,8 @@ Same rules as `api.py`, so the two clients read alike:
   not a market (`ticker` missing), not an order book (`orderbook_fp` missing or
   a missing ladder), or carries a malformed level: silent defaults would key a
   position on an empty string or fill against a garbage book.
-- No engine wiring; the client is constructed with a `Database` and
-  `close()`d, like `PolymarketClient`.
+- The client is constructed with a `Database` and `close()`d, like
+  `PolymarketClient`; the engine creates it lazily on the first `kalshi:` call.
 
 ## Verified wire-vs-doc facts (2026-10-14)
 

@@ -4,6 +4,22 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Kalshi paper trading**: `buy`, `sell`, limit orders, `portfolio`, `watch`
+  and `resolve` (CLI and MCP) accept a Kalshi market as `kalshi:<ticker>`; one
+  account can hold Polymarket and Kalshi positions. The NO side is the inverted
+  YES book, fees come from the series' `fee_type`/`fee_multiplier` (taker
+  `0.07 x M`, maker `0.0175 x M` on maker-fee series; unmodelled fee types
+  refuse the trade), and a market resolves only once Kalshi has determined it.
+  Kalshi orders have no $1 minimum, limit prices are checked against the price
+  band they fall in, and scalar markets are not tradable.
+  See `docs/kalshi.md` "Paper trading".
+
+### Changed
+- Kalshi markets from `kalshi markets` / `kalshi market` (and their MCP tools)
+  now carry the tradable `kalshi:<ticker>` slug; `condition_id` stays the bare
+  ticker.
+
 ## [0.4.11] - 2026-10-15
 
 ### Added

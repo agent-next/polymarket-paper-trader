@@ -1,0 +1,41 @@
+{
+  "series": {
+    "additional_prohibitions": [
+      "Current players, coaches, and staff of the league, association, or organization(s) governing the event. For college leagues/associations specifically, or where otherwise appropriate (as identified by the Exchange), this applies to current players/coaches/staff of the specific sport in <event> rather than the league/association as a whole (e.g., if the Division I Gonzaga Men\u2019s Basketball Team is playing in <event>, this prohibition will restrict trades by current players/coaches/staff on NCAA Basketball, rather than all current players/coaches/staff in any NCAA sport).",
+      "Paid employees of the league and league participants",
+      "Owners of teams and the league",
+      "and household members and immediate family of all above",
+      "Persons who are employed by any of the Source Agencies are not permitted to trade on the Contract.",
+      "Persons who hold any material, non-public information on the Underlying are not permitted to trade on the Contract."
+    ],
+    "categories": [
+      "Sports"
+    ],
+    "category": "Sports",
+    "contract_terms_url": "https://assets.kalshi.com/contract_terms/BASKETBALLGAMEWIN.pdf",
+    "contract_url": "https://assets.kalshi.com/regulatory/product-certifications/BASKETBALLGAMEWIN.pdf",
+    "exchange_index": 3,
+    "fee_multiplier": 1,
+    "fee_type": "quadratic_with_maker_fees",
+    "frequency": "custom",
+    "last_updated_ts": "2026-10-14T17:19:35.743246Z",
+    "product_metadata": {
+      "scope": "Game"
+    },
+    "settlement_sources": [
+      {
+        "name": "the Governing League",
+        "url": "https://www.nba.com"
+      },
+      {
+        "name": "ESPN",
+        "url": "https://www.espn.com"
+      }
+    ],
+    "tags": [
+      "Basketball"
+    ],
+    "ticker": "KXNBAGAME",
+    "title": "NBA Game"
+  }
+}

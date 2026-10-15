@@ -119,8 +119,8 @@ class TestListMarkets:
         assert markets[0].outcomes == ["Yes", "No"]
         assert markets[0].yes_price == pytest.approx(float(raw["last_price_dollars"]))
         assert markets[0].no_price == pytest.approx(1.0 - float(raw["last_price_dollars"]))
-        assert markets[0].yes_token_id == raw["ticker"]
-        assert markets[0].no_token_id == raw["ticker"]
+        assert markets[0].yes_token_id == f"kalshi:{raw['ticker']}"
+        assert markets[0].no_token_id == f"kalshi:{raw['ticker']}:no"
         assert markets[0].volume == pytest.approx(float(raw["volume_fp"]))
         assert markets[0].end_date == raw["close_time"]
         assert markets[0].tick_size == pytest.approx(0.01)
@@ -260,7 +260,7 @@ class TestGetMarket:
         market = client.get_market(raw["ticker"])
 
         assert market.condition_id == raw["ticker"]
-        assert market.slug == raw["ticker"]
+        assert market.slug == f"kalshi:{raw['ticker']}"
         assert market.tick_size == pytest.approx(
             float(raw["price_ranges"][0]["step"])
         )

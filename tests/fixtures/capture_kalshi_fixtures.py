@@ -3,6 +3,7 @@
 Run from the repo root:
 
     python3 tests/fixtures/capture_kalshi_fixtures.py
+    python3 tests/fixtures/capture_kalshi_fixtures.py --trading-only  # event/series/settled only
 
 Every JSON file next to this script is a verbatim response from the public,
 unauthenticated Kalshi REST API.  The tests replay those files through
@@ -17,6 +18,7 @@ wire, not today's.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -48,7 +50,30 @@ def _write(name: str, payload: Any) -> Any:
     return payload
 
 
+def _record_trading(client: httpx.Client, market: dict) -> None:
+    """Record what paper trading needs for ``market``: its event (for the
+    series ticker), that series (fee type and multiplier), and one settled
+    market of the same series (resolution)."""
+    event = _write("kalshi_event.json", _get(client, f"/events/{market['event_ticker']}"))
+    series_ticker = event["event"]["series_ticker"]
+    _write("kalshi_series.json", _get(client, f"/series/{series_ticker}"))
+    settled = _get(
+        client, "/markets", {"limit": 1, "status": "settled", "series_ticker": series_ticker}
+    )
+    _write(
+        "kalshi_market_settled.json",
+        _get(client, f"/markets/{settled['markets'][0]['ticker']}"),
+    )
+
+
 def main() -> int:
+    if "--trading-only" in sys.argv:
+        # Re-record only the trading fixtures for the already-recorded market.
+        market = json.loads((HERE / "kalshi_market.json").read_text(encoding="utf-8"))
+        with httpx.Client(timeout=TIMEOUT) as client:
+            _record_trading(client, market["market"])
+        return 0
+
     with httpx.Client(timeout=TIMEOUT) as client:
         page1 = _get(
             client,
@@ -90,6 +115,7 @@ def main() -> int:
             "kalshi_orderbook.json",
             _get(client, f"/markets/{ticker}/orderbook", {"depth": ORDERBOOK_DEPTH}),
         )
+        _record_trading(client, _get(client, f"/markets/{ticker}")["market"])
     print(f"ticker: {ticker}")
     return 0
 
