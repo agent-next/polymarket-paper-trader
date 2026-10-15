@@ -159,7 +159,7 @@ Verified 2026-10-14 against two Kalshi primary sources:
   The same filing lists a 0.035 coefficient for the INX/NASDAQ100 series, which is
   why the per-series `fee_multiplier` below must be read, not assumed.
 - Maker and current rounding: the current schedule ("Fee Schedule for July 2026 -
-  7.7.26 Update", the PDF above) gives `round up(M x 0.0175 x C x P x (1-P))` and
+  7.7.26 Update", the kalshi.com PDF linked at the top of this section) gives `round up(M x 0.0175 x C x P x (1-P))` and
   rounds up "such that the fee + positionCost is rounded to a centicent". kalshi.com
   answers automated fetches with HTTP 429, so this line is quoted from the search
   index's copy of that PDF. It matches the API's fee-rounding doc
