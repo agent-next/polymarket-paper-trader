@@ -150,10 +150,22 @@ P = the price of a contract in dollars (50 cents is 0.5)
 C = the number of contracts being traded
 ```
 
-`(unverified)` — the two coefficients are quoted from the search-indexed copy
-of that PDF; a direct fetch of `kalshi.com/docs/kalshi-fee-schedule.pdf`
-returned **HTTP 429** at capture time (2026-10-14). Re-verify against the PDF
-before implementing fee simulation. Everything else in this section is verified.
+Verified 2026-10-14 against two Kalshi primary sources:
+
+- Taker: Kalshi's fee schedule as filed with the CFTC
+  (<https://www.cftc.gov/sites/default/files/filings/orgrules/22/09/rule091222kexdcm003.pdf>)
+  gives `fees = round up(0.07 x C x P x (1-P))` ("rounds to the next cent"), and
+  its table matches it (100 contracts at $0.50 cost $1.75; at $0.10, $0.63).
+  The same filing lists a 0.035 coefficient for the INX/NASDAQ100 series, which is
+  why the per-series `fee_multiplier` below must be read, not assumed.
+- Maker and current rounding: the current schedule ("Fee Schedule for July 2026 -
+  7.7.26 Update", the PDF above) gives `round up(M x 0.0175 x C x P x (1-P))` and
+  rounds up "such that the fee + positionCost is rounded to a centicent". kalshi.com
+  answers automated fetches with HTTP 429, so this line is quoted from the search
+  index's copy of that PDF. It matches the API's fee-rounding doc
+  (<https://docs.kalshi.com/getting_started/fee_rounding>): the model fee is rounded
+  up to $0.000001, then the balance change is aligned to $0.0001 (a centicent) for
+  direct members or $0.01 for FCM-cleared members via a rounding fee and rebate.
 
 What the API does publish, verified live on `GET /series/{ticker}`:
 
@@ -307,9 +319,6 @@ Same rules as `api.py`, so the two clients read alike:
 
 ## Open questions
 
-- `(unverified)` Fee coefficients 0.07 / 0.0175 and the exact rounding
-  interaction with a fill — the Fee Schedule PDF 429'd at capture time; re-read
-  it before implementing.
 - `(unverified)` Whether `market_type: "scalar"` markets ever need to reach an
   agent. Parsing works; resolution does not (the engine assumes a binary
   YES/NO payout).
