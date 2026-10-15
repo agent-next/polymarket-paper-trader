@@ -9,7 +9,9 @@ from pathlib import Path
 
 import click
 
+from pm_trader.db import Database
 from pm_trader.engine import Engine
+from pm_trader.kalshi_api import KalshiClient
 from pm_trader.models import SimError, is_valid_account_name
 
 DEFAULT_DATA_DIR = Path.home() / ".pm-trader"
@@ -289,6 +291,95 @@ def book(ctx: click.Context, slug_or_id: str, depth: int) -> None:
         sys.exit(1)
     finally:
         engine.close()
+
+
+# ---------------------------------------------------------------------------
+# Kalshi (read-only market data)
+# ---------------------------------------------------------------------------
+
+@main.group()
+def kalshi() -> None:
+    """Read-only Kalshi market data (no trading)."""
+    pass
+
+
+def _kalshi_client(ctx: click.Context) -> KalshiClient:
+    db = Database(_get_account_dir(ctx))
+    db.init_schema()
+    return KalshiClient(db)
+
+
+def _close_kalshi(client: KalshiClient) -> None:
+    client.close()
+    client.db.close()
+
+
+@kalshi.command("markets")
+@click.option("--limit", type=click.IntRange(min=1, max=100), default=20)
+@click.option(
+    "--status", type=click.Choice(["open", "closed", "settled"]), default="open"
+)
+@click.option("--series", "series_ticker", default=None, help="Filter by series ticker.")
+@click.option("--event", "event_ticker", default=None, help="Filter by event ticker.")
+@click.pass_context
+def kalshi_markets(
+    ctx: click.Context,
+    limit: int,
+    status: str,
+    series_ticker: str | None,
+    event_ticker: str | None,
+) -> None:
+    """List Kalshi markets."""
+    client = _kalshi_client(ctx)
+    try:
+        result = client.list_markets(
+            limit=limit, status=status,
+            series_ticker=series_ticker, event_ticker=event_ticker,
+        )
+        click.echo(_ok(result))
+    except SimError as e:
+        click.echo(_err(e))
+        sys.exit(1)
+    finally:
+        _close_kalshi(client)
+
+
+@kalshi.command("market")
+@click.argument("ticker")
+@click.pass_context
+def kalshi_market(ctx: click.Context, ticker: str) -> None:
+    """Get one Kalshi market by ticker."""
+    client = _kalshi_client(ctx)
+    try:
+        click.echo(_ok(client.get_market(ticker)))
+    except SimError as e:
+        click.echo(_err(e))
+        sys.exit(1)
+    finally:
+        _close_kalshi(client)
+
+
+@kalshi.command("book")
+@click.argument("ticker")
+@click.option("--depth", type=click.IntRange(min=1), default=10, help="Number of levels to show.")
+@click.pass_context
+def kalshi_book(ctx: click.Context, ticker: str, depth: int) -> None:
+    """Show the YES order book for a Kalshi market."""
+    client = _kalshi_client(ctx)
+    try:
+        ob = client.get_order_book(ticker)
+        bids = sorted(ob.bids, key=lambda l: l.price, reverse=True)[:depth]
+        asks = sorted(ob.asks, key=lambda l: l.price)[:depth]
+        click.echo(_ok({
+            "ticker": ticker,
+            "bids": [{"price": l.price, "size": l.size} for l in bids],
+            "asks": [{"price": l.price, "size": l.size} for l in asks],
+        }))
+    except SimError as e:
+        click.echo(_err(e))
+        sys.exit(1)
+    finally:
+        _close_kalshi(client)
 
 
 # ---------------------------------------------------------------------------

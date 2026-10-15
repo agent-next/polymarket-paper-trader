@@ -28,6 +28,7 @@ from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.types import ToolAnnotations
 
 from pm_trader.engine import Engine
+from pm_trader.kalshi_api import KalshiClient
 from pm_trader.models import is_valid_account_name
 from pm_trader.remote_auth import (
     RemoteAuthConfig,
@@ -415,6 +416,74 @@ def get_order_book(slug_or_id: str, outcome: str = "yes") -> str:
             "outcome": outcome.lower(),
             "asks": [{"price": a.price, "size": a.size} for a in book.asks],
             "bids": [{"price": b.price, "size": b.size} for b in book.bids],
+        })
+    except Exception as e:
+        return _err_from(e, "order_book_error")
+
+
+_KALSHI_STATUSES = ("open", "closed", "settled")
+
+
+@_tool(title="List Kalshi markets", annotations=_READ_ONLY_LIVE)
+def kalshi_markets(
+    limit: int = 20,
+    status: str = "open",
+    series_ticker: str | None = None,
+    event_ticker: str | None = None,
+) -> str:
+    """List Kalshi markets (read-only; trading stays on Polymarket).
+
+    ``status`` is open, closed or settled; ``series_ticker`` / ``event_ticker``
+    narrow the list. Each market's ``slug`` is its Kalshi ticker.
+    """
+    if status not in _KALSHI_STATUSES:
+        return _err(f"status must be one of {', '.join(_KALSHI_STATUSES)}", "invalid_status")
+    try:
+        client = KalshiClient(_get_engine().db)
+        try:
+            markets = client.list_markets(
+                limit=_clamp_limit(limit), status=status,
+                series_ticker=series_ticker, event_ticker=event_ticker,
+            )
+        finally:
+            client.close()
+        return _ok([_market_to_dict(m) for m in markets])
+    except Exception as e:
+        return _err_from(e)
+
+
+@_tool(title="Get Kalshi market", annotations=_READ_ONLY_LIVE)
+def kalshi_market(ticker: str) -> str:
+    """Get one Kalshi market by ticker (read-only)."""
+    try:
+        client = KalshiClient(_get_engine().db)
+        try:
+            m = client.get_market(ticker)
+        finally:
+            client.close()
+        return _ok(_market_to_dict(m))
+    except Exception as e:
+        return _err_from(e, "market_not_found")
+
+
+@_tool(title="Get Kalshi order book", annotations=_READ_ONLY_LIVE)
+def kalshi_book(ticker: str, depth: int = 10) -> str:
+    """Get the live YES order book for a Kalshi market, best levels first.
+
+    Kalshi publishes bids only; the asks are derived from the NO bids
+    (a NO bid at p is a YES ask at 1 - p).
+    """
+    try:
+        client = KalshiClient(_get_engine().db)
+        try:
+            book = client.get_order_book(ticker)
+        finally:
+            client.close()
+        depth = _clamp_limit(depth)
+        return _ok({
+            "ticker": ticker,
+            "asks": [{"price": a.price, "size": a.size} for a in book.asks[:depth]],
+            "bids": [{"price": b.price, "size": b.size} for b in book.bids[:depth]],
         })
     except Exception as e:
         return _err_from(e, "order_book_error")
