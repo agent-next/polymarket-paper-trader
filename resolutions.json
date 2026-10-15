@@ -234,6 +234,16 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-11T16:25:16Z"
   },
+  "col1-cjf-dep-2026-08-10-dep": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-15T11:40:18Z"
+  },
+  "cze1-bop-fmb-2026-08-29-bop": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-15T11:40:18Z"
+  },
   "elc-bbr-car-2026-10-10-car": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -353,6 +363,21 @@
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-10-11T13:02:47Z"
+  },
+  "elon-musk-of-tweets-october-9-october-16-2026-180-199": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-15T11:40:18Z"
+  },
+  "elon-musk-of-tweets-october-9-october-16-2026-200-219": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-15T11:40:18Z"
+  },
+  "elon-musk-of-tweets-october-9-october-16-2026-220-239": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-15T11:40:18Z"
   },
   "elon-musk-of-tweets-september-22-september-29-2026-160-179": {
     "outcome": 0,
@@ -839,6 +864,16 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-14T12:03:36Z"
   },
+  "ucl-ast-fen-2026-10-14-ast": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-15T11:40:18Z"
+  },
+  "ucl-ast-fen-2026-10-14-fen": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-15T11:40:18Z"
+  },
   "ucl-atm-mnu-2026-10-13-atm": {
     "outcome": 1,
     "resolution_source": "uma",
@@ -853,6 +888,21 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-14T12:03:36Z"
+  },
+  "ucl-bog-bvb-2026-10-14-bog": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-15T11:40:18Z"
+  },
+  "ucl-bog-bvb-2026-10-14-bvb": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-15T11:40:18Z"
+  },
+  "ucl-fey-com-2026-10-14-com": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-15T11:40:18Z"
   },
   "ucl-gal-fcb-2026-10-13-draw": {
     "outcome": 0,
@@ -879,10 +929,55 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-14T12:03:36Z"
   },
+  "ucl-lin2-liv-2026-10-14-lin2": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-15T11:40:18Z"
+  },
+  "ucl-lin2-liv-2026-10-14-liv": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-15T11:40:18Z"
+  },
+  "ucl-mnc-psg-2026-10-14-mnc": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-15T11:40:18Z"
+  },
+  "ucl-mnc-psg-2026-10-14-psg": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-15T11:40:18Z"
+  },
   "ucl-rbl-psv-2026-10-13-rbl": {
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-10-14T12:03:36Z"
+  },
+  "ucl-rom-rma-2026-10-14-draw": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-15T11:40:18Z"
+  },
+  "ucl-rom-rma-2026-10-14-rma": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-15T11:40:18Z"
+  },
+  "ucl-rom-rma-2026-10-14-rom": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-15T11:40:18Z"
+  },
+  "ucl-sba-stu-2026-10-14-sba": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-15T11:40:18Z"
+  },
+  "ucl-sba-stu-2026-10-14-stu": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-15T11:40:18Z"
   },
   "ucl-sf-slp-2026-10-13-slp": {
     "outcome": 0,
@@ -1254,6 +1349,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-12T15:40:29Z"
   },
+  "will-bitcoin-dip-to-80k-on-october-14-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-15T11:40:18Z"
+  },
   "will-bitcoin-dip-to-80k-on-october-9-2026": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -1268,6 +1368,11 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-14T12:03:36Z"
+  },
+  "will-bitcoin-dip-to-81k-on-october-14-2026": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-15T11:40:18Z"
   },
   "will-bitcoin-dip-to-81k-on-october-7-2026": {
     "outcome": 0,
