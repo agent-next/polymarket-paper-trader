@@ -236,6 +236,17 @@ class TestAccountCap:
             check_account_cap(tmp_path, "b", 1)
         assert exc.value.code == "ACCOUNT_LIMIT"
 
+    def test_default_is_outside_the_cap(self, tmp_path):
+        # A cache-only default dir does not use up a named slot ...
+        (tmp_path / "default").mkdir()
+        check_account_cap(tmp_path, "a", 1)
+        (tmp_path / "a").mkdir()
+        with pytest.raises(AccountLimitError):
+            check_account_cap(tmp_path, "b", 1)
+        # ... and default itself is always allowed, even at the cap.
+        (tmp_path / "default").rmdir()
+        check_account_cap(tmp_path, "default", 1)
+
     def test_local_mode_has_no_account_cap(self, tmp_path):
         """Negative control: 25 accounts in local mode, all fine."""
         with (

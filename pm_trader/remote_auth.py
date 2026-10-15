@@ -245,13 +245,19 @@ def acquire_server_lock() -> IO[str]:
 
 
 def check_account_cap(root: Path, account: str, max_accounts: int) -> None:
-    """Refuse to create account number ``max_accounts + 1`` under `root`.
+    """Refuse to create named account number ``max_accounts + 1`` under `root`.
 
+    ``default`` is outside the cap: market tools create it implicitly as a
+    cache, so it neither counts against nor is limited by `max_accounts`.
     Existing accounts always pass, so a subject at the cap keeps working.
     """
-    if (root / account).exists():
+    if account == "default" or (root / account).exists():
         return
-    existing = sum(1 for p in root.iterdir() if p.is_dir()) if root.is_dir() else 0
+    existing = (
+        sum(1 for p in root.iterdir() if p.is_dir() and p.name != "default")
+        if root.is_dir()
+        else 0
+    )
     if existing >= max_accounts:
         raise AccountLimitError(
             f"Account limit reached: at most {max_accounts} accounts per user"
