@@ -20,10 +20,13 @@ from pm_trader.engine import Engine, _maker_fee, _VenueRouter
 from pm_trader.kalshi_api import KALSHI_BASE, KalshiClient, _fee_schedule
 from pm_trader.models import (
     ApiError,
+    Fill,
+    FillResult,
     Market,
     OrderBook,
     OrderBookLevel,
     OrderRejectedError,
+    TickSizeViolationError,
 )
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -281,20 +284,82 @@ def _market(schedule: dict | None) -> Market:
     )
 
 
+def _fill(fee: float, *levels: tuple[float, float]) -> FillResult:
+    return FillResult(
+        filled=True, avg_price=0.5, total_cost=0.0, total_shares=0.0, fee=fee,
+        slippage_bps=0.0, levels_filled=len(levels), is_partial=False,
+        fills=[Fill(price=p, shares=c, cost=p * c, level=i) for i, (p, c) in enumerate(levels)],
+    )
+
+
 class TestMakerFee:
     def test_no_schedule_pays_the_taker_fee(self) -> None:
-        assert _maker_fee(_market(None), 0.8) == 0.8
+        assert _maker_fee(_market(None), _fill(0.8)) == 0.8
 
     def test_taker_only_pays_nothing(self) -> None:
-        assert _maker_fee(_market({"rate": 0.07, "takerOnly": True}), 0.8) == 0.0
+        assert _maker_fee(_market({"rate": 0.07, "takerOnly": True}), _fill(0.8)) == 0.0
 
-    def test_maker_rate_scales_the_fee(self) -> None:
-        schedule = {"rate": 0.07, "takerOnly": False, "makerRate": 0.0175}
-        assert _maker_fee(_market(schedule), 0.8) == pytest.approx(0.2)
+    def test_maker_rate_is_charged_per_filled_level(self) -> None:
+        schedule = {"rate": 0.07, "exponent": 1, "takerOnly": False, "makerRate": 0.0175}
+        fee = _maker_fee(_market(schedule), _fill(9.9, (0.50, 1.0), (0.60, 10.0)))
+        assert fee == pytest.approx(0.0175 * 0.25 + 10 * 0.0175 * 0.24, abs=2e-5)
 
     def test_schedule_without_maker_rate_pays_the_taker_fee(self) -> None:
-        assert _maker_fee(_market({"rate": 0.07}), 0.8) == 0.8
-        assert _maker_fee(_market({"rate": 0, "makerRate": 0.01}), 0.8) == 0.8
+        assert _maker_fee(_market({"rate": 0.07}), _fill(0.8)) == 0.8
+
+
+class TestKalshiOrderRules:
+    def test_sub_dollar_buy_and_sell_are_allowed(self, engine, httpx_mock) -> None:
+        _serve(httpx_mock)
+
+        bought = engine.buy(SLUG, "yes", 0.30)
+        sold = engine.sell(SLUG, "yes", bought.trade.shares)
+
+        assert bought.trade.shares == pytest.approx(0.5)
+        assert sold.trade.shares == pytest.approx(0.5)
+
+    def test_non_positive_amount_is_rejected(self, engine) -> None:
+        with pytest.raises(OrderRejectedError, match="must be positive"):
+            engine.buy(SLUG, "yes", 0.0)
+
+    def test_sub_dollar_limit_buy_rests(self, engine, httpx_mock) -> None:
+        _serve(httpx_mock)
+
+        order = engine.place_limit_order(SLUG, "yes", "buy", 0.5, 0.55)
+
+        assert order["status"] == "pending"
+
+    def test_limit_price_uses_the_band_it_falls_in(self, engine, httpx_mock) -> None:
+        banded = MARKET | {"price_ranges": [
+            {"start": "0.0000", "end": "0.1000", "step": "0.0010"},
+            {"start": "0.1000", "end": "0.9000", "step": "0.0100"},
+            {"start": "0.9000", "end": "1.0000", "step": "0.0010"},
+        ]}
+        _serve(httpx_mock, market=banded)
+
+        fine = engine.place_limit_order(SLUG, "yes", "buy", 2.0, 0.055)
+        no_fine = engine.place_limit_order(SLUG, "no", "buy", 2.0, 0.055)  # YES 0.945
+        with pytest.raises(TickSizeViolationError):
+            engine.place_limit_order(SLUG, "yes", "buy", 2.0, 0.555)
+
+        assert fine["status"] == no_fine["status"] == "pending"
+
+    def test_tick_outside_every_band_falls_back_to_the_finest(self, client, httpx_mock) -> None:
+        httpx_mock.add_response(json={"market": MARKET})
+
+        assert client.get_tick_size(SLUG, price=1.5) == pytest.approx(0.01)
+
+    def test_malformed_band_is_skipped(self, client, httpx_mock) -> None:
+        ranges = ["junk", {"start": "0.0000", "end": "1.0000", "step": "0.0010"}]
+        httpx_mock.add_response(json={"market": MARKET | {"price_ranges": ranges}})
+
+        assert client.get_tick_size(SLUG, price=0.5) == pytest.approx(0.001)
+
+    def test_scalar_market_is_not_tradable(self, engine, httpx_mock) -> None:
+        _serve(httpx_mock, market=MARKET | {"market_type": "scalar"})
+
+        with pytest.raises(OrderRejectedError, match="scalar market"):
+            engine.buy(SLUG, "yes", 5.0)
 
 
 class TestVenueRouter:
@@ -329,3 +394,4 @@ class TestVenueRouter:
         router.close()
         db.close()
         assert first._http.is_closed
+        assert router._kalshi is None

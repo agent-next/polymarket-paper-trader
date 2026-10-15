@@ -11,6 +11,8 @@ All notable changes to `polymarket-paper-trader` are documented here.
   YES book, fees come from the series' `fee_type`/`fee_multiplier` (taker
   `0.07 x M`, maker `0.0175 x M` on maker-fee series; unmodelled fee types
   refuse the trade), and a market resolves only once Kalshi has determined it.
+  Kalshi orders have no $1 minimum, limit prices are checked against the price
+  band they fall in, and scalar markets are not tradable.
   See `docs/kalshi.md` "Paper trading".
 
 ### Changed

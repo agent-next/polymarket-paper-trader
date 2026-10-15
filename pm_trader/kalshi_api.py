@@ -204,6 +204,13 @@ class KalshiClient:
         and :meth:`get_fee_rate` then refuses the trade.
         """
         payload = self._get_market_payload(ticker)
+        market_type = payload.get("market_type") or "binary"
+        if market_type != "binary":
+            # The engine pays $1 to a YES or NO winner; a scalar payout could
+            # never resolve, so such a market must not be traded at all.
+            raise OrderRejectedError(
+                f"Kalshi {market_type} market '{ticker}' is not tradable (binary only)"
+            )
         market = _parse_market(payload)
         event_ticker = payload.get("event_ticker")
         if event_ticker:
@@ -287,12 +294,23 @@ class KalshiClient:
             f"Kalshi market '{token_id}' has a fee type pm-trader does not model"
         )
 
-    def get_tick_size(self, token_id: str) -> float:
-        """The market's price grid step (cached with the market metadata)."""
+    def get_tick_size(self, token_id: str, price: float | None = None) -> float:
+        """The price grid step at ``price`` (cached with the market metadata).
+
+        ``price_ranges`` bands are in YES terms, so a NO price ``p`` is looked
+        up at ``1 - p``.  Without a price, or outside every band, the finest
+        step of the market.
+        """
         ticker = _strip_prefix(token_id)
-        if ticker.endswith(_NO_SUFFIX):
+        no_side = ticker.endswith(_NO_SUFFIX)
+        if no_side:
             ticker = ticker[: -len(_NO_SUFFIX)]
-        return self.get_market(ticker).tick_size
+        payload = self._get_market_payload(ticker)
+        if price is not None:
+            step = _band_step(payload, 1.0 - price if no_side else price)
+            if step > 0.0:
+                return step
+        return _tick_size(payload)
 
 
 # ---------------------------------------------------------------------------
@@ -374,6 +392,17 @@ def _tick_size(data: dict) -> float:
     ]
     steps = [step for step in steps if step > 0.0]
     return min(steps) if steps else 0.0
+
+
+def _band_step(data: dict, price: float) -> float:
+    """Step of the ``price_ranges`` band containing ``price`` (0.0 if none)."""
+    for band in data.get("price_ranges") or []:
+        if not isinstance(band, dict):
+            continue
+        start, end = _to_float(band.get("start")), _to_float(band.get("end"))
+        if start <= price <= end:
+            return _to_float(band.get("step"))
+    return 0.0
 
 
 def _parse_market_list(data: list) -> list[Market]:
