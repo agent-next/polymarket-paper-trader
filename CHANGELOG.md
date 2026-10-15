@@ -19,6 +19,9 @@ All notable changes to `polymarket-paper-trader` are documented here.
 ### Fixed
 - `ACCOUNT_LIMIT` / `RATE_LIMITED` keep their code when a tool such as
   `get_balance` supplies its own error code.
+- The account cap now applies only to `init_account`; reads on unknown accounts
+  return `not_initialized` without creating a directory, and market tools work
+  at the cap. `fcntl` is imported lazily, so Windows can still run local mode.
 
 ## [0.4.12] - 2026-10-15
 

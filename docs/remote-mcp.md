@@ -95,6 +95,12 @@ deletes every `~/.pm-trader/remote/<digest>/` whose newest file is older than
 under the remote users root qualify, symlinks are skipped, and `prune_remote()`
 raises for any other root.
 
+The account cap is checked only where an account is created (`init_account`).
+In remote mode a read on an account that does not exist returns
+`not_initialized` and creates no directory, so typos do not consume quota, and
+market tools (`search_markets`, `list_markets`, ...) keep working at the cap.
+Remote mode needs a POSIX host (`fcntl` lock); local modes do not.
+
 `ACCOUNT_LIMIT` and `RATE_LIMITED` are never relabelled by a tool's own error
 code (for example `get_balance` on a new name at the cap).
 

@@ -30,7 +30,7 @@ from mcp.types import ToolAnnotations
 
 from pm_trader.engine import Engine
 from pm_trader.kalshi_api import KalshiClient
-from pm_trader.models import is_valid_account_name
+from pm_trader.models import NotInitializedError, is_valid_account_name
 from pm_trader.remote_auth import (
     DEFAULT_IDLE_DAYS,
     DEFAULT_MAX_ACCOUNTS,
@@ -295,14 +295,23 @@ def _rate_limit_error() -> str | None:
     )
 
 
-def _get_engine(account: str = "default") -> Engine:
-    """Return the current Engine, creating if needed."""
+def _get_engine(account: str | None = None, *, create: bool = False) -> Engine:
+    """Return the current Engine, creating if needed.
+
+    ``account=None`` is the account-independent path (market tools): the
+    ``default`` directory is used as a data cache. In remote mode an *explicit*
+    account that does not exist yet raises ``NotInitializedError`` instead of
+    creating a directory, unless ``create`` is set (``init_account`` only), and
+    creating one is subject to the per-subject account cap.
+    """
     global _engine
-    account = _validate_account_name(account)
+    name = _validate_account_name("default" if account is None else account)
     root = _data_root()
-    if _remote is not None:
-        check_account_cap(root, account, _remote.max_accounts)
-    data_dir = root / account
+    data_dir = root / name
+    if _remote is not None and account is not None and not data_dir.exists():
+        if not create:
+            raise NotInitializedError()
+        check_account_cap(root, name, _remote.max_accounts)
     if _engine is None or _engine.db.data_dir != data_dir:
         if _engine is not None:
             _engine.close()
@@ -367,7 +376,7 @@ def init_account(balance: float = 10_000.0, account: str = "default") -> str:
     Creates a new account or resets an existing one.
     """
     try:
-        engine = _get_engine(account)
+        engine = _get_engine(account, create=True)
         acct = engine.init_account(balance)
         return _ok({
             "cash": acct.cash,
