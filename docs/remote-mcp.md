@@ -95,7 +95,7 @@ deletes every `~/.pm-trader/remote/<digest>/` whose newest file is older than
 under the remote users root qualify, symlinks are skipped, and `prune_remote()`
 raises for any other root.
 
-The account cap is checked only where an account is created (`init_account`).
+The account cap is checked only where an account is created (`init_account`). The `default` account is outside the cap: market tools create it implicitly, so a subject gets `default` plus up to `--max-accounts` named accounts.
 In remote mode a read on an account that does not exist returns
 `not_initialized` and creates no directory, so typos do not consume quota, and
 market tools (`search_markets`, `list_markets`, ...) keep working at the cap.
