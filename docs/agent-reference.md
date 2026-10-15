@@ -45,7 +45,7 @@ never wired into an automated gate.
 
 ## Project state (2026-10-14)
 
-Current release: **v0.4.11** (PyPI + ClawHub + GitHub Releases, all `latest`). The client is
+Current release: **v0.4.12** (PyPI + ClawHub + GitHub Releases, all `latest`). The client is
 aligned with the current official API surface (Gamma keyset pagination, CLOB market data,
 Data API v2 price history) and the fee simulation follows the official per-match curve.
 Live e2e tests run weekly on CI (`live.yml`) and include bias assertions: simulated fills
@@ -70,7 +70,8 @@ v0.4.6 MCP tool annotations + MCP Apps portfolio view · v0.4.7 opt-in authentic
 remote MCP mode (`docs/remote-mcp.md`) · v0.4.8 JWKS outage backoff ·
 v0.4.9 MCP Apps market card + order ticket, README leads with MCP hosts ·
 v0.4.10 MCPB bundle on each release, Kalshi spec + read-only market data client ·
-v0.4.11 read-only Kalshi CLI + MCP tools (`kalshi markets|market|book`).
+v0.4.11 read-only Kalshi CLI + MCP tools (`kalshi markets|market|book`) ·
+v0.4.12 Kalshi paper trading via `kalshi:<ticker>` slugs.
 
 ## Verified upstream contract facts (live-probed; the docs disagree)
 
