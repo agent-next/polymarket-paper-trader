@@ -102,6 +102,7 @@ pm-trader stats
 - **Verified fidelity.** The live test suite asserts that simulated fills land inside the band of prices the market actually quoted (Data API v2 price history) and that fees match the official curve exactly — run against real APIs on CI
 - **Upstream-aligned.** The client tracks the current Gamma / CLOB / Data API surface, contract-verified by live probes
 - **Multi-outcome markets** — any number of outcomes, not just YES/NO
+- **Kalshi too.** Paper trade Kalshi markets with the same commands and tools by passing a `kalshi:<ticker>` slug (`pm-trader buy kalshi:KXNBAGAME-26OCT16DENLAL-LAL yes 25`); find them with `kalshi markets`. Fees follow each series' published curve ([docs/kalshi.md](docs/kalshi.md))
 - **100% coverage gate** on the core package, plus end-to-end tests against the live API
 
 ## CLI commands

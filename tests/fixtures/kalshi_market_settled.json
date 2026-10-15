@@ -1,0 +1,56 @@
+{
+  "market": {
+    "can_close_early": true,
+    "close_time": "2026-10-12T22:25:11Z",
+    "created_time": "2026-10-12T00:25:17.289732Z",
+    "custom_strike": {
+      "basketball_team": "2229b01e-68eb-46ad-adf4-71a9533c84fc"
+    },
+    "early_close_condition": "This market will close and expire after a winner is declared.",
+    "event_ticker": "KXNBAGAME-26OCT12LIOPOR",
+    "exchange_index": 3,
+    "expected_expiration_time": "2026-10-12T23:00:00Z",
+    "expiration_time": "2026-10-14T20:00:00Z",
+    "expiration_value": "Portland",
+    "last_price_dollars": "0.9900",
+    "latest_expiration_time": "2026-10-14T20:00:00Z",
+    "market_type": "binary",
+    "no_ask_dollars": "1.0000",
+    "no_bid_dollars": "0.0000",
+    "no_sub_title": "Portland",
+    "notional_value_dollars": "1.0000",
+    "occurrence_datetime": "2026-10-12T23:00:00Z",
+    "open_interest_fp": "51066.01",
+    "open_time": "2026-10-12T00:30:00Z",
+    "previous_price_dollars": "0.9900",
+    "previous_yes_ask_dollars": "1.0000",
+    "previous_yes_bid_dollars": "0.0000",
+    "price_level_structure": "linear_cent",
+    "price_ranges": [
+      {
+        "end": "1.0000",
+        "start": "0.0000",
+        "step": "0.0100"
+      }
+    ],
+    "result": "yes",
+    "rules_primary": "If Portland wins the London Lions vs Portland Pro Basketball game originally scheduled for Oct 12, 2026, then the market resolves to Yes.",
+    "rules_secondary": "If the game is postponed but begins within 48 hours of its originally scheduled start time, the market will remain open and resolve based on the official final result. If the game is cancelled or not started within 48 hours of its originally scheduled start, all markets will resolve to a fair price.\n\nKalshi is not affiliated, associated, authorized, endorsed by, or in any way officially connected with the Governing League. All trademarks, logos, and brand names are the property of their respective owners.",
+    "settlement_bounds_type": "default",
+    "settlement_timer_seconds": 45,
+    "settlement_ts": "2026-10-12T22:25:59.602095Z",
+    "settlement_value_dollars": "1.0000",
+    "status": "finalized",
+    "strike_type": "structured",
+    "ticker": "KXNBAGAME-26OCT12LIOPOR-POR",
+    "title": "Portland wins",
+    "updated_time": "2026-10-12T22:25:59.929186Z",
+    "volume_24h_fp": "0.00",
+    "volume_fp": "70691.64",
+    "yes_ask_dollars": "1.0000",
+    "yes_ask_size_fp": "0.00",
+    "yes_bid_dollars": "0.0000",
+    "yes_bid_size_fp": "0.00",
+    "yes_sub_title": "Portland"
+  }
+}
