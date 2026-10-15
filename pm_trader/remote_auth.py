@@ -20,8 +20,13 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
+import re
+import shutil
 import time
-from dataclasses import dataclass
+from collections import deque
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -32,6 +37,8 @@ from jwt.algorithms import get_default_algorithms
 from mcp.server import MCPServer
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 from mcp.server.auth.settings import AuthSettings
+
+from pm_trader.models import SimError
 
 # Asymmetric signature algorithms only. ``none`` and every HS* algorithm is
 # excluded on purpose: a public JWKS key is public, so accepting an HMAC token
@@ -54,9 +61,53 @@ REMOTE_DIR = "remote"
 
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
+DEFAULT_RATE_LIMIT_PER_MINUTE = 60
+DEFAULT_MAX_ACCOUNTS = 20
+DEFAULT_IDLE_DAYS = 90
+RATE_WINDOW_SECONDS = 60.0
+
+# Per-subject directory names are the first 32 hex digits of a sha256.
+_USER_DIR_RE = re.compile(r"[0-9a-f]{32}")
+
 
 class RemoteAuthConfigError(ValueError):
     """Raised when the operator's --auth-* configuration is unusable."""
+
+
+class AccountLimitError(SimError):
+    """A remote subject tried to create more accounts than the cap allows."""
+
+    code = "ACCOUNT_LIMIT"
+
+
+class RateLimiter:
+    """In-process sliding-window limiter: `limit` calls per `window` seconds per key.
+
+    Never sleeps: `allow` answers immediately. Rejected calls are not recorded,
+    so a caller that backs off recovers as soon as old calls leave the window.
+    """
+
+    def __init__(
+        self,
+        limit: int,
+        window: float = RATE_WINDOW_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.limit = limit
+        self.window = window
+        self._clock = clock
+        self._calls: dict[str, deque[float]] = {}
+
+    def allow(self, key: str) -> bool:
+        """Record a call for `key` and return True, or return False when over the limit."""
+        now = self._clock()
+        calls = self._calls.setdefault(key, deque())
+        while calls and now - calls[0] >= self.window:
+            calls.popleft()
+        if len(calls) >= self.limit:
+            return False
+        calls.append(now)
+        return True
 
 
 @dataclass
@@ -72,9 +123,19 @@ class RemoteAuthConfig:
     issuer: str
     audience: str
     resource_url: str
+    rate_limit_per_minute: int = DEFAULT_RATE_LIMIT_PER_MINUTE
+    max_accounts: int = DEFAULT_MAX_ACCOUNTS
+    limiter: RateLimiter = field(init=False, compare=False, repr=False)
 
     def __post_init__(self) -> None:
-        """Validate the URLs up front so a misconfigured server refuses to start."""
+        """Validate the URLs and limits up front so a misconfigured server refuses to start."""
+        for value, flag in (
+            (self.rate_limit_per_minute, "rate-limit-per-minute"),
+            (self.max_accounts, "max-accounts"),
+        ):
+            if value < 1:
+                raise RemoteAuthConfigError(f"--{flag} must be at least 1: {value!r}")
+        self.limiter = RateLimiter(self.rate_limit_per_minute)
         _check_url(self.issuer, "auth-issuer")
         _check_url(self.audience, "auth-audience")
         _check_url(self.resource_url, "resource-url")
@@ -143,7 +204,81 @@ def user_root(issuer: str, subject: str) -> Path:
     if not subject:
         raise RemoteAuthConfigError("token has no subject")
     digest = hashlib.sha256(f"{issuer}\x1f{subject}".encode("utf-8")).hexdigest()
-    return Path.home() / ".pm-trader" / REMOTE_DIR / digest[:32]
+    return remote_root() / digest[:32]
+
+
+def remote_root() -> Path:
+    """Return the directory that holds every remote subject's directory."""
+    return Path.home() / ".pm-trader" / REMOTE_DIR
+
+
+def check_account_cap(root: Path, account: str, max_accounts: int) -> None:
+    """Refuse to create account number ``max_accounts + 1`` under `root`.
+
+    Existing accounts always pass, so a subject at the cap keeps working.
+    """
+    if (root / account).exists():
+        return
+    existing = sum(1 for p in root.iterdir() if p.is_dir()) if root.is_dir() else 0
+    if existing >= max_accounts:
+        raise AccountLimitError(
+            f"Account limit reached: at most {max_accounts} accounts per user"
+        )
+
+
+def _newest_mtime(directory: Path) -> float:
+    """Return the newest file mtime under `directory` (its own mtime if empty)."""
+    newest = directory.stat().st_mtime
+    for base, _dirs, files in os.walk(directory):
+        for name in files:
+            newest = max(newest, os.lstat(os.path.join(base, name)).st_mtime)
+    return newest
+
+
+def _is_user_dir(path: Path) -> bool:
+    """True only for a real (non-symlink) hashed subject directory."""
+    return (
+        _USER_DIR_RE.fullmatch(path.name) is not None
+        and not path.is_symlink()
+        and path.is_dir()
+    )
+
+
+def prune_remote(
+    idle_days: int,
+    *,
+    dry_run: bool = False,
+    root: Path | None = None,
+    now: float | None = None,
+) -> list[Path]:
+    """Delete subject directories idle for more than `idle_days`; return them.
+
+    A directory is idle when the newest file under it is older than the cutoff.
+    Only hashed subject directories that are real children of the remote users
+    root are ever touched: anything else under the root is skipped, and `root`
+    itself must be the remote users root (``~/.pm-trader/remote``), otherwise
+    `RemoteAuthConfigError` is raised before anything is read or removed.
+    With ``dry_run`` nothing is deleted.
+    """
+    users_root = remote_root()
+    if idle_days < 0:
+        raise RemoteAuthConfigError("--idle-days must not be negative")
+    if root is not None and root.resolve() != users_root.resolve():
+        raise RemoteAuthConfigError(
+            f"refusing to prune {root}: only {users_root} may be pruned"
+        )
+    if not users_root.is_dir():
+        return []
+    cutoff = (time.time() if now is None else now) - idle_days * 86400.0
+    stale = [
+        p
+        for p in sorted(users_root.iterdir())
+        if _is_user_dir(p) and _newest_mtime(p) < cutoff
+    ]
+    if not dry_run:
+        for path in stale:
+            shutil.rmtree(path)
+    return stale
 
 
 class RemoteTokenVerifier(TokenVerifier):

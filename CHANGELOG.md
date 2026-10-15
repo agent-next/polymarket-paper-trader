@@ -4,6 +4,14 @@ All notable changes to `polymarket-paper-trader` are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Remote MCP abuse limits** (authenticated remote mode only): a per-subject
+  rate limit on tool calls (`--rate-limit-per-minute`, default 60, error code
+  `RATE_LIMITED`), a per-subject account cap (`--max-accounts`, default 20,
+  `ACCOUNT_LIMIT`), and `pm-trader-mcp prune-remote --idle-days N [--dry-run]`
+  to delete idle subject directories. Local stdio and unauthenticated HTTP are
+  unchanged. See `docs/remote-mcp.md` "Abuse limits".
+
 ## [0.4.12] - 2026-10-15
 
 ### Added
