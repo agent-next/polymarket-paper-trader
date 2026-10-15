@@ -4,24 +4,29 @@
       "properties": {
         "balance": {
           "default": 10000.0,
+          "description": "Starting USD balance. Default 10000.",
           "title": "Balance",
           "type": "number"
         },
         "data_path": {
+          "description": "Path to a CSV or JSON file of price snapshots (timestamp, market_slug, outcome, midpoint); must be under the home directory or /tmp.",
           "title": "Data Path",
           "type": "string"
         },
         "depth": {
           "default": 500.0,
+          "description": "Synthetic order-book size in shares at each price level. Default 500.",
           "title": "Depth",
           "type": "number"
         },
         "spread": {
           "default": 0.02,
+          "description": "Synthetic order-book spread as a price fraction (0.02 = 2 cents). Default 0.02.",
           "title": "Spread",
           "type": "number"
         },
         "strategy_path": {
+          "description": "Dotted Python path of the strategy function, e.g. 'examples.momentum.run'; only 'examples.' modules are allowed.",
           "title": "Strategy Path",
           "type": "string"
         }
@@ -52,23 +57,28 @@
       "properties": {
         "account": {
           "default": "default",
+          "description": "Paper account name (letters, digits, hyphen, underscore); each name is a separate local account. Default 'default'.",
           "title": "Account",
           "type": "string"
         },
         "amount_usd": {
+          "description": "USD to spend, e.g. 100. Minimum 1.0 on Polymarket; no minimum on Kalshi.",
           "title": "Amount Usd",
           "type": "number"
         },
         "order_type": {
           "default": "fok",
+          "description": "'fok' (fill-or-kill: all or nothing) or 'fak' (fill-and-kill: partial fills allowed). Default 'fok'.",
           "title": "Order Type",
           "type": "string"
         },
         "outcome": {
+          "description": "Outcome to trade, e.g. 'yes' or 'no' (case-insensitive); must match one of the market's outcomes.",
           "title": "Outcome",
           "type": "string"
         },
         "slug_or_id": {
+          "description": "Market slug or condition ID. For a Kalshi market use the slug 'kalshi:<TICKER>', e.g. 'kalshi:KXNBAGAME-26OCT16DENLAL-LAL'.",
           "title": "Slug Or Id",
           "type": "string"
         }
@@ -100,6 +110,7 @@
       "properties": {
         "account": {
           "default": "default",
+          "description": "Paper account name (letters, digits, hyphen, underscore); each name is a separate local account. Default 'default'.",
           "title": "Account",
           "type": "string"
         }
@@ -126,10 +137,12 @@
       "properties": {
         "account": {
           "default": "default",
+          "description": "Paper account name (letters, digits, hyphen, underscore); each name is a separate local account. Default 'default'.",
           "title": "Account",
           "type": "string"
         },
         "order_id": {
+          "description": "ID of the pending order, from place_limit_order or list_orders.",
           "title": "Order Id",
           "type": "integer"
         }
@@ -159,6 +172,7 @@
       "properties": {
         "account": {
           "default": "default",
+          "description": "Paper account name (letters, digits, hyphen, underscore); each name is a separate local account. Default 'default'.",
           "title": "Account",
           "type": "string"
         }
@@ -185,6 +199,7 @@
       "properties": {
         "account": {
           "default": "default",
+          "description": "Paper account name (letters, digits, hyphen, underscore); each name is a separate local account. Default 'default'.",
           "title": "Account",
           "type": "string"
         }
@@ -210,6 +225,7 @@
     "inputSchema": {
       "properties": {
         "slug": {
+          "description": "Polymarket event slug, e.g. the event part of a polymarket.com/event/ URL.",
           "title": "Slug",
           "type": "string"
         }
@@ -238,6 +254,7 @@
     "inputSchema": {
       "properties": {
         "slug_or_id": {
+          "description": "Market slug or condition ID. For a Kalshi market use the slug 'kalshi:<TICKER>', e.g. 'kalshi:KXNBAGAME-26OCT16DENLAL-LAL'.",
           "title": "Slug Or Id",
           "type": "string"
         }
@@ -267,10 +284,12 @@
       "properties": {
         "limit": {
           "default": 20,
+          "description": "Maximum markets to return, clamped to 1-100. Default 20.",
           "title": "Limit",
           "type": "integer"
         },
         "tag_slug": {
+          "description": "Tag slug from get_tags, e.g. 'politics'. An unknown slug returns an empty list.",
           "title": "Tag Slug",
           "type": "string"
         }
@@ -300,10 +319,12 @@
       "properties": {
         "outcome": {
           "default": "yes",
+          "description": "Outcome whose book to read, 'yes' or 'no'. Default 'yes'.",
           "title": "Outcome",
           "type": "string"
         },
         "slug_or_id": {
+          "description": "Market slug or condition ID. For a Kalshi market use the slug 'kalshi:<TICKER>', e.g. 'kalshi:KXNBAGAME-26OCT16DENLAL-LAL'.",
           "title": "Slug Or Id",
           "type": "string"
         }
@@ -353,11 +374,13 @@
       "properties": {
         "account": {
           "default": "default",
+          "description": "Paper account name (letters, digits, hyphen, underscore); each name is a separate local account. Default 'default'.",
           "title": "Account",
           "type": "string"
         },
         "limit": {
           "default": 50,
+          "description": "Maximum trades to return, newest first, clamped to 1-1000. Default 50.",
           "title": "Limit",
           "type": "integer"
         }
@@ -384,11 +407,13 @@
       "properties": {
         "account": {
           "default": "default",
+          "description": "Paper account name (letters, digits, hyphen, underscore); each name is a separate local account. Default 'default'.",
           "title": "Account",
           "type": "string"
         },
         "balance": {
           "default": 10000.0,
+          "description": "Starting cash in USD, e.g. 10000. Default 10000.",
           "title": "Balance",
           "type": "number"
         }
@@ -415,10 +440,12 @@
       "properties": {
         "depth": {
           "default": 10,
+          "description": "Maximum price levels per side, clamped to 1-100. Default 10.",
           "title": "Depth",
           "type": "integer"
         },
         "ticker": {
+          "description": "Kalshi market ticker, e.g. 'KXNBAGAME-26OCT16DENLAL-LAL'.",
           "title": "Ticker",
           "type": "string"
         }
@@ -447,6 +474,7 @@
     "inputSchema": {
       "properties": {
         "ticker": {
+          "description": "Kalshi market ticker, e.g. 'KXNBAGAME-26OCT16DENLAL-LAL'.",
           "title": "Ticker",
           "type": "string"
         }
@@ -484,10 +512,12 @@
             }
           ],
           "default": null,
+          "description": "Only markets in this Kalshi event ticker. Default none (all).",
           "title": "Event Ticker"
         },
         "limit": {
           "default": 20,
+          "description": "Maximum markets to return, clamped to 1-100. Default 20.",
           "title": "Limit",
           "type": "integer"
         },
@@ -501,10 +531,12 @@
             }
           ],
           "default": null,
+          "description": "Only markets in this Kalshi series ticker. Default none (all).",
           "title": "Series Ticker"
         },
         "status": {
           "default": "open",
+          "description": "'open', 'closed' or 'settled'. Default 'open'.",
           "title": "Status",
           "type": "string"
         }
@@ -531,6 +563,7 @@
       "properties": {
         "accounts": {
           "default": "",
+          "description": "Comma-separated account names to rank, e.g. 'default,aggressive'. Default empty: every account in this session's data root.",
           "title": "Accounts",
           "type": "string"
         }
@@ -557,6 +590,7 @@
       "properties": {
         "account": {
           "default": "default",
+          "description": "Paper account name (letters, digits, hyphen, underscore); each name is a separate local account. Default 'default'.",
           "title": "Account",
           "type": "string"
         }
@@ -583,11 +617,13 @@
       "properties": {
         "limit": {
           "default": 20,
+          "description": "Maximum markets to return, clamped to 1-100. Default 20.",
           "title": "Limit",
           "type": "integer"
         },
         "sort_by": {
           "default": "volume",
+          "description": "'volume' or 'liquidity', highest first. Default 'volume'.",
           "title": "Sort By",
           "type": "string"
         }
@@ -614,6 +650,7 @@
       "properties": {
         "account": {
           "default": "default",
+          "description": "Paper account name (letters, digits, hyphen, underscore); each name is a separate local account. Default 'default'.",
           "title": "Account",
           "type": "string"
         }
@@ -640,24 +677,29 @@
       "properties": {
         "balance": {
           "default": 10000.0,
+          "description": "Starting USD for each strategy. Default 10000.",
           "title": "Balance",
           "type": "number"
         },
         "name_a": {
           "default": "player_a",
+          "description": "Display name of strategy A on the PK card. Default 'player_a'.",
           "title": "Name A",
           "type": "string"
         },
         "name_b": {
           "default": "player_b",
+          "description": "Display name of strategy B on the PK card. Default 'player_b'.",
           "title": "Name B",
           "type": "string"
         },
         "strategy_a": {
+          "description": "Dotted Python path of strategy A, e.g. 'examples.momentum.run'; only 'examples.' modules are allowed.",
           "title": "Strategy A",
           "type": "string"
         },
         "strategy_b": {
+          "description": "Dotted Python path of strategy B, e.g. 'examples.contrarian.run'; only 'examples.' modules are allowed.",
           "title": "Strategy B",
           "type": "string"
         }
@@ -688,11 +730,13 @@
       "properties": {
         "account_a": {
           "default": "default",
+          "description": "First paper account name. Default 'default'.",
           "title": "Account A",
           "type": "string"
         },
         "account_b": {
           "default": "aggressive",
+          "description": "Second paper account name. Default 'aggressive'.",
           "title": "Account B",
           "type": "string"
         }
@@ -719,10 +763,12 @@
       "properties": {
         "account": {
           "default": "default",
+          "description": "Paper account name (letters, digits, hyphen, underscore); each name is a separate local account. Default 'default'.",
           "title": "Account",
           "type": "string"
         },
         "amount": {
+          "description": "For a buy, USD to spend (minimum 1.0 on Polymarket, none on Kalshi); for a sell, number of shares to sell.",
           "title": "Amount",
           "type": "number"
         },
@@ -736,26 +782,32 @@
             }
           ],
           "default": null,
+          "description": "ISO 8601 expiry timestamp, e.g. '2026-12-31T23:59:00Z'; required when order_type is 'gtd'. Default none.",
           "title": "Expires At"
         },
         "limit_price": {
+          "description": "Limit price strictly between 0 and 1, on the market's tick grid (e.g. 0.42).",
           "title": "Limit Price",
           "type": "number"
         },
         "order_type": {
           "default": "gtc",
+          "description": "'gtc' (open until filled or cancelled) or 'gtd' (expires at expires_at). Default 'gtc'.",
           "title": "Order Type",
           "type": "string"
         },
         "outcome": {
+          "description": "Outcome to trade, e.g. 'yes' or 'no' (case-insensitive); must match one of the market's outcomes.",
           "title": "Outcome",
           "type": "string"
         },
         "side": {
+          "description": "'buy' or 'sell'.",
           "title": "Side",
           "type": "string"
         },
         "slug_or_id": {
+          "description": "Market slug or condition ID. For a Kalshi market use the slug 'kalshi:<TICKER>', e.g. 'kalshi:KXNBAGAME-26OCT16DENLAL-LAL'.",
           "title": "Slug Or Id",
           "type": "string"
         }
@@ -789,6 +841,7 @@
       "properties": {
         "account": {
           "default": "default",
+          "description": "Paper account name (letters, digits, hyphen, underscore); each name is a separate local account. Default 'default'.",
           "title": "Account",
           "type": "string"
         }
@@ -815,6 +868,7 @@
       "properties": {
         "account": {
           "default": "default",
+          "description": "Paper account name (letters, digits, hyphen, underscore); each name is a separate local account. Default 'default'.",
           "title": "Account",
           "type": "string"
         }
@@ -841,10 +895,12 @@
       "properties": {
         "account": {
           "default": "default",
+          "description": "Paper account name (letters, digits, hyphen, underscore); each name is a separate local account. Default 'default'.",
           "title": "Account",
           "type": "string"
         },
         "slug_or_id": {
+          "description": "Market slug or condition ID. For a Kalshi market use the slug 'kalshi:<TICKER>', e.g. 'kalshi:KXNBAGAME-26OCT16DENLAL-LAL'.",
           "title": "Slug Or Id",
           "type": "string"
         }
@@ -874,6 +930,7 @@
       "properties": {
         "account": {
           "default": "default",
+          "description": "Paper account name (letters, digits, hyphen, underscore); each name is a separate local account. Default 'default'.",
           "title": "Account",
           "type": "string"
         }
@@ -900,10 +957,12 @@
       "properties": {
         "limit": {
           "default": 10,
+          "description": "Maximum markets to return, clamped to 1-100. Default 10.",
           "title": "Limit",
           "type": "integer"
         },
         "query": {
+          "description": "Free-text search, e.g. 'bitcoin' or 'fed rate cut'.",
           "title": "Query",
           "type": "string"
         }
@@ -933,23 +992,28 @@
       "properties": {
         "account": {
           "default": "default",
+          "description": "Paper account name (letters, digits, hyphen, underscore); each name is a separate local account. Default 'default'.",
           "title": "Account",
           "type": "string"
         },
         "order_type": {
           "default": "fok",
+          "description": "'fok' (fill-or-kill: all or nothing) or 'fak' (fill-and-kill: partial fills allowed). Default 'fok'.",
           "title": "Order Type",
           "type": "string"
         },
         "outcome": {
+          "description": "Outcome to trade, e.g. 'yes' or 'no' (case-insensitive); must match one of the market's outcomes.",
           "title": "Outcome",
           "type": "string"
         },
         "shares": {
+          "description": "Number of shares to sell, at most the shares held in that outcome.",
           "title": "Shares",
           "type": "number"
         },
         "slug_or_id": {
+          "description": "Market slug or condition ID. For a Kalshi market use the slug 'kalshi:<TICKER>', e.g. 'kalshi:KXNBAGAME-26OCT16DENLAL-LAL'.",
           "title": "Slug Or Id",
           "type": "string"
         }
@@ -981,16 +1045,19 @@
       "properties": {
         "account": {
           "default": "default",
+          "description": "Paper account name (letters, digits, hyphen, underscore); each name is a separate local account. Default 'default'.",
           "title": "Account",
           "type": "string"
         },
         "platform": {
           "default": "twitter",
+          "description": "'twitter', 'telegram', 'discord' or 'plain'. Default 'twitter'.",
           "title": "Platform",
           "type": "string"
         },
         "template": {
           "default": "performance",
+          "description": "'performance' (stats overview), 'milestone' (achievement) or 'daily' (daily report with positions). Default 'performance'.",
           "title": "Template",
           "type": "string"
         }
@@ -1017,6 +1084,7 @@
       "properties": {
         "account": {
           "default": "default",
+          "description": "Paper account name (letters, digits, hyphen, underscore); each name is a separate local account. Default 'default'.",
           "title": "Account",
           "type": "string"
         }
@@ -1043,11 +1111,13 @@
       "properties": {
         "account": {
           "default": "default",
+          "description": "Paper account name (letters, digits, hyphen, underscore); each name is a separate local account. Default 'default'.",
           "title": "Account",
           "type": "string"
         },
         "format": {
           "default": "markdown",
+          "description": "'tweet' (X/Twitter), 'markdown' (chat apps) or 'plain' (no formatting). Default 'markdown'.",
           "title": "Format",
           "type": "string"
         }
@@ -1074,10 +1144,12 @@
       "properties": {
         "outcomes": {
           "default": "yes",
+          "description": "Comma-separated outcomes to price, e.g. 'yes,no'. Default 'yes'.",
           "title": "Outcomes",
           "type": "string"
         },
         "slugs": {
+          "description": "Comma-separated market slugs or condition IDs, e.g. 'slug-a,slug-b'. Markets that cannot be fetched are skipped.",
           "title": "Slugs",
           "type": "string"
         }

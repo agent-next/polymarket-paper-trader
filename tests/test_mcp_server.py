@@ -1295,6 +1295,39 @@ class TestStdioToolSchemas:
         assert snapshot == expected
 
 
+class TestToolParamDescriptions:
+    """Every tool parameter must carry a schema description (Glama TDQS)."""
+
+    def test_every_param_has_description(self):
+        import anyio
+
+        async def _list():
+            return await mcp_server.mcp.list_tools()
+
+        tools = anyio.run(_list)
+        assert tools
+        missing = [
+            f"{t.name}.{name}"
+            for t in tools
+            for name, prop in t.input_schema["properties"].items()
+            if not prop.get("description")
+        ]
+        assert missing == []
+
+    def test_kalshi_slug_documented_on_trading_tools(self):
+        import anyio
+
+        async def _list():
+            return await mcp_server.mcp.list_tools()
+
+        tools = {t.name: t for t in anyio.run(_list)}
+        for name in ("buy", "sell", "place_limit_order", "get_order_book", "get_market"):
+            assert "kalshi:<TICKER>" in (
+                tools[name].description
+                + tools[name].input_schema["properties"]["slug_or_id"]["description"]
+            ), name
+
+
 class TestToolDispatch:
     """Registered tools execute serialized on the dedicated worker thread."""
 
