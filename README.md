@@ -1,6 +1,7 @@
 # polymarket-paper-trader
 
 [![PyPI](https://img.shields.io/pypi/v/polymarket-paper-trader.svg)](https://pypi.org/project/polymarket-paper-trader/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/polymarket-paper-trader.svg)](https://pypistats.org/packages/polymarket-paper-trader)
 [![Tests](https://github.com/agent-next/polymarket-paper-trader/actions/workflows/test.yml/badge.svg)](https://github.com/agent-next/polymarket-paper-trader/actions/workflows/test.yml)
 [![ClawHub](https://img.shields.io/badge/ClawHub-install-orange.svg)](https://clawhub.com/robotlearning123/polymarket-paper-trader)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/agent-next/polymarket-paper-trader/blob/main/LICENSE)
