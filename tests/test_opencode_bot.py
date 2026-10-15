@@ -110,6 +110,14 @@ class TestPublicBotWiring:
         assert "issue_comment" in _triggers(wf)
         assert _opencode_step("comment")["with"]["mentions"] == "/opencode,/oc"
 
+    def test_comment_job_only_starts_on_a_mention(self) -> None:
+        # Without this, every comment (other bots included) starts the job and a
+        # non-writer fails the trust gate: a red run for a comment that never
+        # asked for the bot.
+        condition = _workflow()["jobs"]["comment"]["if"]
+        for mention in ("/opencode", "/oc"):
+            assert f"contains(github.event.comment.body, '{mention}')" in condition
+
     def test_provider_key_never_enters_agent_env(self) -> None:
         # The action runs `opencode github run` with the step env, which the
         # agent's shell tools inherit. The provider key must reach the model

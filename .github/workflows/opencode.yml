@@ -32,6 +32,8 @@ jobs:
       (github.event_name == 'issue_comment' ||
        (github.event_name == 'pull_request_review_comment' &&
         github.event.pull_request.head.repo.full_name == github.repository)) &&
+      (contains(github.event.comment.body, '/oc') ||
+       contains(github.event.comment.body, '/opencode')) &&
       !startsWith(github.event.comment.body, '/oc implement')
     runs-on: ubuntu-latest
     timeout-minutes: 30
