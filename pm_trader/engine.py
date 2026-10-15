@@ -12,6 +12,8 @@ from pathlib import Path
 from pm_trader.analytics import Resolution, build_resolutions
 from pm_trader.api import PolymarketClient
 from pm_trader.db import Database
+from pm_trader.kalshi_api import PREFIX as KALSHI_PREFIX
+from pm_trader.kalshi_api import KalshiClient
 from pm_trader.models import (
     Account,
     AmbiguousResolutionError,
@@ -19,6 +21,7 @@ from pm_trader.models import (
     InsufficientBalanceError,
     InvalidOutcomeError,
     Market,
+    OrderBook,
     MarketClosedError,
     NoPositionError,
     NotInitializedError,
@@ -78,14 +81,71 @@ def _resolve_fee_rate(market: Market) -> float | None:
     return rate
 
 
-def _maker_fee_exempt(market: Market) -> bool:
-    """Whether resting (maker) fills pay no fee in this market.
+def _maker_fee(market: Market, taker_fee: float) -> float:
+    """The fee a resting (maker) fill pays, given its taker-rate fee.
 
     ``feeSchedule.takerOnly``: "When true, fees are charged to the taker side
-    only, and makers pay no fee."
+    only, and makers pay no fee."  A schedule with a ``makerRate`` (Kalshi's
+    maker-fee series) charges makers that rate on the same curve.
     """
     schedule = market.fee_schedule
-    return bool(schedule) and bool(schedule.get("takerOnly", False))
+    if not schedule:
+        return taker_fee
+    if schedule.get("takerOnly", False):
+        return 0.0
+    maker_rate = schedule.get("makerRate")
+    rate = float(schedule.get("rate", 0) or 0)
+    if maker_rate is not None and rate > 0:
+        return taker_fee * float(maker_rate) / rate
+    return taker_fee
+
+
+class _VenueRouter:
+    """Send each market call to the venue its identifier names.
+
+    Kalshi markets carry ``kalshi:``-prefixed slugs and tokens; everything else
+    is Polymarket.  Calls the engine makes per market route by identifier;
+    every other attribute (search, tags, events) is Polymarket's.  The Kalshi
+    client is created on first use.
+    """
+
+    def __init__(self, polymarket: PolymarketClient, db: Database) -> None:
+        self._polymarket = polymarket
+        self._db = db
+        self._kalshi: KalshiClient | None = None
+
+    def _venue(self, key: str):
+        if not (isinstance(key, str) and key.startswith(KALSHI_PREFIX)):
+            return self._polymarket
+        if self._kalshi is None:
+            self._kalshi = KalshiClient(self._db)
+        return self._kalshi
+
+    def get_market(self, slug_or_id: str) -> Market:
+        venue = self._venue(slug_or_id)
+        if venue is self._polymarket:
+            return venue.get_market(slug_or_id)
+        return venue.get_tradable_market(slug_or_id)
+
+    def get_order_book(self, token_id: str) -> OrderBook:
+        return self._venue(token_id).get_order_book(token_id)
+
+    def get_midpoint(self, token_id: str) -> float:
+        return self._venue(token_id).get_midpoint(token_id)
+
+    def get_fee_rate(self, token_id: str) -> int:
+        return self._venue(token_id).get_fee_rate(token_id)
+
+    def get_tick_size(self, token_id: str) -> float:
+        return self._venue(token_id).get_tick_size(token_id)
+
+    def close(self) -> None:
+        self._polymarket.close()
+        if self._kalshi is not None:
+            self._kalshi.close()
+
+    def __getattr__(self, name: str):
+        return getattr(self._polymarket, name)
 
 
 class Engine:
@@ -95,7 +155,7 @@ class Engine:
         self.db = Database(data_dir)
         self.db.init_schema()
         init_orders_schema(self.db.conn)
-        self.api = PolymarketClient(self.db)
+        self.api = _VenueRouter(PolymarketClient(self.db), self.db)
 
     def close(self) -> None:
         self.api.close()
@@ -836,7 +896,7 @@ class Engine:
         ``maker=False`` and pays the taker fee.
         """
         self._require_account()
-        fee = 0.0 if (maker and _maker_fee_exempt(market)) else fill.fee
+        fee = _maker_fee(market, fill.fee) if maker else fill.fee
         total_outflow = fill.total_cost + fee
         # One transaction for all three writes (issue #69).
         with self.db.atomic():
@@ -883,7 +943,7 @@ class Engine:
         ``maker=False`` and pays the taker fee.
         """
         self._require_account()
-        fee = 0.0 if (maker and _maker_fee_exempt(market)) else fill.fee
+        fee = _maker_fee(market, fill.fee) if maker else fill.fee
         position = self.db.get_position(market.condition_id, order.outcome)
         if position is None or position.shares <= 0:
             raise NoPositionError(market.slug, order.outcome)

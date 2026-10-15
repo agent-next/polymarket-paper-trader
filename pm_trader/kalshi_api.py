@@ -26,6 +26,7 @@ from pm_trader.models import (
     MarketNotFoundError,
     OrderBook,
     OrderBookLevel,
+    OrderRejectedError,
 )
 
 KALSHI_BASE = "https://external-api.kalshi.com/trade-api/v2"
@@ -40,6 +41,25 @@ _TIMEOUT = httpx.Timeout(10.0)
 # refused before it is pasted into a URL path, so a caller-supplied "ticker"
 # such as "../series/X" can never reach another endpoint.
 _TICKER = re.compile(r"[A-Z0-9][A-Z0-9._-]{0,127}")
+
+# Kalshi markets live in the engine under this prefix: the slug is
+# ``kalshi:<ticker>``, the YES token is the slug, the NO token is ``<slug>:no``.
+# The prefix is what routes a trade to this client instead of Polymarket.
+PREFIX = "kalshi:"
+_NO_SUFFIX = ":no"
+
+# Official schedule: taker fee = M x 0.07 x C x P x (1-P); maker fee on the
+# series that charge one = M x 0.0175 x C x P x (1-P) (docs/kalshi.md "Fees").
+_TAKER_RATE = 0.07
+_MAKER_RATE = 0.0175
+_TAKER_ONLY_FEE_TYPES = frozenset({"quadratic"})
+_MAKER_FEE_TYPES = frozenset(
+    {"quadratic_with_maker_fees", "quadratic_with_combo_maker_fees"}
+)
+
+# A market is settled for the engine only once Kalshi has determined it
+# (`disputed` can still change) and the result names a binary side.
+_DETERMINED_STATUSES = frozenset({"determined", "amended", "finalized"})
 
 # Wire statuses past trading; `initialized`/`inactive` are pre-open, not closed.
 _CLOSED_STATUSES = frozenset(
@@ -166,16 +186,38 @@ class KalshiClient:
         return _parse_market_list(list(collected.values()))[:cap]
 
     def get_market(self, ticker: str) -> Market:
-        """Resolve a market ticker to a Market.  Cached 5 minutes.
+        """Resolve a market ticker (or ``kalshi:<ticker>``) to a Market.
 
-        A 404 is a missing market (:class:`MarketNotFoundError`); every other
-        failure is an :class:`ApiError`.
+        Cached 5 minutes.  A 404 is a missing market
+        (:class:`MarketNotFoundError`); every other failure is an
+        :class:`ApiError`.  The returned market carries no fee schedule; the
+        trading path uses :meth:`get_tradable_market`.
         """
+        return _parse_market(self._get_market_payload(ticker))
+
+    def get_tradable_market(self, ticker: str) -> Market:
+        """:meth:`get_market` plus the series fee schedule the engine charges.
+
+        The fee lives on the series, reached through the market's event, so a
+        trade costs two extra metadata calls (both cached 5 minutes).  A series
+        whose ``fee_type`` is not a published quadratic curve gets no schedule,
+        and :meth:`get_fee_rate` then refuses the trade.
+        """
+        payload = self._get_market_payload(ticker)
+        market = _parse_market(payload)
+        event_ticker = payload.get("event_ticker")
+        if event_ticker:
+            series = self._get_series(self._get_series_ticker(str(event_ticker)))
+            market.fee_schedule = _fee_schedule(series)
+        return market
+
+    def _get_market_payload(self, ticker: str) -> dict:
+        ticker = _strip_prefix(ticker)
         _check_ticker(ticker)
         cache_key = f"kalshi:market:{ticker}"
         cached = self._get_cached(cache_key)
-        if cached is not None:
-            return _parse_market(cached)
+        if isinstance(cached, dict):
+            return cached
 
         try:
             data = self._get(f"/markets/{ticker}")
@@ -187,7 +229,30 @@ class KalshiClient:
         if not isinstance(payload, dict):
             raise ApiError(f"Kalshi API returned no market for {ticker}")
         self._set_cached(cache_key, payload)
-        return _parse_market(payload)
+        return payload
+
+    def _get_series_ticker(self, event_ticker: str) -> str:
+        cache_key = f"kalshi:event:{event_ticker}"
+        cached = self._get_cached(cache_key)
+        if not isinstance(cached, dict):
+            data = self._get(f"/events/{event_ticker}")
+            cached = data.get("event") if isinstance(data, dict) else None
+            if not isinstance(cached, dict) or not cached.get("series_ticker"):
+                raise ApiError(f"Kalshi API returned no series for event {event_ticker}")
+            self._set_cached(cache_key, cached)
+        return str(cached["series_ticker"])
+
+    def _get_series(self, series_ticker: str) -> dict:
+        cache_key = f"kalshi:series:{series_ticker}"
+        cached = self._get_cached(cache_key)
+        if isinstance(cached, dict):
+            return cached
+        data = self._get(f"/series/{series_ticker}")
+        series = data.get("series") if isinstance(data, dict) else None
+        if not isinstance(series, dict):
+            raise ApiError(f"Kalshi API returned no series {series_ticker}")
+        self._set_cached(cache_key, series)
+        return series
 
     def get_order_book(self, ticker: str, *, depth: int | None = None) -> OrderBook:
         """Fetch the live order book for a market ticker.  NEVER cached.
@@ -196,14 +261,72 @@ class KalshiClient:
         ladder (a no bid at ``p`` is a yes ask at ``1 - p``).  ``depth`` is
         passed through; omitted, Kalshi returns every level.
         """
+        ticker = _strip_prefix(ticker)
+        no_side = ticker.endswith(_NO_SUFFIX)
+        if no_side:
+            ticker = ticker[: -len(_NO_SUFFIX)]
         _check_ticker(ticker)
         params = {"depth": depth} if depth else None
-        return _parse_order_book(self._get(f"/markets/{ticker}/orderbook", params))
+        book = _parse_order_book(self._get(f"/markets/{ticker}/orderbook", params))
+        return _no_side(book) if no_side else book
+
+    # ------------------------------------------------------------------
+    # Engine trading interface (same methods the engine calls on
+    # PolymarketClient; tokens are the ``kalshi:`` tokens of a Market)
+    # ------------------------------------------------------------------
+
+    def get_midpoint(self, token_id: str) -> float:
+        """Midpoint of the token's live book (one side if the other is empty).  NEVER cached."""
+        book = self.get_order_book(token_id)
+        prices = [levels[0].price for levels in (book.bids, book.asks) if levels]
+        return round(sum(prices) / len(prices), _PRICE_DP) if prices else 0.0
+
+    def get_fee_rate(self, token_id: str) -> int:
+        """Only reached when a market has no usable fee schedule: refuse to guess."""
+        raise OrderRejectedError(
+            f"Kalshi market '{token_id}' has a fee type pm-trader does not model"
+        )
+
+    def get_tick_size(self, token_id: str) -> float:
+        """The market's price grid step (cached with the market metadata)."""
+        ticker = _strip_prefix(token_id)
+        if ticker.endswith(_NO_SUFFIX):
+            ticker = ticker[: -len(_NO_SUFFIX)]
+        return self.get_market(ticker).tick_size
 
 
 # ---------------------------------------------------------------------------
 # Parsing helpers
 # ---------------------------------------------------------------------------
+
+
+def _strip_prefix(ticker: str) -> str:
+    return ticker[len(PREFIX):] if isinstance(ticker, str) and ticker.startswith(PREFIX) else ticker
+
+
+def _fee_schedule(series: dict) -> dict | None:
+    """Map a series' ``fee_type`` / ``fee_multiplier`` onto the engine's
+    ``feeSchedule`` shape (``rate x C x p x (1-p)``); None if not modelled."""
+    fee_type = series.get("fee_type")
+    multiplier = _to_float(series.get("fee_multiplier"), 1.0)
+    if fee_type in _TAKER_ONLY_FEE_TYPES:
+        return {"rate": _TAKER_RATE * multiplier, "exponent": 1, "takerOnly": True}
+    if fee_type in _MAKER_FEE_TYPES:
+        return {
+            "rate": _TAKER_RATE * multiplier,
+            "exponent": 1,
+            "takerOnly": False,
+            "makerRate": _MAKER_RATE * multiplier,
+        }
+    return None
+
+
+def _no_side(book: OrderBook) -> OrderBook:
+    """The NO book from the YES book: a YES ask at p is a NO bid at 1 - p."""
+    return OrderBook(
+        bids=[OrderBookLevel(round(1.0 - l.price, _PRICE_DP), l.size) for l in book.asks],
+        asks=[OrderBookLevel(round(1.0 - l.price, _PRICE_DP), l.size) for l in book.bids],
+    )
 
 
 def _check_ticker(ticker: str) -> None:
@@ -279,16 +402,19 @@ def _parse_market(data: object) -> Market:
         data.get("last_price_dollars")
     )
 
+    result = str(data.get("result") or "")
+    resolved = status in _DETERMINED_STATUSES and result in ("yes", "no")
+
     return Market(
         condition_id=ticker,
-        slug=ticker,
+        slug=f"{PREFIX}{ticker}",
         question=str(data.get("title") or ""),
         description=str(data.get("rules_primary") or ""),
         outcomes=["Yes", "No"],
         outcome_prices=[yes_price, round(1.0 - yes_price, _PRICE_DP)],
         tokens=[
-            {"token_id": ticker, "outcome": "Yes"},
-            {"token_id": ticker, "outcome": "No"},
+            {"token_id": f"{PREFIX}{ticker}", "outcome": "Yes"},
+            {"token_id": f"{PREFIX}{ticker}{_NO_SUFFIX}", "outcome": "No"},
         ],
         active=status == "active",
         closed=status in _CLOSED_STATUSES,
@@ -296,6 +422,7 @@ def _parse_market(data: object) -> Market:
         volume=_to_float(data.get("volume_fp")),
         end_date=str(data.get("close_time") or ""),
         tick_size=_tick_size(data),
+        uma_resolution_status="resolved" if resolved else "unresolved",
     )
 
 

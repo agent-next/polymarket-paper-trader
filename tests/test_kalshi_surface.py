@@ -59,7 +59,7 @@ class TestCli:
         ])
 
         assert code == 0
-        assert [m["slug"] for m in data["data"]] == [m["ticker"] for m in page["markets"]]
+        assert [m["slug"] for m in data["data"]] == [f"kalshi:{m['ticker']}" for m in page["markets"]]
         params = httpx_mock.get_requests()[0].url.params
         assert params["status"] == "settled"
         assert params["series_ticker"] == "KXNBAGAME"
@@ -78,7 +78,7 @@ class TestCli:
         code, data = _cli(tmp_path, ["kalshi", "market", TICKER])
 
         assert code == 0
-        assert data["data"]["slug"] == TICKER
+        assert data["data"]["slug"] == f"kalshi:{TICKER}"
         assert data["data"]["question"] == "Los Angeles L wins"
         assert data["data"]["outcome_prices"] == pytest.approx([0.59, 0.41])
 
@@ -149,7 +149,7 @@ class TestMcpTools:
         data = json.loads(kalshi_markets(limit=500, series_ticker="KXNBAGAME"))
 
         assert data["ok"] is True
-        assert [m["slug"] for m in data["data"]] == [m["ticker"] for m in page["markets"]]
+        assert [m["slug"] for m in data["data"]] == [f"kalshi:{m['ticker']}" for m in page["markets"]]
         params = httpx_mock.get_requests()[0].url.params
         assert params["status"] == "open"
         assert params["series_ticker"] == "KXNBAGAME"
@@ -179,7 +179,7 @@ class TestMcpTools:
         data = json.loads(kalshi_market(TICKER))
 
         assert data["ok"] is True
-        assert data["data"]["slug"] == TICKER
+        assert data["data"]["slug"] == f"kalshi:{TICKER}"
         assert data["data"]["active"] is True
 
     def test_market_not_found(self, httpx_mock) -> None:
