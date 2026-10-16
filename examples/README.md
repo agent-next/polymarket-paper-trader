@@ -1,6 +1,6 @@
 # Strategy Examples
 
-Three ready-to-run strategies for pm-trader. Each works with both live markets and backtesting.
+Five ready-to-run strategies for pm-trader. The first three also have backtest versions.
 
 ## Quick Start
 
@@ -45,6 +45,12 @@ near-fixed fraction of stake at the extremes. Requires the benchmark package
 ```
 pm-trader strategy run examples.jev_edge.run
 ```
+
+### Kalshi Favorite (`kalshi_favorite.py`)
+Lists the open markets of one Kalshi series (`KXNBAGAME`) and buys YES on
+every favorite whose live midpoint sits in a 0.60–0.85 band — $5 each
+(Kalshi has no $1 minimum), fees from the series' published curve. Kalshi
+markets trade through the same engine by their `kalshi:<ticker>` slug.
 
 ## Write Your Own
 

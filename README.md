@@ -246,7 +246,7 @@ authenticating proxy in front of it — the container has no auth of its own.
 
 ## Strategy examples
 
-Three ready-to-use strategies in `examples/`:
+Five ready-to-use strategies in `examples/`:
 
 ### Momentum (`examples/momentum.py`)
 
@@ -275,6 +275,14 @@ pm-trader strategy run examples.limit_grid.run
 ### Jev edge (`examples/jev_edge.py`)
 
 "Jev vs the market": asks Jev for a YES probability per binary market and buys the side it favors, skipping markets priced outside `[0.05, 0.95]` where fees dominate — `pm-trader strategy run examples.jev_edge.run` (needs `pip install -e "benchmark"`).
+
+### Kalshi favorite (`examples/kalshi_favorite.py`)
+
+Lists the open markets of one Kalshi series (`KXNBAGAME`) and paper buys YES on every favorite whose live midpoint sits in the 0.60–0.85 band — $5 each (Kalshi has no $1 minimum), fees from the series' curve ([docs/kalshi.md](docs/kalshi.md)).
+
+```bash
+pm-trader strategy run examples.kalshi_favorite.run
+```
 
 ### Writing your own strategy
 
