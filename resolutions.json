@@ -84,6 +84,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-18T11:19:57Z"
   },
+  "bitcoin-above-82k-on-october-18-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-19T13:32:51Z"
+  },
   "bitcoin-above-82k-on-october-2-2026": {
     "outcome": 1,
     "resolution_source": "uma",
@@ -574,10 +579,20 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-11T13:02:47Z"
   },
+  "epl-bou-sun-2026-10-18-sun": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-19T13:32:51Z"
+  },
   "epl-bre-liv-2026-10-17-liv": {
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-10-18T11:19:57Z"
+  },
+  "epl-bri-cry-2026-10-18-bri": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-19T13:32:51Z"
   },
   "epl-che-bou-2026-10-10-bou": {
     "outcome": 0,
@@ -624,6 +639,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-11T13:02:47Z"
   },
+  "epl-lee-mun-2026-10-18-mun": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-19T13:32:51Z"
+  },
   "epl-liv-mac-2026-10-11-draw": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -658,6 +678,16 @@
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-10-18T11:19:57Z"
+  },
+  "epl-not-ars-2026-10-18-ars": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-19T13:32:51Z"
+  },
+  "epl-not-ars-2026-10-18-not": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-19T13:32:51Z"
   },
   "epl-sun-bri-2026-10-10-bri": {
     "outcome": 1,
@@ -814,6 +844,16 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-07T13:34:50Z"
   },
+  "fl1-lyo-ogc-2026-10-18-lyo": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-19T13:32:51Z"
+  },
+  "fl1-pfc-ren-2026-10-18-pfc": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-19T13:32:51Z"
+  },
   "fl1-psg-lmf-2026-10-10-psg": {
     "outcome": 1,
     "resolution_source": "uma",
@@ -874,6 +914,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-16T11:34:22Z"
   },
+  "israel-x-iran-ceasefire-continues-through-october-18": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-19T13:32:51Z"
+  },
   "israel-x-iran-ceasefire-continues-through-september-30": {
     "outcome": 1,
     "resolution_source": "uma",
@@ -918,6 +963,16 @@
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-10-18T11:19:57Z"
+  },
+  "lal-rea-sev-2026-10-18-draw": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-19T13:32:51Z"
+  },
+  "lal-rea-sev-2026-10-18-sev": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-19T13:32:51Z"
   },
   "lal-rea-vil-2026-10-10-rea": {
     "outcome": 1,
@@ -1039,10 +1094,25 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-12T15:40:29Z"
   },
+  "sea-fio-com-2026-10-18-com": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-19T13:32:51Z"
+  },
   "sea-fro-sas-2026-10-16-fro": {
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-10-17T10:54:36Z"
+  },
+  "sea-juv-laz-2026-10-18-juv": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-19T13:32:51Z"
+  },
+  "sea-mil-ata-2026-10-18-mil": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-19T13:32:51Z"
   },
   "sea-rom-gen-2026-10-17-rom": {
     "outcome": 1,
@@ -1509,6 +1579,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-18T11:19:57Z"
   },
+  "us-x-iran-ceasefire-continues-through-october-18": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-19T13:32:51Z"
+  },
   "us-x-iran-ceasefire-continues-through-october-7": {
     "outcome": 1,
     "resolution_source": "uma",
@@ -1594,6 +1669,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-01T13:29:09Z"
   },
+  "will-bitcoin-dip-to-78k-october-12-18-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-19T13:32:51Z"
+  },
   "will-bitcoin-dip-to-78k-october-5-11-2026": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -1603,6 +1683,11 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-01T13:29:09Z"
+  },
+  "will-bitcoin-dip-to-80k-october-12-18-2026-from-october-15": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-19T13:32:51Z"
   },
   "will-bitcoin-dip-to-80k-october-5-11-2026": {
     "outcome": 0,
@@ -1678,6 +1763,11 @@
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-10-07T13:34:50Z"
+  },
+  "will-bitcoin-reach-84k-october-12-18-2026-from-october-14": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-19T13:32:51Z"
   },
   "will-bitcoin-reach-84k-october-5-11-2026": {
     "outcome": 1,
@@ -1784,6 +1874,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-01T13:29:09Z"
   },
+  "will-ethereum-dip-to-2300-october-12-18-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-19T13:32:51Z"
+  },
   "will-ethereum-dip-to-2300-october-5-11-2026": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -1809,6 +1904,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-05T14:53:52Z"
   },
+  "will-ethereum-reach-2600-october-12-18-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-19T13:32:51Z"
+  },
   "will-ethereum-reach-2600-october-5-11-2026": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -1823,6 +1923,11 @@
     "outcome": 0,
     "resolution_source": "uma",
     "resolved_at": "2026-10-13T14:21:36Z"
+  },
+  "will-ethereum-reach-2700-october-12-18-2026": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-19T13:32:51Z"
   },
   "will-ethereum-reach-2800-in-september-2026-from-september-22": {
     "outcome": 0,
