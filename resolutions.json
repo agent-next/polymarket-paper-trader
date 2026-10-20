@@ -384,6 +384,16 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-18T11:19:57Z"
   },
+  "elon-musk-of-tweets-october-17-october-19-2026-40-64": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-20T11:48:42Z"
+  },
+  "elon-musk-of-tweets-october-17-october-19-2026-65-89": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-20T11:48:42Z"
+  },
   "elon-musk-of-tweets-october-2-october-9-2026-140-159": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -703,6 +713,21 @@
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-10-11T13:02:47Z"
+  },
+  "epl-tot-cov-2026-10-19-cov": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-20T11:48:42Z"
+  },
+  "epl-tot-cov-2026-10-19-exact-score-any-other": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-20T11:48:42Z"
+  },
+  "epl-tot-cov-2026-10-19-tot": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-20T11:48:42Z"
   },
   "es2-alb-eib-2026-10-03-eib": {
     "outcome": 1,
@@ -1059,6 +1084,11 @@
     "resolution_source": "uma",
     "resolved_at": "2026-10-12T15:40:29Z"
   },
+  "paris-curfew-by-october-21": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-20T11:48:42Z"
+  },
   "perim-island-no-longer-under-houthi-control-by-october-15-20260916": {
     "outcome": 0,
     "resolution_source": "uma",
@@ -1128,6 +1158,16 @@
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-10-19T13:32:51Z"
+  },
+  "sea-mon-cag-2026-10-19-cag": {
+    "outcome": 0,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-20T11:48:42Z"
+  },
+  "sea-mon-cag-2026-10-19-mon": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-20T11:48:42Z"
   },
   "sea-rom-gen-2026-10-17-rom": {
     "outcome": 1,
@@ -2303,6 +2343,11 @@
     "outcome": 1,
     "resolution_source": "uma",
     "resolved_at": "2026-10-10T12:41:42Z"
+  },
+  "will-whalefall-opening-weekend-box-office-be-less-than-8m": {
+    "outcome": 1,
+    "resolution_source": "uma",
+    "resolved_at": "2026-10-20T11:48:42Z"
   },
   "will-wti-dip-to-85-in-september-2026": {
     "outcome": 0,
