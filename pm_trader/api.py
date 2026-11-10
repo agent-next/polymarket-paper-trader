@@ -8,6 +8,7 @@ prices and order books are NEVER cached (always live).
 from __future__ import annotations
 
 import json
+import os
 import time
 from datetime import datetime, timezone
 
@@ -266,12 +267,68 @@ class PolymarketClient:
 
     def search_markets(self, query: str, *, limit: int = 10) -> list[Market]:
         """Search markets by text query (Gamma /public-search)."""
+        if key := os.environ.get("MONID_API_KEY"):
+            return self._monid_search(query, limit, key)
         return _parse_search_results(
             self._gamma_get(
                 "/public-search",
                 params={"q": query, "limit_per_type": limit},
             )
         )[:limit]
+
+    def _monid_search(self, query: str, limit: int, key: str) -> list[Market]:
+        """Search Surf through Monid; keep trading metadata on Polymarket."""
+        headers = {"Authorization": f"Bearer {key}"}
+        payload = {
+            "provider": "surf", "endpoint": "/search/prediction-market",
+            "input": {"queryParams": {
+                "platform": "polymarket", "q": query, "limit": min(limit, 100),
+            }, "body": {}, "pathParams": {}},
+        }
+        try:
+            resp = self._http.post(
+                "https://api.monid.ai/v1/run",
+                headers={**headers, "Content-Type": "application/json; charset=utf-8"},
+                content=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                timeout=60,
+            )
+            resp.raise_for_status()
+            run = resp.json()
+            if resp.status_code == 202:
+                run_id = run["runId"]
+                deadline = time.monotonic() + 60
+                while True:
+                    if time.monotonic() >= deadline:
+                        raise ApiError("Monid run TIMED_OUT")
+                    time.sleep(2)
+                    resp = self._http.get(
+                        f"https://api.monid.ai/v1/runs/{run_id}",
+                        headers=headers, timeout=10,
+                    )
+                    resp.raise_for_status()
+                    run = resp.json()
+                    if run.get("status") in (
+                        "COMPLETED", "FAILED", "TIMED_OUT", "STOPPED", "BLOCKED",
+                    ):
+                        break
+            if run.get("status") not in (None, "COMPLETED"):
+                raise ApiError(f"Monid run {run.get('status')}")
+            provider = run.get("providerResponse") or {}
+            status = provider.get("httpStatus", 200)
+            if status >= 400:
+                error = provider.get("error", "")
+                text = error if isinstance(error, str) else json.dumps(error)
+                raise ApiError(
+                    f"Gamma API error: {status} {text[:200]}", status_code=status,
+                )
+            return _parse_monid_search(run["output"])[:limit]
+        except httpx.HTTPStatusError as e:
+            raise ApiError(
+                f"Monid API error: {e.response.status_code} {e.response.text[:200]}",
+                status_code=e.response.status_code,
+            ) from e
+        except httpx.RequestError as e:
+            raise ApiError(f"Monid API request failed: {e}") from e
 
     def get_tags(self) -> list[dict]:
         """Fetch all market tags/categories from Gamma API.  Cached 5 min."""
@@ -547,6 +604,26 @@ def _parse_clob_market(data: dict) -> Market:
         taker_base_fee_bps=int(data.get("tbf", 0) or 0),
         fee_schedule=_clob_fee_schedule(data.get("fd")),
     )
+
+
+def _parse_monid_search(output: dict) -> list[Market]:
+    """Map Surf discovery fields; do not invent missing trading metadata.
+
+    Surf's response schema: https://agents.asksurf.ai/docs/data-api/search/prediction-market
+    Volume windows and open interest differ from Gamma volume/liquidity, so omit them.
+    """
+    return [_parse_market({
+        "condition_id": row["condition_id"],
+        "slug": row.get("market_slug") or "",
+        "question": row.get("question") or "",
+        "outcomes": [row["outcome_label"]] if row.get("outcome_label") else [],
+        "outcomePrices": [row["latest_price"]] if row.get("latest_price") is not None else [],
+        "tokens": [{"token_id": row["token_id"], "outcome": row.get("outcome_label", "")}]
+        if row.get("token_id") else [],
+        "active": row.get("status") == "active",
+        "closed": row.get("status") in ("closed", "finalized"),
+        "acceptingOrders": False,
+    }) for row in output["data"] if row.get("condition_id")]
 
 
 def _parse_search_results(data: object) -> list[Market]:

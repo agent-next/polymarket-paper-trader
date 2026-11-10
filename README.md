@@ -47,6 +47,14 @@ uv pip install -e ".[dev]"
 
 Requires Python 3.10+.
 
+## Using Monid (optional)
+
+Set `MONID_API_KEY` to use Surf through Monid for keyword market search (one API key, pay per call).
+For example: `MONID_API_KEY=your-key pm-trader markets search "bitcoin"`.
+Search fields and coverage differ from Polymarket; other reads and trading still use Polymarket.
+Without the variable, search uses Polymarket as before.
+[Docs](https://docs.monid.ai?utm_source=github&utm_medium=oss-pr&utm_campaign=agent-next-polymarket-paper-trader) · [Sign up](https://monid.ai?utm_source=github&utm_medium=oss-pr&utm_campaign=agent-next-polymarket-paper-trader&aid=OSS-PR).
+
 ## Works with
 
 | Runtime | One-line install |
