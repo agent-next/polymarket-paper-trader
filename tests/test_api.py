@@ -1834,3 +1834,86 @@ class TestTakerOnlyStringBooleans:
             "c": "0x1", "t": [], "fd": {"r": 0.07, "e": 1, "to": raw},
         })
         assert market.fee_schedule["takerOnly"] is expected
+
+
+class TestMonidSearch:
+    @pytest.fixture(autouse=True)
+    def monid_key(self, monkeypatch) -> None:
+        monkeypatch.setenv("MONID_API_KEY", "test-monid-key")
+
+    @pytest.mark.parametrize("wrapped", [False, True])
+    def test_search(self, client: PolymarketClient, httpx_mock, wrapped: bool) -> None:
+        items = [
+            {"condition_id": "0xabc", "question": "比特币?", "slug": "bitcoin"},
+            {"condition_id": "0xdef"},
+            {"condition_id": "kalshi", "platform": "kalshi"},
+            {"question": "No identifier"},
+        ]
+        httpx_mock.add_response(json={"output": {"data": items} if wrapped else items})
+        markets = client.search_markets("比特币", limit=200)
+        request = httpx_mock.get_request()
+        assert str(request.url) == "https://api.monid.ai/v1/run"
+        assert request.method == "POST"
+        assert request.headers["Authorization"] == "Bearer test-monid-key"
+        assert request.headers["Content-Type"] == "application/json; charset=utf-8"
+        assert "比特币".encode() in request.content
+        assert json.loads(request.content) == {
+            "provider": "surf", "endpoint": "/search/prediction-market",
+            "input": {"queryParams": {
+                "q": "比特币", "platform": "polymarket", "status": "active", "limit": 100,
+            }},
+        }
+        assert [m.condition_id for m in markets] == ["0xabc", "0xdef"]
+        assert markets[0].question == "比特币?"
+        assert markets[0].slug == "bitcoin"
+        assert markets[0].tokens == []
+        assert markets[0].accepting_orders is False
+        assert markets[1].question == ""
+
+    def test_empty_limit(self, client: PolymarketClient, httpx_mock) -> None:
+        assert client.search_markets("bitcoin", limit=0) == []
+        assert httpx_mock.get_requests() == []
+
+    @pytest.mark.parametrize("error", ["not found", {"message": "not found"}])
+    def test_provider_error(self, client: PolymarketClient, httpx_mock, error) -> None:
+        httpx_mock.add_response(json={
+            "status": "COMPLETED", "providerResponse": {"httpStatus": 404, "error": error},
+        })
+        text = error if isinstance(error, str) else json.dumps(error)
+        with pytest.raises(ApiError) as exc:
+            client.search_markets("bitcoin")
+        assert str(exc.value) == f"Gamma API error: 404 {text}"
+        assert exc.value.status_code == 404
+
+    @pytest.mark.parametrize("status", [401, 429, 500])
+    def test_http_error(self, client: PolymarketClient, httpx_mock, status: int) -> None:
+        httpx_mock.add_response(status_code=status, text="failure")
+        with pytest.raises(ApiError, match=f"Monid API error: {status} failure"):
+            client.search_markets("bitcoin")
+
+    def test_request_error(self, client: PolymarketClient, httpx_mock) -> None:
+        httpx_mock.add_exception(httpx.ConnectError("offline"))
+        with pytest.raises(ApiError, match="Monid API request failed: offline"):
+            client.search_markets("bitcoin")
+
+    @pytest.mark.parametrize("status", ["COMPLETED", "FAILED", "TIMED_OUT", "STOPPED", "BLOCKED"])
+    def test_async(self, client: PolymarketClient, httpx_mock, status: str) -> None:
+        httpx_mock.add_response(status_code=202, json={"runId": "test-run"})
+        httpx_mock.add_response(json={"status": "RUNNING", "runId": "test-run"})
+        httpx_mock.add_response(json={"status": status, "output": []})
+        with patch("pm_trader.api.time.sleep"):
+            if status == "COMPLETED":
+                assert client.search_markets("bitcoin") == []
+            else:
+                with pytest.raises(ApiError, match=f"Monid run {status}"):
+                    client.search_markets("bitcoin")
+        for request in httpx_mock.get_requests()[1:]:
+            assert request.method == "GET"
+            assert str(request.url) == "https://api.monid.ai/v1/runs/test-run"
+            assert request.headers["Authorization"] == "Bearer test-monid-key"
+
+    def test_async_deadline(self, client: PolymarketClient, httpx_mock) -> None:
+        httpx_mock.add_response(status_code=202, json={"runId": "test-run"})
+        with patch("pm_trader.api.time.monotonic", side_effect=[0, 61]):
+            with pytest.raises(ApiError, match="Monid run timed out"):
+                client.search_markets("bitcoin")

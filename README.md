@@ -47,6 +47,14 @@ uv pip install -e ".[dev]"
 
 Requires Python 3.10+.
 
+## Using Monid (optional)
+
+Set `MONID_API_KEY` to use Surf through Monid for `markets search` (CLI and MCP).
+Monid uses one API key, pay per call. See https://docs.monid.ai.
+Surf fields and market coverage differ from Polymarket; results contain discovery
+metadata, without trading permissions, prices or token IDs. Other calls still use
+Polymarket directly. With the variable unset, existing behavior is unchanged.
+
 ## Works with
 
 | Runtime | One-line install |

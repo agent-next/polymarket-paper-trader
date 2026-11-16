@@ -8,6 +8,7 @@ prices and order books are NEVER cached (always live).
 from __future__ import annotations
 
 import json
+import os
 import time
 from datetime import datetime, timezone
 
@@ -266,12 +267,70 @@ class PolymarketClient:
 
     def search_markets(self, query: str, *, limit: int = 10) -> list[Market]:
         """Search markets by text query (Gamma /public-search)."""
+        if key := os.environ.get("MONID_API_KEY"):
+            return self._monid_search(query, limit, key)
         return _parse_search_results(
             self._gamma_get(
                 "/public-search",
                 params={"q": query, "limit_per_type": limit},
             )
         )[:limit]
+
+    def _monid_search(self, query: str, limit: int, key: str) -> list[Market]:
+        """Search Polymarket discovery metadata through Surf via Monid."""
+        if limit <= 0:
+            return []
+        headers = {"Authorization": f"Bearer {key}"}
+        payload = {
+            "provider": "surf",
+            "endpoint": "/search/prediction-market",
+            "input": {"queryParams": {
+                "q": query, "platform": "polymarket", "status": "active",
+                "limit": min(limit, 100),
+            }},
+        }
+        try:
+            resp = self._http.post(
+                "https://api.monid.ai/v1/run",
+                headers={**headers, "Content-Type": "application/json; charset=utf-8"},
+                content=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            )
+            resp.raise_for_status()
+            run = resp.json()
+            if resp.status_code == 202:
+                run_id = run["runId"]
+                deadline = time.monotonic() + 60
+                while run.get("status") not in (
+                    "COMPLETED", "FAILED", "TIMED_OUT", "STOPPED", "BLOCKED",
+                ):
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise ApiError("Monid run timed out")
+                    time.sleep(min(2, remaining))
+                    resp = self._http.get(
+                        f"https://api.monid.ai/v1/runs/{run_id}",
+                        headers=headers, timeout=max(0.001, deadline - time.monotonic()),
+                    )
+                    resp.raise_for_status()
+                    run = resp.json()
+            if run.get("status") not in (None, "COMPLETED"):
+                raise ApiError(f"Monid run {run['status']}")
+            provider = run.get("providerResponse") or {}
+            status = provider.get("httpStatus", 200)
+            if status >= 400:
+                error = provider.get("error", "")
+                text = error if isinstance(error, str) else json.dumps(error)
+                raise ApiError(
+                    f"Gamma API error: {status} {text[:200]}", status_code=status,
+                )
+            return _parse_surf_markets(run["output"])[:limit]
+        except httpx.HTTPStatusError as e:
+            raise ApiError(
+                f"Monid API error: {e.response.status_code} {e.response.text[:200]}",
+                status_code=e.response.status_code,
+            ) from e
+        except httpx.RequestError as e:
+            raise ApiError(f"Monid API request failed: {e}") from e
 
     def get_tags(self) -> list[dict]:
         """Fetch all market tags/categories from Gamma API.  Cached 5 min."""
@@ -566,6 +625,21 @@ def _parse_search_results(data: object) -> list[Market]:
             if _has_condition_id(m):
                 markets.append(_parse_market(m))
     return markets
+
+
+def _parse_surf_markets(output: dict | list) -> list[Market]:
+    """Map discovery fields only; Surf does not supply trading metadata."""
+    items = output if isinstance(output, list) else output.get("data", [])
+    return PolymarketClient._parse_market_list([
+        {
+            "condition_id": item["condition_id"],
+            "question": item.get("question", ""),
+            "slug": item.get("slug", ""),
+            "accepting_orders": False,
+        }
+        for item in items
+        if item.get("condition_id") and item.get("platform", "polymarket") == "polymarket"
+    ])
 
 
 def _parse_market(data: dict) -> Market:
